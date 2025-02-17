@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
         }
 
         // Extract necessary fields
-        $no = intval($data[0]); // Unique No.
+        $id = intval($data[0]); // Unique No.
         $en_no = intval($data[2]); // Employee Number
         $date = trim($data[6]); // Extract date
         $time = trim($data[7]); // Extract time
@@ -51,27 +51,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
 
         // Ensure the time format is valid
         if (!preg_match('/^\d{2}:\d{2}:\d{2}$/', $time)) {
-            $time = '23:59:59'; // Default time if invalid format
+            $time = '00:00:00'; // Default time if invalid format
         }
 
         // Check if the record already exists
-        $checkQuery = "SELECT COUNT(*) FROM attendance_logs WHERE no = ?";
+        $checkQuery = "SELECT COUNT(*) FROM attendance_logs WHERE id = ?";
         $stmt = $pdo->prepare($checkQuery);
-        $stmt->execute([$no]);
+        $stmt->execute([$id]);
         $count = $stmt->fetchColumn();
 
         if ($count > 0) {
             // Update existing record
-            $updateQuery = "UPDATE attendance_logs SET en_no = ?, date = ?, time = ?, updated_at = CURRENT_TIMESTAMP WHERE no = ?";
+            $updateQuery = "UPDATE attendance_logs SET en_no = ?, date = ?, time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
             $stmt = $pdo->prepare($updateQuery);
-            if ($stmt->execute([$en_no, $date, $time, $no])) {
+            if ($stmt->execute([$en_no, $date, $time, $id])) {
                 $updated++;
             }
         } else {
             // Insert new record
-            $insertQuery = "INSERT INTO attendance_logs (no, en_no, date, time, method) VALUES (?, ?, ?, ?, 0)";
+            $insertQuery = "INSERT INTO attendance_logs (id, en_no, date, time, method) VALUES (?, ?, ?, ?, 0)";
             $stmt = $pdo->prepare($insertQuery);
-            if ($stmt->execute([$no, $en_no, $date, $time])) {
+            if ($stmt->execute([$id, $en_no, $date, $time])) {
                 $inserted++;
             }
         }

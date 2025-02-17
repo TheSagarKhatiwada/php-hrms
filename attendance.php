@@ -5,7 +5,7 @@ include 'includes/db_connection.php';  // Add your database connection file here
 
 // Improved error handling and fetching attendance data
 try {
-    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, a.date, a.time, a.method, a.no FROM attendance_logs a INNER JOIN employees e ON a.en_no = e.mach_id");
+    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id FROM attendance_logs a INNER JOIN employees e ON a.en_no = e.mach_id");
     $stmt->execute();
     $attendanceRecords = $stmt->fetchAll();
 
@@ -84,7 +84,7 @@ try {
                             <img src='{$home}resources/userimg/default-image.jpg' alt='Employee Image' class='employee-image' style='width: 50px; height: 50px; border-radius: 50%; object-fit: cover;'>
                           </div>
                           <div class='empNameDegi'>
-                            <b>{$record['first_name']} {$record['middle_name']} {$record['last_name']}</b><br>{$record['branch']}
+                            <b>{$record['first_name']} {$record['middle_name']} {$record['last_name']}</b><br><strong>{$record['designation']}</strong>
                           </div>
                         </div>
                         </td>";
@@ -99,8 +99,8 @@ try {
                   }
                    echo "</td>";
                   echo "<td class='align-items-center text-center'>
-                          <a href='edit-attendance.php?id={$record['no']}' class='btn btn-primary btn-sm'>Edit</a>
-                          <a href='delete-attendance.php?id={$record['no']}' class='btn btn-danger btn-sm'>Delete</a>
+                          <a href='edit-attendance.php?id={$record['id']}' class='btn btn-primary btn-sm'>Edit</a>
+                          <a href='delete-attendance.php?id={$record['id']}' class='btn btn-danger btn-sm'>Delete</a>
                         </td>";
                   echo "</tr>";
                 }
@@ -263,24 +263,27 @@ try {
                     <div class="row">
                       <div class="col-md-6">
                         <div class="form-group">
-                          <select class="form-control select2" style="width: 100%;" name="empBranch">
-                            <option selected disabled>Select a Branch</option>
-                            <option value="1">Option 1</option>
-                            <option value="2">Option 2</option>
-                            <option value="3">Option 3</option>
-                            <option value="4">Option 4</option>
-                            <option value="5">Option 5</option>
-                          </select>
+                        <select class="form-control select2" style="width: 100%;" id="empBranch" name="empBranch" required>
+                          <option selected disabled>Select a Branch</option>
+                            <!-- Optionally populate this statically or dynamically from the database -->
+                            <?php 
+                                $branchQuery = "SELECT DISTINCT id, name FROM branches";
+                                $stmt = $pdo->query($branchQuery);
+                                while ($row = $stmt->fetch()) {
+                                    echo "<option value='{$row['id']}'>{$row['name']}</option>";
+                                }
+                            ?>
+                        </select>
                           <label for="empBranch" class="form-label">Branch <span style="color:red;">*</span></label>
                         </div>
                       </div>
                       <div class="col-md-6">
                         <div class="form-group">
-                          <select class="form-control select" style="width: 100%;" name="emp_id">
-                            <option value="0101">Sagar Khatiwada</option>
-                            <option value="0102">Hari Bimali</option>
+                          <!-- User Dropdown will be populated after branch selection -->
+                          <select class="form-control select2" style="width: 100%;" id="emp_id" name="emp_id" required>
+                              <option value="">Select Employee</option>
                           </select>
-                          <label for="empBranch" class="form-label">Employee <span style="color:red;">*</span></label>
+                          <label for="emp_id" class="form-label">Employee <span style="color:red;">*</span></label>
                         </div>
                       </div>
                       <div class="col-md-12">
@@ -348,5 +351,27 @@ try {
     </div>
   </div>
 </div>
+<!-- JavaScript to handle the AJAX request and populate the employee dropdown based on the selected branch: -->
+<script>
+  $(document).ready(function () {
+    $('#empBranch').change(function () {
+      var branch = $(this).val(); // Get the selected branch
+
+      if (branch) {
+        $.ajax({
+          url: 'fetch_users.php', // We will create this PHP script next
+          type: 'POST',
+          data: { branch: branch },
+          success: function (response) {
+            $('#emp_id').html(response); // Populate the user dropdown
+          }
+        });
+      } else {
+        $('#emp_id').html('<option value="">Select Employee</option>');
+      }
+    });
+  });
+</script>
+
 </body>
 </html>
