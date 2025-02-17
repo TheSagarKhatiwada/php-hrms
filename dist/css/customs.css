@@ -1,0 +1,53 @@
+/* start */
+/* css for placeholder on border animation */
+.form-group {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.form-control {
+    width: 100%;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 0.25rem;
+    transition: border-color 0.3s;
+}
+
+.form-control:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+.form-label {
+    position: absolute;
+    top: 50%;
+    left: 0.75rem;
+    transform: translateY(-50%);
+    font-size: 1rem;
+    color: #ccc;
+    pointer-events: none;
+    transition: all 0.3s;
+}
+
+.form-control:focus + .form-label,
+.form-control:not(:placeholder-shown) + .form-label {
+    top: 0;
+    left: 0.75rem;
+    font-size: 0.75rem;
+    color: #ccc;
+    background: #343a40;
+}
+
+.img-container {
+    max-width: 100%;
+    text-align: center;
+}
+
+.img-container img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+/* css for placeholder on border animation */
+/* end */
