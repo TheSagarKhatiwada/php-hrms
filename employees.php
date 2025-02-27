@@ -1,7 +1,13 @@
 <?php
-$page = 'users';
+session_start();
+$page = 'employees';
+$accessRole = isset($_SESSION['role']) ? $_SESSION['role'] : null;
+if ($accessRole === '0') {
+    header('Location: dashboard.php');
+    exit();
+}
 include 'includes/header.php';
-include 'includes/db_connection.php'; // Include the database connection file
+include 'includes/db_connection.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Get form data
@@ -47,8 +53,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 // Initialize the $employees variable
 $employees = [];
 
-// Fetch data from the database
-$stmt = $pdo->prepare("SELECT * FROM employees");
+// Fetch data from the database "SELECT * FROM employees");
+$stmt = $pdo->prepare("SELECT e.*, b.name FROM employees e JOIN branches b ON e.branch = b.id ORDER BY e.id DESC");
 $stmt->execute();
 $employees = $stmt->fetchAll();
 ?>
@@ -58,7 +64,7 @@ $employees = $stmt->fetchAll();
   <link rel="stylesheet" href="<?php echo $home;?>plugins/datatables-buttons/css/buttons.bootstrap4.min.css">
   
 </head>
-<body class="hold-transition sidebar-mini layout-footer-fixed layout-navbar-fixed layout-fixed dark-mode sidebar-collapse">
+<body class="hold-transition sidebar-mini layout-footer-fixed layout-navbar-fixed layout-fixed layout-footer-fixed dark-mode">
 <div class="wrapper">
   <?php 
     include 'includes/topbar.php';
@@ -71,12 +77,12 @@ $employees = $stmt->fetchAll();
       <div class="container-fluid">
         <div class="row mb-2">
           <div class="col-sm-6">
-            <h1 class="m-0">Users</h1>
+            <h1 class="m-0">Employees</h1>
           </div><!-- /.col -->
           <div class="col-sm-6">
             <ol class="breadcrumb float-sm-right">
               <li class="breadcrumb-item"><a href="#">Home</a></li>
-              <li class="breadcrumb-item active">Users</li>
+              <li class="breadcrumb-item active">Employees</li>
             </ol>
           </div><!-- /.col -->
         </div><!-- /.row -->
@@ -97,8 +103,8 @@ $employees = $stmt->fetchAll();
                     <tr>
                       <th class="align-items-center text-center">Emp. ID</th>
                       <th class="align-items-center text-left">Employee Details</th>
-                      <th class="align-items-center text-center">Personal Contacts</th>
-                      <th class="align-items-center text-center">Official Contacts</th>
+                      <th class="align-items-center text-left">Personal Contacts</th>
+                      <th class="align-items-center text-left">Official Contacts</th>
                       <th class="align-items-center text-center">Branch</th>
                       <th class="align-items-center text-center">Joining Date</th>
                       <th class="align-items-center text-center">Status</th>
@@ -116,24 +122,25 @@ $employees = $stmt->fetchAll();
                             <img src="<?php echo htmlspecialchars($employee['user_image']); ?>" alt="Employee Image" class="employee-image" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
                           </div>
                           <div class="empNameDegi">
-                            <b><?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']); ?></b></br><?php echo htmlspecialchars($employee['designation']); ?>
+                            <b><?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']); ?></b><span><?php echo " (" . htmlspecialchars($employee['gender']) . ")"; ?></span></br><?php echo htmlspecialchars($employee['designation']); ?>
                           </div>
                         </div>
                       </td>
-                      <td class="align-items-center text-center"><?php echo htmlspecialchars($employee['phone']); ?></br><?php echo htmlspecialchars($employee['email']); ?></td>
-                      <td class="align-items-center text-center">
+                      <td class="align-items-center text-left"><?php echo htmlspecialchars($employee['phone']); ?></br><?php echo htmlspecialchars($employee['email']); ?></td>
+                      <td class="align-items-center text-left">
                         <?php echo $employee['office_phone'] ?  htmlspecialchars($employee['office_phone']) : '-'; ?></br>
                         <?php echo $employee['office_email'] ?  htmlspecialchars($employee['office_email']) : '-'; ?>
                       </td>
-                      <td class="align-items-center text-center"><?php echo htmlspecialchars($employee['branch']); ?></td>
+                      <td class="align-items-center text-center"><?php echo htmlspecialchars($employee['name']); ?></td>
                       <td class="align-items-center text-center"><?php echo htmlspecialchars($employee['join_date']); ?></td>
                       <td class="align-items-center text-center">
                         <?php echo $employee['exit_date'] ? 'Exited on ' . htmlspecialchars($employee['exit_date']) : 'Working'; ?>
                       </td>
-                      <td class="align-items-center text-center"><?php echo $employee['login_access'] ? 'Granted' : 'Disabled'; ?></td>
+                      <td class="align-items-center text-center"><?php echo $employee['login_access'] ? 'Granted' : 'Denied'; ?></td>
                       <td class="align-items-center text-center">
-                        <a href="edit-user.php?id=<?php echo $employee['id']; ?>" class="btn btn-primary btn-sm">Edit</a>
-                        <a href="delete-user.php?id=<?php echo $employee['id']; ?>" class="btn btn-danger btn-sm">Delete</a>
+                        <a href="employee-viewer.php?empId=<?php echo $employee['emp_id']; ?>" class="btn btn-secondary btn-sm">View</a>
+                        <a href="edit-employee.php?id=<?php echo $employee['emp_id']; ?>" class="btn btn-primary btn-sm">Edit</a>
+                        <a href="delete-employee.php?id=<?php echo $employee['emp_id']; ?>" class="btn btn-danger btn-sm">Delete</a>
                       </td>
                     </tr>
                     <?php endforeach; ?>
@@ -190,8 +197,9 @@ $employees = $stmt->fetchAll();
       "paging": true,
       "searching": true,
       "ordering": true,
+      "order": [[5, 'desc']], // [columnIndex, 'asc' or 'desc']
       "info": true,
-      "pageLength": 10, // Set the default number of rows to display
+      "pageLength": 5, // Set the default number of rows to display
       "lengthMenu": [ [10, 25, 50, -1], [10, 25, 50, "All"] ], // Define the options in the page length dropdown menu
       "pagingType": "full_numbers", // Controls the pagination controls' appearance (options: 'simple', 'simple_numbers', 'full', 'full_numbers', 'first_last_numbers')
       "buttons": ["colvis"], //copy, csv, excel, pdf, print, colvis
@@ -215,14 +223,19 @@ $employees = $stmt->fetchAll();
     }).buttons().container().appendTo('#user-table_wrapper .col-md-6:eq(0)');
 
     // Add custom button below the filter
-    $('#user-table_filter').after('<div class="custom-filter-button" style="display: flex; justify-content: flex-end;"><button class="btn btn-primary" id="custom-filter-btn">Add User</button></div>');
+    $('#user-table_filter').after('<div class="custom-filter-button" style="display: flex; justify-content: flex-end;"><button class="btn btn-primary" id="custom-filter-btn">Add Employee</button></div>');
 
     // Custom button action
+    // $('#custom-filter-btn').on('click', function() {
+    //   $('#addUserModal').modal({
+    //     backdrop: 'static',
+    //     keyboard: false
+    //   });
+    // });
+
+    // alternativ action of the button
     $('#custom-filter-btn').on('click', function() {
-      $('#addUserModal').modal({
-        backdrop: 'static',
-        keyboard: false
-      });
+        window.location.href = 'add-employee.php';
     });
   });
 </script>
@@ -235,34 +248,26 @@ $employees = $stmt->fetchAll();
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="addUserModalLabel">Add Employee</h5>
-        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
       </div>
       <div class="modal-body">
         <form id="addUserForm" method="POST" action="users.php">
           <div class="row">
             <div class="col-md-6">
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="form-group">
-                    <input type="text" class="form-control" id="empId" name="empId" placeholder=" " required value="0101" disabled>
-                    <label for="empId" class="form-label">ID <span style="color:red;">*</span></label>
-                  </div>
-                </div>
-                <div class="col-md-6">
                   <div class="form-group">
                     <input type="text" class="form-control" id="machId" name="machId" placeholder=" ">
                     <label for="machId" class="form-label">Machine ID</label>
                   </div>
-                </div>
-              </div>
               <div class="form-group">
                 <select class="form-control select2" style="width: 100%;" id="empBranch" name="empBranch" required>
                   <option selected disabled>Select a Branch</option>
-                  <option value="01">Main Branch</option>
-                  <option value="05">Damak Branch</option>
-                  <option value="06">Pokhara Branch</option>
+                  <!-- Optionally populate this statically or dynamically from the database -->
+                  <?php 
+                      $branchQuery = "SELECT DISTINCT id, name FROM branches";
+                      $stmt = $pdo->query($branchQuery);
+                      while ($row = $stmt->fetch()) {
+                          echo "<option value='{$row['id']}'>{$row['name']}</option>";
+                      }
+                  ?>
                 </select>
                 <label for="empBranch" class="form-label">Branch <span style="color:red;">*</span></label>
               </div>
@@ -299,7 +304,7 @@ $employees = $stmt->fetchAll();
           </div>
           <div class="action-buttons float-right">
             <button type="button" class="btn btn-danger" data-dismiss="modal" aria-label="Close">Cancel</button>
-            <button type="submit" class="btn btn-primary">Add User</button>
+            <button type="submit" class="btn btn-primary">Save</button>
           </div>
         </form>
       </div>
@@ -312,7 +317,7 @@ $employees = $stmt->fetchAll();
     const form = document.getElementById('addUserForm');
     const formData = new FormData(form);
     const queryString = new URLSearchParams(formData).toString();
-    window.location.href = 'add-user.php?' + queryString;
+    window.location.href = 'add-employee.php?' + queryString;
   }
 </script>
 </body>

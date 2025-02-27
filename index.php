@@ -1,9 +1,58 @@
 <?php
-$page = 'users';
+$page = 'Login';
 include 'includes/header.php';
+include 'includes/db_connection.php';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $email = $_POST['email'];
+    $password = $_POST['password'];
+
+    // Fetch user from the database
+    $stmt = $pdo->prepare("SELECT * FROM employees WHERE email = :email");
+    $stmt->execute(['email' => $email]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($user && password_verify($password, $user['password'])) {
+      // Password is correct
+      $_SESSION['user_id'] = $user['id'];
+      $_SESSION['designation'] = $user['designation'];
+      $_SESSION['fullName'] = $user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name'];
+      $_SESSION['userImage'] = $user['user_image'];
+      $_SESSION['user_role'] = $user['role'];
+      $_SESSION['login_access'] = $user['login_access'];
+  
+      // Check login access
+      if ($user['login_access'] == '0') {
+            $error = "Access Denied.";
+        } else {
+            // Check if there is a URL to redirect to
+            if (isset($_SESSION['redirect_to'])) {
+                $redirect_to = $_SESSION['redirect_to'];
+                // Clear the session variable
+                unset($_SESSION['redirect_to']);
+                // Redirect to the original page
+                header("Location: " . $redirect_to);
+                exit();
+            } else {
+                // Redirect based on role
+                if ($user['role'] == '1') {
+                    header('Location: admin-dashboard.php');
+                } elseif ($user['role'] == '0') {
+                    header('Location: employee-dashboard.php');
+                } else {
+                    header('Location: dashboard.php');
+                }
+                exit();
+            }
+          }               
+    } else {
+        // Password is incorrect, handle accordingly
+        $error = "Login failed. Please try again.";
+    }
+}
 ?>
 </head>
-<body class="hold-transition login-page">
+<body class="hold-transition login-page dark-mode">
 <div class="login-box">
   <!-- /.login-logo -->
   <div class="card card-outline card-primary">
@@ -13,9 +62,15 @@ include 'includes/header.php';
     <div class="card-body">
       <p class="login-box-msg">Sign in to start your session</p>
 
-      <form action="../../index3.html" method="post">
+      <?php if (isset($error)): ?>
+        <div class="alert alert-danger">
+          <?php echo htmlspecialchars($error); ?>
+        </div>
+      <?php endif; ?>
+
+      <form action="index.php" method="post">
         <div class="input-group mb-3">
-          <input type="email" class="form-control" placeholder="Email">
+          <input type="email" class="form-control" name="email" placeholder="Email" required>
           <div class="input-group-append">
             <div class="input-group-text">
               <span class="fas fa-envelope"></span>
@@ -23,7 +78,7 @@ include 'includes/header.php';
           </div>
         </div>
         <div class="input-group mb-3">
-          <input type="password" class="form-control" placeholder="Password">
+          <input type="password" class="form-control" name="password" placeholder="Password" required>
           <div class="input-group-append">
             <div class="input-group-text">
               <span class="fas fa-lock"></span>
@@ -33,7 +88,7 @@ include 'includes/header.php';
         <div class="row">
           <div class="col-8">
             <div class="icheck-primary">
-              <input type="checkbox" id="remember">
+              <input type="checkbox" id="remember" name="remember">
               <label for="remember">
                 Remember Me
               </label>
@@ -47,22 +102,9 @@ include 'includes/header.php';
         </div>
       </form>
 
-      <!-- <div class="social-auth-links text-center mt-2 mb-3">
-        <a href="#" class="btn btn-block btn-primary">
-          <i class="fab fa-facebook mr-2"></i> Sign in using Facebook
-        </a>
-        <a href="#" class="btn btn-block btn-danger">
-          <i class="fab fa-google-plus mr-2"></i> Sign in using Google+
-        </a>
-      </div> -->
-      <!-- /.social-auth-links -->
-
       <p class="mb-1">
         <a href="forgot-password.html">I forgot my password</a>
       </p>
-      <!-- <p class="mb-0">
-        <a href="register.html" class="text-center">Register a new membership</a>
-      </p> -->
     </div>
     <!-- /.card-body -->
   </div>

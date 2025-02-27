@@ -38,8 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
         }
 
         // Extract necessary fields
-        $id = intval($data[0]); // Unique No.
-        $en_no = intval($data[2]); // Employee Number
+        $mach_sn = intval($data[0]); // Unique No.
+        $mach_id = intval($data[2]); // Employee machine ID
         $date = trim($data[6]); // Extract date
         $time = trim($data[7]); // Extract time
 
@@ -55,23 +55,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
         }
 
         // Check if the record already exists
-        $checkQuery = "SELECT COUNT(*) FROM attendance_logs WHERE id = ?";
+        $checkQuery = "SELECT COUNT(*) FROM attendance_logs WHERE mach_sn = ?";
         $stmt = $pdo->prepare($checkQuery);
-        $stmt->execute([$id]);
+        $stmt->execute([$mach_sn]);
         $count = $stmt->fetchColumn();
 
         if ($count > 0) {
             // Update existing record
-            $updateQuery = "UPDATE attendance_logs SET en_no = ?, date = ?, time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+            $updateQuery = "UPDATE attendance_logs SET mach_id = ?, date = ?, time = ?, updated_at = CURRENT_TIMESTAMP WHERE mach_sn = ?";
             $stmt = $pdo->prepare($updateQuery);
-            if ($stmt->execute([$en_no, $date, $time, $id])) {
+            if ($stmt->execute([$mach_id, $date, $time, $mach_sn])) {
                 $updated++;
             }
         } else {
             // Insert new record
-            $insertQuery = "INSERT INTO attendance_logs (id, en_no, date, time, method) VALUES (?, ?, ?, ?, 0)";
+            $insertQuery = "INSERT INTO attendance_logs (mach_sn, mach_id, date, time, method) VALUES (?, ?, ?, ?, 0)";
             $stmt = $pdo->prepare($insertQuery);
-            if ($stmt->execute([$id, $en_no, $date, $time])) {
+            if ($stmt->execute([$mach_sn, $mach_id, $date, $time])) {
                 $inserted++;
             }
         }
@@ -82,6 +82,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
         'type' => 'success',
         'content' => "$inserted records inserted, $updated updated, $skipped skipped (invalid data)."
     ];
+
+    // Update attendance_logs with emp_Id from employees based on machine_id
+    try {
+        // SQL query to update attendance_log with emp_Id from employees based on machine_id
+        $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
+    
+        // Prepare and execute the statement
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+    
+        echo '<div class="alert alert-success">Records updated successfully.</div>';
+    
+    } catch (PDOException $e) {
+        echo '<div class="alert alert-danger">Error updating records: </div>' . $e->getMessage();
+    }
 
     header('Location: attendance.php');
     exit();

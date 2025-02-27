@@ -3,37 +3,29 @@
     <!-- Brand Logo -->
     <a href="index3.html" class="brand-link">
       <img src="dist/img/AdminLTELogo.png" alt="AdminLTE Logo" class="brand-image img-circle elevation-3" style="opacity: .8">
-      <span class="brand-text font-weight-light">AdminLTE 3</span>
+      <span class="brand-text font-weight-light">Attendance Pro</span>
     </a>
 <!-- Sidebar -->
 <div class="sidebar">
       <!-- Sidebar user panel (optional) -->
-      <div class="user-panel mt-3 pb-3 mb-3 d-flex">
+      <div class="user-panel mt-3 pb-3 mb-3 d-flex align-items-center">
         <div class="image">
-          <img src="dist/img/user2-160x160.jpg" class="img-circle elevation-2" alt="User Image">
+          <img src="<?php echo htmlspecialchars($_SESSION['userImage']); ?>" class="img-circle elevation-2" alt="Employee Image">
         </div>
         <div class="info">
-          <a href="#" class="d-block">Sagar Khatiwada</a>
+          <a href="#" class="d-block"><?php echo $_SESSION['fullName'];?></a>
+          <a href="#" class="d-block text-sm"><?php echo $_SESSION['designation'];?></a>
         </div>
       </div>
-    <?php if(0>0){ ?>
-      <!-- Sidebar Search Form - hidden -->
-      <div class="form-inline">
-        <div class="input-group" data-widget="sidebar-search">
-          <input class="form-control form-control-sidebar" type="search" placeholder="Search" aria-label="Search">
-          <div class="input-group-append">
-            <button class="btn btn-sidebar">
-              <i class="fas fa-search fa-fw"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-      <?php } ?>
       <!-- Sidebar Menu -->
       <nav class="mt-2">
         <ul class="nav nav-pills nav-sidebar flex-column nav-child-indent" data-widget="treeview" role="menu" data-accordion="false">
-          <li class="nav-item">
-            <a href="<?php echo $home;?>" class="nav-link <?php if($page == 'dashboard'){echo 'active';}?>">
+        <?php 
+          $accessRole = isset($_SESSION['role']) ? $_SESSION['role'] : null;
+          if ($accessRole != 1  ) {
+        ?>
+        <li class="nav-item">
+            <a href="<?php echo $home;?>admin-dashboard.php" class="nav-link <?php if($page == 'Admin Dashboard'){echo 'active';}?>">
               <i class="nav-icon fas fa-tachometer-alt"></i>
               <p>
                 Dashboard
@@ -41,10 +33,10 @@
             </a>
           </li>
           <li class="nav-item">
-            <a href="<?php echo $home;?>users.php" class="nav-link <?php if($page == 'users'){echo 'active';}?>">
+            <a href="<?php echo $home;?>employees.php" class="nav-link <?php if($page == 'employees'){echo 'active';}?>">
               <i class="nav-icon fas fa-users"></i>
               <p>
-                Users
+                Employees
               </p>
             </a>
           </li>
@@ -78,6 +70,29 @@
                 </a>
               </li>
             </ul>
+          </li>
+          <?php 
+            } 
+            if ($accessRole != 0  ) {
+          ?>
+          <li class="nav-item">
+            <a href="<?php echo $home;?>dashboard.php" class="nav-link <?php if($page == 'dashboard'){echo 'active';}?>">
+              <i class="nav-icon fas fa-tachometer-alt"></i>
+              <p>
+                Dashboard
+              </p>
+            </a>
+          </li>
+          <?php 
+            }
+          ?>
+          <li class="nav-item">
+            <a href="<?php echo $home;?>signout.php" class="nav-link">
+              <i class="nav-icon fas fa-sign-out-alt"></i>
+              <p>
+                Sign Out
+              </p>
+            </a>
           </li>
 
         <!-- Add icons to the links using the .nav-icon class

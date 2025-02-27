@@ -28,6 +28,7 @@ CREATE TABLE attendance_logs (
     date DATE NOT NULL,  -- Date of attendance
     time TIME NOT NULL,  -- Time of attendance
     method TINYINT(1) DEFAULT 0,  -- 0 = Uploaded, 1 = Manual
+    manual_reason TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Record creation time
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  -- Last update time
 );

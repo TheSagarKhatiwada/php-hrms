@@ -1,6 +1,12 @@
 <?php
 $page = 'daily-report';
+$accessRole = isset($_SESSION['role']) ? $_SESSION['role'] : null;
+if ($accessRole === '0') {
+    header('Location: dashboard.php');
+    exit();
+}
 include 'includes/header.php';
+include 'includes/db_connection.php';
 ?>
   <!-- DataTables -->
   <link rel="stylesheet" href="<?php echo $home;?>plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
@@ -38,65 +44,159 @@ include 'includes/header.php';
      <div class="container-fluid">
      <div class="card">
               <div class="card-header pb-0">
-                <form action="#">
+                <form action="fetch-daily-report-data.php" method="POST" id="daily-report-form">
                   <div class="reportDate mt-3">
                     <div class="row">
                       <div class="col-md-2">
                         <div class="form-group">
-                          <input type="date" class="form-control" id="reportdate" name="reportdate" placeholder=" " value="<?php echo date('Y-m-d'); ?>" max="<?php echo date('Y-m-d'); ?>" required>
+                          <input type="date" class="form-control" id="reportdate" name="reportdate" 
+                          value="<?= isset($_POST['reportdate']) ? $_POST['reportdate'] : date('Y-m-d'); ?>" 
+                          max="<?= date('Y-m-d'); ?>" required>
                           <label for="reportdate" class="form-label">Report Date <span style="color:red;">*</span></label>
                         </div>
                       </div>
                       <div class="col-md-2">
                         <div class="form-group">
-                          <input type="button" class="btn btn-primary" value="Search">
+                          <select class="form-control select2" style="width: 100%;" id="empBranch" name="empBranch" required>
+                            <option disabled>Select a Branch</option>
+                            <option value="" <?= (isset($_POST['empBranch']) && $_POST['empBranch'] === '') ? 'selected' : ''; ?>>All Branches</option>
+                            <?php 
+                                $selectedBranch = isset($_POST['empBranch']) ? $_POST['empBranch'] : ''; // Store selected value
+                                $branchQuery = "SELECT id, name FROM branches";
+                                $stmt = $pdo->query($branchQuery);
+                                while ($row = $stmt->fetch()) {
+                                    $selected = ($selectedBranch == $row['id']) ? 'selected' : ''; // Compare values correctly
+                                    echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
+                                }
+                            ?>
+                          </select>
+
+                          <label for="empBranch" class="form-label">Branch <span style="color:red;">*</span></label>
                         </div>
+                      </div>
+                      <div class="col-md-2">
+                        <input type="submit" class="btn btn-primary"></input>
                       </div>
                     </div>
                   </div>
                 </form>
               </div>
               <!-- /.card-header -->
+               
               <div class="card-body">
-                <table id="user-table" class="table table-bordered table-striped" width="100%">
+                <table id="daily-report-table" class="table table-sm table-bordered table-striped" width="100%">
                   <thead>
+                    <!-- <tr>
+                      <th class="align-items-center text-center" style="font-size: 1.8rem;" colspan="18">Prime Express Courier & Cargo Pvt. Ltd.</th>
+                    </tr> -->
                     <tr>
-                      <th class="align-items-center text-center">Emp. ID</th>
-                      <th class="align-items-center text-left">Employee Name</th>
-                      <th class="align-items-center text-center">Designation</th>
-                      <th class="align-items-center text-center">Branch</th>
-                      <th class="align-items-center text-center">Sch. In</th>
-                      <th class="align-items-center text-center">Sch. Out</th>
-                      <th class="align-items-center text-center">Wrkng hrs.</th>
-                      <th class="align-items-center text-center">In Time</th>
-                      <th class="align-items-center text-center">Out Time</th>
-                      <th class="align-items-center text-center">Over Time</th>
-                      <th class="align-items-center text-center">Late In</th>
-                      <th class="align-items-center text-center">Late Out</th>
-                      <th class="align-items-center text-center">Marked As</th>
-                      <th class="align-items-center text-center">Type</th>
-                      <th class="align-items-center text-center">Remarks</th>
+                      <th class="align-items-center text-center" colspan="18">Daily Attendance Report: <?php if (isset($_POST['reportdate'])) { echo $_POST['reportdate']; } ?></th>
+                    </tr>
+                    <tr>
+                      <th class="align-items-center text-center" rowspan="2">SN</th>
+                      <th class="align-items-center text-center" rowspan="2">Employee Name</th>
+                      <th class="align-items-center text-center" rowspan="2">Designation</th>
+                      <th class="align-items-center text-center" rowspan="2">Branch</th>
+                      <th class="align-items-center text-center" colspan="3">Planned Time</th>
+                      <th class="align-items-center text-center" colspan="3">Worked Time</th>
+                      <th class="align-items-center text-center" rowspan="2">Overtime</th>
+                      <th class="align-items-center text-center" rowspan="2">Late In</th>
+                      <th class="align-items-center text-center" rowspan="2">Early Out</th>
+                      <th class="align-items-center text-center" rowspan="2">Early In</th>
+                      <th class="align-items-center text-center" rowspan="2">Late Out</th>
+                      <th class="align-items-center text-center" rowspan="2">Marked As</th>
+                      <th class="align-items-center text-center" rowspan="2">Methods</th>
+                      <th class="align-items-center text-center" rowspan="2">Remarks</th>
+                    </tr>
+                    <tr>
+                      <th class="align-items-center text-center">In</th>
+                      <th class="align-items-center text-center">Out</th>
+                      <th class="align-items-center text-center">Work hrs</th>
+                      <th class="align-items-center text-center">In</th>
+                      <th class="align-items-center text-center">Out</th>
+                      <th class="align-items-center text-center">Actual</th>
                     </tr>
                   </thead>
                   <tbody>
+                  <?php 
+                
+                if (isset($_POST['jsonData'])) {
+                  $jsonData = json_decode($_POST['jsonData'], true); // Convert JSON to array
+              
+                  if ($jsonData) {
+                    foreach ($jsonData as $index => $row) {
+               ?>
                     <tr>
-                      <td class="align-items-center text-center">0101</td>
-                      <td class="align-items-center text-left"><b>Mr. Sagar Khatiwada</b></td>
-                      <td class="align-items-center text-left">MIS Manager</td>
-                      <td class="align-items-center text-center">Head Office</td>
-                      <td class="align-items-center text-center">09:30</td>
-                      <td class="align-items-center text-center">18:00</td>
-                      <td class="align-items-center text-center">08:30</td>
-                      <td class="align-items-center text-center">10:05</td>
-                      <td class="align-items-center text-center">-</td>
-                      <td class="align-items-center text-center">05:25</td> 
-                      <td class="align-items-center text-center">00:23</td>
-                      <td class="align-items-center text-center">00:05</td>
-                      <td class="align-items-center text-center">Present</td>
-                      <td class="align-items-center text-center">Manual</td>
-                      <td class="align-items-center text-center">Punch Missed</td>
-                    </tr>
-                  </tbody>
+                        <td class="align-items-center text-center"><?php echo $index + 1; ?></td>
+                        <td class="align-items-center text-left"><b><?php echo $row['emp_id'] . " - " .$row['employee_name'] ?></b></td>
+                        <td class="align-items-center text-left"><?php echo $row['designation'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['branch'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['scheduled_in'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['scheduled_out'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['working_hour'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['in_time'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['out_time'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['worked_duration'] ?></td> 
+                        <td class="align-items-center text-center"><?php echo $row['over_time'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['late_in'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['early_out'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['early_in'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['late_out'] ?></td>
+                        <td class="align-items-center text-center"><?php echo $row['marked_as'] ?></td>
+                        <td class="align-items-center text-center">
+                          <?php
+                            if (!empty($row['methods']) && (!empty($row['in_time']))) {
+                                $methods = explode(',', $row['methods']); // Convert string to an array
+                                $output = [];
+
+                                foreach ($methods as $method) {
+                                    $output[] = ($method == '1') ? 'M' : 'A';
+                                }
+
+                                echo implode(' | ', $output); // Convert the array back to a string
+                            }
+                          ?>
+
+                        </td>
+                        <td class="align-items-center text-center"><?php echo $row['remarks'] ?></td>
+                        <?php 
+                      }
+                    } else {
+                        echo "<td class='align-items-center text-center' colspan='18'>There is no employees for Selected Branch.</td></tr>";
+                    }
+                } else {
+                    echo "<tr>
+                      <td class='align-items-center text-center' colspan='18'>No data fetched. Submit above to view report.</td>";
+                }
+                    ?>
+                      </tr>
+              <?php
+                if (isset($jsonData)){
+                  $totalEmployees = count($jsonData);
+                }
+                $presentCount = 0;
+                $absentCount = 0;
+                $leaveCount = 0;
+
+                if (isset($jsonData) && is_array($jsonData)) {
+                  foreach ($jsonData as $row) {
+                      if ($row['marked_as'] == 'Present') {
+                          $presentCount++;
+                      } elseif ($row['marked_as'] == 'Absent') {
+                          $absentCount++;
+                      } elseif ($row['marked_as'] == 'Leave') {
+                          $leaveCount++;
+                      }
+                  }
+                }
+              ?>
+                <tfoot>
+                  <th class="align-items-center text-right" colspan="2">Daily Summary: </th>
+                  <th class="align-items-center text-center" colspan="2">Total Employees: <?php if (isset($jsonData)){ echo $totalEmployees;}else{echo 0;}?></th>
+                  <th class="align-items-center text-center" colspan="5">Total Present: <?php echo $presentCount;?></th>
+                  <th class="align-items-center text-center" colspan="4">Total Absent: <?php echo $absentCount;?></th>
+                  <th class="align-items-center text-center" colspan="5">Total on Leave: 0</th>
+                </tfoot>
                 </table>
               </div>
               <!-- /.card-body -->
@@ -142,77 +242,92 @@ include 'includes/header.php';
 <!-- Page Specific Scripts -->
 <script>
   $(function () {
-    $("#user-table").DataTable({
-      "responsive": true,
-      "lengthChange": false,
-      "autoWidth": true,
-      "paging": false,
-      "searching": true,
-      "ordering": false,
-      "info": false,
-      "pageLength": 30, // Set the default number of rows to display
-      "lengthMenu": [ [10, 25, 50, -1], [10, 25, 50, "All"] ], // Define the options in the page length dropdown menu
-      "pagingType": "full_numbers", // Controls the pagination controls' appearance (options: 'simple', 'simple_numbers', 'full', 'full_numbers', 'first_last_numbers')
-      "buttons": [
-        'colvis', // Add column visibility button
-      {
-        extend: 'print',
-        text: 'Print',
-        autoPrint: true,
-        customize: function (win) {
-          $(win.document.body)
-            .css('font-size', '10pt')
-            .prepend(
-              '<img src="<?php echo $home;?>resources/logo.png" style="position:absolute; top:0; left:0;" />'
-            );
-
-          $(win.document.body).find('table')
-            .addClass('compact')
-            .css('font-size', 'inherit');
-
-          // Set paper size and orientation
-          var css = '@page { size: A4 landscape; }';
-          var head = win.document.head || win.document.getElementsByTagName('head')[0];
-          var style = win.document.createElement('style');
-          style.type = 'text/css';
-          style.media = 'print';
-          if (style.styleSheet) {
-            style.styleSheet.cssText = css;
-          } else {
-            style.appendChild(win.document.createTextNode(css));
-          }
-          head.appendChild(style);
+    var table = $("#daily-report-table").DataTable({
+        "responsive": true,
+        "lengthChange": false,
+        "autoWidth": true,
+        "paging": false,
+        "searching": true,
+        "ordering": false,
+        "info": false,
+        "buttons": [
+            'colvis', // Add column visibility button
+            {
+                extend: 'print',
+                text: 'Print',
+                exportOptions: {
+                    modifier: {
+                        page: 'all',  // Ensure it applies to all pages
+                    },
+                    header: true  // Include the headers in the print
+                },
+                autoPrint: true,
+                title: 'HRMS | Reports', // Custom title for print dialog
+                title: 'Daily Attendance Report of <?php echo  $_POST['reportdate'] ?>',
+                messageTop: '', // Subtitle text for the printed page
+                customize: function (win) {
+                    $(win.document.body)
+                        .css('font-size', '10pt') // Adjust font size for print
+                        .prepend('<img src="<?php echo $home;?>resources/logo.png" style="position:absolute; top:0; right:5px; width:200px;" />');
+                    $(win.document.body).find('table')
+                        .addClass('compact') // Adjust table layout
+                        .css('font-size', 'inherit');
+                    
+                    // Customize the print page size
+                    var css = '@page { size: A4 landscape; }'; 
+                    var head = win.document.head || win.document.getElementsByTagName('head')[0];
+                    var style = win.document.createElement('style');
+                    style.type = 'text/css';
+                    style.media = 'print';
+                    if (style.styleSheet) {
+                        style.styleSheet.cssText = css;
+                    } else {
+                        style.appendChild(win.document.createTextNode(css));
+                    }
+                    head.appendChild(style);
+                }
+            }
+        ], // Buttons: copy, csv, excel, pdf, print, colvis
+        "language": {
+            "paginate": {
+                "first": '<i class="fas fa-angle-double-left"></i>',
+                "previous": '<i class="fas fa-angle-left"></i>',
+                "next": '<i class="fas fa-angle-right"></i>',
+                "last": '<i class="fas fa-angle-double-right"></i>'
+            },
+            "emptyTable": "No data available in table",
+            "info": "Showing _START_ to _END_ of _TOTAL_ entries",
+            "infoEmpty": "Showing 0 to 0 of 0 entries",
+            "infoFiltered": "(filtered from _MAX_ total entries)",
+            "lengthMenu": "Show _MENU_ entries",
+            "loadingRecords": "Loading...",
+            "processing": "Processing...",
+            "search": "Search:",
+            "zeroRecords": "No matching records found"
         }
-      },
-      'pdf'
-    ], //copy, csv, excel, pdf, print, colvis
-      "language": {
-        "paginate": {
-          "first": '<i class="fas fa-angle-double-left"></i>',
-          "previous": '<i class="fas fa-angle-left"></i>',
-          "next": '<i class="fas fa-angle-right"></i>',
-          "last": '<i class="fas fa-angle-double-right"></i>'
-        },
-        "emptyTable": "No data available in table",
-        "info": "Showing _START_ to _END_ of _TOTAL_ entries",
-        "infoEmpty": "Showing 0 to 0 of 0 entries",
-        "infoFiltered": "(filtered from _MAX_ total entries)",
-        "lengthMenu": "Show _MENU_ entries",
-        "loadingRecords": "Loading...",
-        "processing": "Processing...",
-        "search": "Search:",
-        "zeroRecords": "No matching records found"
-      }
-    }).buttons().container().appendTo('#user-table_wrapper .col-md-6:eq(0)');
-
-    // Custom button action
-    $('#custom-filter-btn').on('click', function() {
-      $('#addUserModal').modal({
-        backdrop: 'static',
-        keyboard: false
-      });
     });
-  });
+
+    // Enable buttons and append them to the container
+    table.buttons().container().appendTo('#daily-report-table_wrapper .col-md-6:eq(0)');
+});
+
+// Prevent the data being autoload on page refresh
+if (window.history.replaceState) {
+    window.history.replaceState(null, null, window.location.href);
+}
+
+//auto submit the filers
+document.addEventListener("DOMContentLoaded", function() {
+    const form = document.getElementById("daily-report-form");
+    const inputs = form.querySelectorAll("input, select");
+
+    inputs.forEach(input => {
+        input.addEventListener("change", function() {
+            form.submit(); // Auto-submit when input changes
+        });
+    });
+});
+
 </script>
 <!-- AdminLTE for demo purposes -->
 <script src="<?php echo $home;?>dist/js/demo.js"></script>

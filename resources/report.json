@@ -1,0 +1,16 @@
+[
+    {
+        "emp_id": "101",
+        "employee_name": "Sagar Khatiwada",
+        "designation": null,
+        "branch": "Main Branch Kathmandu",
+        "in_time": "N\/A",
+        "out_time": "N\/A",
+        "methods_used": "1",
+        "manual_reasons": "3",
+        "working_hours": "-",
+        "over_time": "-",
+        "late_in": "-",
+        "late_out": "-"
+    }
+]
