@@ -116,7 +116,7 @@ if ($empId) {
                         <label for="empStatus" class="form-label">Employee Status</label>
                     </div>
                     <div class="form-group">
-                        <input type="text" class="form-control" id="login_access" value="<?php echo htmlspecialchars($employee['login_access'] == '1' ? 'Granded' : 'Denied'); ?>" disabled>
+                        <input type="text" class="form-control" id="login_access" value="<?php echo htmlspecialchars($employee['login_access'] == '1' ? 'Granted' : 'Denied'); ?>" disabled>
                         <label for="login_access" class="form-label">Login Access</label>
                     </div>
                     <div class="form-group">

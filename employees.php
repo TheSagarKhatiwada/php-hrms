@@ -1,5 +1,4 @@
 <?php
-session_start();
 $page = 'employees';
 $accessRole = isset($_SESSION['role']) ? $_SESSION['role'] : null;
 if ($accessRole === '0') {
@@ -138,9 +137,16 @@ $employees = $stmt->fetchAll();
                       </td>
                       <td class="align-items-center text-center"><?php echo $employee['login_access'] ? 'Granted' : 'Denied'; ?></td>
                       <td class="align-items-center text-center">
-                        <a href="employee-viewer.php?empId=<?php echo $employee['emp_id']; ?>" class="btn btn-secondary btn-sm">View</a>
-                        <a href="edit-employee.php?id=<?php echo $employee['emp_id']; ?>" class="btn btn-primary btn-sm">Edit</a>
-                        <a href="delete-employee.php?id=<?php echo $employee['emp_id']; ?>" class="btn btn-danger btn-sm">Delete</a>
+                        <div class="dropdown">
+                          <a class="btn btn-secondary" style="background-color: transparent; border: none;" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                              ⋮
+                          </a>
+                          <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <a href="employee-viewer.php?empId=<?php echo $employee['emp_id']; ?>" class="dropdown-item"><i class="fas fa-eye"></i> View</a>
+                            <a href="edit-employee.php?id=<?php echo $employee['emp_id']; ?>" class="dropdown-item"><i class="fas fa-edit"></i> Edit</a>
+                            <a href="delete-employee.php?id=<?php echo $employee['emp_id']; ?>" class="dropdown-item"><i class="fas fa-trash"></i> Delete</a>
+                          </div>
+                        </div>
                       </td>
                     </tr>
                     <?php endforeach; ?>
@@ -223,7 +229,7 @@ $employees = $stmt->fetchAll();
     }).buttons().container().appendTo('#user-table_wrapper .col-md-6:eq(0)');
 
     // Add custom button below the filter
-    $('#user-table_filter').after('<div class="custom-filter-button" style="display: flex; justify-content: flex-end;"><button class="btn btn-primary" id="custom-filter-btn">Add Employee</button></div>');
+    $('#user-table_filter').after('<div class="custom-filter-button" style="display: flex; justify-content: flex-end;"><button class="btn btn-primary" id="custom-filter-btn"><i class="fas fa-plus"></i> Add Employee</button></div>');
 
     // Custom button action
     // $('#custom-filter-btn').on('click', function() {

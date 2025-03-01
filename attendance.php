@@ -5,7 +5,7 @@ include 'includes/db_connection.php';  // Add your database connection file here
 
 // Fetching attendance data
 try {
-    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id, b.name FROM attendance_logs a INNER JOIN employees e ON a.emp_Id = e.emp_id INNER JOIN branches b ON e.branch = b.id ORDER BY a.date DESC");
+    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id, b.name FROM attendance_logs a INNER JOIN employees e ON a.emp_Id = e.emp_id INNER JOIN branches b ON e.branch = b.id WHERE a.method = 1 ORDER BY a.date DESC");
     $stmt->execute();
     $attendanceRecords = $stmt->fetchAll();
 

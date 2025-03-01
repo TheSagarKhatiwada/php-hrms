@@ -1,7 +1,7 @@
 <?php
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = $_POST['email'];
-    $password = 'Nepal@123';
+    $password = 'Acc0un$9422';
     //$password = bin2hex(random_bytes(4)) . chr(rand(65, 90)) . chr(rand(97, 122)) . chr(rand(48, 57)) . chr(rand(33, 47)); // Generate a random password with at least one uppercase letter, one lowercase letter, one number, and one special character
     $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 

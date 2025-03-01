@@ -1,28 +1,37 @@
  <!-- Main Sidebar Container -->
  <aside class="main-sidebar sidebar-dark-primary elevation-4">
     <!-- Brand Logo -->
-    <a href="index3.html" class="brand-link">
+    <a href="<?php echo $home;?>" class="brand-link">
       <img src="dist/img/AdminLTELogo.png" alt="AdminLTE Logo" class="brand-image img-circle elevation-3" style="opacity: .8">
-      <span class="brand-text font-weight-light">Attendance Pro</span>
+      <span class="brand-text font-weight-light"><?php echo $appName; ?></span>
     </a>
 <!-- Sidebar -->
 <div class="sidebar">
       <!-- Sidebar user panel (optional) -->
       <div class="user-panel mt-3 pb-3 mb-3 d-flex align-items-center">
+        <?php
+        // Include the database connection file
+        include 'includes/db_connection.php';
+        // Fetch user details from the database
+        $user_id = $_SESSION['user_id'];
+        $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = :id");
+        $stmt->execute(['id' => $user_id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        ?>
         <div class="image">
-          <img src="<?php echo htmlspecialchars($_SESSION['userImage']); ?>" class="img-circle elevation-2" alt="Employee Image">
+          <img src="<?php echo htmlspecialchars($user['user_image']); ?>" class="img-circle elevation-2" alt="Employee Image">
         </div>
         <div class="info">
-          <a href="#" class="d-block"><?php echo $_SESSION['fullName'];?></a>
-          <a href="#" class="d-block text-sm"><?php echo $_SESSION['designation'];?></a>
+          <a href="<?php echo $home;?>profile.php" class="d-block"><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name']); ?></a>
+          <a href="#" class="d-block text-sm"><?php echo htmlspecialchars($user['designation']); ?></a>
         </div>
       </div>
       <!-- Sidebar Menu -->
       <nav class="mt-2">
         <ul class="nav nav-pills nav-sidebar flex-column nav-child-indent" data-widget="treeview" role="menu" data-accordion="false">
         <?php 
-          $accessRole = isset($_SESSION['role']) ? $_SESSION['role'] : null;
-          if ($accessRole != 1  ) {
+          if ($user['role'] == 1  ) {
         ?>
         <li class="nav-item">
             <a href="<?php echo $home;?>admin-dashboard.php" class="nav-link <?php if($page == 'Admin Dashboard'){echo 'active';}?>">
@@ -73,10 +82,10 @@
           </li>
           <?php 
             } 
-            if ($accessRole != 0  ) {
+            if ($user['role'] == 0  ) {
           ?>
           <li class="nav-item">
-            <a href="<?php echo $home;?>dashboard.php" class="nav-link <?php if($page == 'dashboard'){echo 'active';}?>">
+            <a href="<?php echo $home;?>employee-dashboard.php" class="nav-link <?php if($page == 'Employee Dashboard'){echo 'active';}?>">
               <i class="nav-icon fas fa-tachometer-alt"></i>
               <p>
                 Dashboard
@@ -85,6 +94,34 @@
           </li>
           <?php 
             }
+            if ($user['role'] == 2  ) {
+          ?>
+          <li class="nav-item <?php if($page == 'daily-report' || $page == 'monthly-report'){echo 'menu-open';}?>">
+            <a href="#" class="nav-link <?php if($page == 'reports'){echo 'active';}?>">
+              <i class="nav-icon fas fa-tachometer-alt"></i>
+              <p>
+                Reports
+                <i class="right fas fa-angle-left"></i>
+              </p>
+            </a>
+            <ul class="nav nav-treeview">
+              <li class="nav-item">
+                <a href="<?php echo $home;?>daily-report.php" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Daily</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo $home;?>monthly-report.php" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Monthly</p>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <?php 
+            }
+            $stmt->closeCursor();
           ?>
           <li class="nav-item">
             <a href="<?php echo $home;?>signout.php" class="nav-link">

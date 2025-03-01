@@ -1,11 +1,12 @@
 <?php 
+$page = 'Admin Dashboard';
+include 'includes/header.php';
+
 $accessRole = isset($_SESSION['role']) ? $_SESSION['role'] : null;
 if ($accessRole === '0') {
     header('Location: index.php');
     exit();
 }
-$page = 'Admin Dashboard';
-include 'includes/header.php';
 ?>
 
 </head>
@@ -43,7 +44,7 @@ include 'includes/header.php';
           <div class="col-lg-6">
           <div class="card">
               <div class="card-header border-0">
-                <h3 class="card-title">Today's Attendance</h3>
+                <h3 class="card-title">Recent Attendances</h3>
                 <div class="card-tools">
                   <a href="#" class="btn btn-tool btn-sm">
                     <i class="fas fa-download"></i>
@@ -54,30 +55,6 @@ include 'includes/header.php';
                 </div>
               </div>
               <div class="card-body table-responsive p-0">
-                <?php 
-                include 'includes/db_connection.php';
-                // Fetching attendance data
-                try {
-                  $stmt = $pdo->prepare("
-                    SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, 
-                    MIN(a.time) AS in_time,
-                    MAX(a.time) AS out_time,
-                    a.method, a.id, b.name 
-                    FROM attendance_logs a 
-                    INNER JOIN employees e ON a.emp_Id = e.emp_id 
-                    INNER JOIN branches b ON e.branch = b.id 
-                    WHERE a.date = CURDATE() 
-                    ORDER BY a.time DESC
-                    LIMIT 10
-                ");
-                  $stmt->execute();
-                  $attendanceRecords = $stmt->fetchAll();
-
-                } catch (PDOException $e) {
-                  echo "Error fetching attendance data: " . $e->getMessage();
-                  exit;
-                }
-                ?>
                 <table class="table table-striped table-valign-middle">
                   <thead>
                   <tr>
@@ -92,15 +69,13 @@ include 'includes/header.php';
                       <?php foreach ($attendanceRecords as $record): ?>
                         <tr>
                           <td>
-                            <img src="" style="width: 10%; height: 10%; border-radius: 50%; object-fit: cover;" 
-                                alt="Employee Image" class="img-circle img-size-32 mr-2">
                             <?php echo $record['first_name'] . " " . $record['middle_name'] . " " . $record['last_name']; ?>
                             <div style="display: flex; align-items: center;">
-                              <div class="empImage" style="margin-right: 1rem;">
-                                <img src="<?php echo htmlspecialchars($employee['user_image']); ?>" alt="Employee Image" class="employee-image" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
+                              <div class="empImage image" style="margin-right: 1rem;">
+                                <img src="<?php echo htmlspecialchars($record['user_image']); ?>" alt="Employee Image" class="employee-image img-circle elevation-2" style="width: 10%; height: 10%; border-radius: 50%; border: 1px solid green;" class="img-circle img-size-32 mr-2">
                               </div>
                               <div class="empNameDegi">
-                                <b><?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']); ?></b><span><?php echo " (" . htmlspecialchars($employee['gender']) . ")"; ?></span></br><?php echo htmlspecialchars($employee['designation']); ?>
+                                <b><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['middle_name'] . ' ' . $record['last_name']); ?></b><span><?php echo " (" . htmlspecialchars($record['gender']) . ")"; ?></span></br><?php echo htmlspecialchars($record['designation']); ?>
                               </div>
                             </div>
                           </td>

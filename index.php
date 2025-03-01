@@ -3,6 +3,12 @@ $page = 'Login';
 include 'includes/header.php';
 include 'includes/db_connection.php';
 
+// Redirect logged-in users to the dashboard
+if (isset($_SESSION['user_id'])) {
+  header("Location: admin-dashboard.php");
+  exit();
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = $_POST['email'];
     $password = $_POST['password'];
@@ -37,10 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Redirect based on role
                 if ($user['role'] == '1') {
                     header('Location: admin-dashboard.php');
-                } elseif ($user['role'] == '0') {
-                    header('Location: employee-dashboard.php');
-                } else {
-                    header('Location: dashboard.php');
+                }else {
+                    header('Location: user-dashboard.php');
                 }
                 exit();
             }
