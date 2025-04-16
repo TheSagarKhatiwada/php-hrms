@@ -51,3 +51,71 @@
 }
 /* css for placeholder on border animation */
 /* end */
+
+/* Fix for auto-filled form fields text color */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+select:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #2b2b2b inset !important;
+    -webkit-text-fill-color: #ffffff !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+/* For light theme */
+.light-mode input:-webkit-autofill,
+.light-mode input:-webkit-autofill:hover,
+.light-mode input:-webkit-autofill:focus,
+.light-mode input:-webkit-autofill:active,
+.light-mode select:-webkit-autofill,
+.light-mode select:-webkit-autofill:hover,
+.light-mode select:-webkit-autofill:focus,
+.light-mode select:-webkit-autofill:active,
+.light-mode textarea:-webkit-autofill,
+.light-mode textarea:-webkit-autofill:hover,
+.light-mode textarea:-webkit-autofill:focus,
+.light-mode textarea:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #ffffff inset !important;
+    -webkit-text-fill-color: #000000 !important;
+}
+
+/* Additional fix for Firefox */
+input:-moz-autofill,
+input:-moz-autofill:hover,
+input:-moz-autofill:focus,
+input:-moz-autofill:active,
+select:-moz-autofill,
+select:-moz-autofill:hover,
+select:-moz-autofill:focus,
+select:-moz-autofill:active,
+textarea:-moz-autofill,
+textarea:-moz-autofill:hover,
+textarea:-moz-autofill:focus,
+textarea:-moz-autofill:active {
+    background-color: #2b2b2b !important;
+    color: #ffffff !important;
+}
+
+.light-mode input:-moz-autofill,
+.light-mode input:-moz-autofill:hover,
+.light-mode input:-moz-autofill:focus,
+.light-mode input:-moz-autofill:active,
+.light-mode select:-moz-autofill,
+.light-mode select:-moz-autofill:hover,
+.light-mode select:-moz-autofill:focus,
+.light-mode select:-moz-autofill:active,
+.light-mode textarea:-moz-autofill,
+.light-mode textarea:-moz-autofill:hover,
+.light-mode textarea:-moz-autofill:focus,
+.light-mode textarea:-moz-autofill:active {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}

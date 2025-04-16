@@ -5,15 +5,16 @@ if ($accessRole === '0') {
     header('Location: dashboard.php');
     exit();
 }
+
 include 'includes/header.php';
 include 'includes/db_connection.php';
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['machId'], $_POST['empBranch'], $_POST['empFirstName'], $_POST['empLastName'], $_POST['empEmail'], $_POST['empPhone'], $_POST['empJoinDate'])) {
     // Get form data
     $machId = $_POST['machId'];
     $empBranch = $_POST['empBranch'];
     $empFirstName = $_POST['empFirstName'];
-    $empMiddleName = $_POST['empMiddleName'];
+    $empMiddleName = isset($_POST['empMiddleName']) ? $_POST['empMiddleName'] : null; // Optional field
     $empLastName = $_POST['empLastName'];
     $empEmail = $_POST['empEmail'];
     $empPhone = $_POST['empPhone'];
@@ -30,23 +31,50 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, email, phone, join_date)
             VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :empEmail, :empPhone, :empJoinDate)";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':empId' => $empId,
-        ':machId' => $machId,
-        ':empBranch' => $empBranch,
-        ':empFirstName' => $empFirstName,
-        ':empMiddleName' => $empMiddleName,
-        ':empLastName' => $empLastName,
-        ':empEmail' => $empEmail,
-        ':empPhone' => $empPhone,
-        ':empJoinDate' => $empJoinDate
-    ]);
+    try {
+        $stmt->execute([
+            ':empId' => $empId,
+            ':machId' => $machId,
+            ':empBranch' => $empBranch,
+            ':empFirstName' => $empFirstName,
+            ':empMiddleName' => $empMiddleName,
+            ':empLastName' => $empLastName,
+            ':empEmail' => $empEmail,
+            ':empPhone' => $empPhone,
+            ':empJoinDate' => $empJoinDate
+        ]);
+        $_SESSION['success'] = "Employee added successfully!";
+        header('Location: employees.php');
+        exit();
+    } catch (PDOException $e) {
+        $_SESSION['error'] = "Error adding employee: " . $e->getMessage();
+        header('Location: employees.php');
+        exit();
+    }
+}
 
-    echo "New record created successfully";
+// Handle exit date and note update
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['exitDate'])) {
+    $empId = $_POST['empId'];
+    $exitDate = $_POST['exitDate'];
+    $exitNote = $_POST['exitNote'];
 
-    // Redirect to the same page to prevent form resubmission
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
+    $sql = "UPDATE employees SET exit_date = :exitDate, exit_note = :exitNote, login_access = 0 WHERE emp_id = :empId";
+    $stmt = $pdo->prepare($sql);
+    try {
+        $stmt->execute([
+            ':exitDate' => $exitDate,
+            ':exitNote' => $exitNote,
+            ':empId' => $empId
+        ]);
+        $_SESSION['success'] = "Employee exit details updated successfully!";
+        header('Location: employees.php');
+        exit();
+    } catch (PDOException $e) {
+        $_SESSION['error'] = "Error updating exit details: " . $e->getMessage();
+        header('Location: employees.php');
+        exit();
+    }
 }
 
 // Initialize the $employees variable
@@ -61,9 +89,15 @@ $employees = $stmt->fetchAll();
   <link rel="stylesheet" href="<?php echo $home;?>plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
   <link rel="stylesheet" href="<?php echo $home;?>plugins/datatables-responsive/css/responsive.bootstrap4.min.css">
   <link rel="stylesheet" href="<?php echo $home;?>plugins/datatables-buttons/css/buttons.bootstrap4.min.css">
-  
+  <!-- daterange picker -->
+  <link rel="stylesheet" href="<?php echo $home;?>plugins/daterangepicker/daterangepicker.css">
+  <!-- Tempusdominus Bootstrap 4 -->
+  <link rel="stylesheet" href="<?php echo $home;?>plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css">
+  <!-- Select2 -->
+  <link rel="stylesheet" href="<?php echo $home;?>plugins/select2/css/select2.min.css">
+  <link rel="stylesheet" href="<?php echo $home;?>plugins/select2-bootstrap4-theme/select2-bootstrap4.min.css">
 </head>
-<body class="hold-transition sidebar-mini layout-footer-fixed layout-navbar-fixed layout-fixed layout-footer-fixed dark-mode">
+<body class="hold-transition sidebar-mini layout-footer-fixed layout-navbar-fixed layout-fixed dark-mode">
 <div class="wrapper">
   <?php 
     include 'includes/topbar.php';
@@ -88,16 +122,30 @@ $employees = $stmt->fetchAll();
       </div><!-- /.container-fluid -->
     </div>
     <!-- /.content-header -->
+
     <!-- Main content -->
     <section class="content">
-     <div class="container-fluid">
-     <div class="card">
+      <div class="container-fluid">
+        <?php if (isset($_SESSION['success'])): ?>
+          <script>
+            showSuccessToast('<?php echo $_SESSION['success']; ?>');
+            <?php unset($_SESSION['success']); ?>
+          </script>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['error'])): ?>
+          <script>
+            showErrorToast('<?php echo $_SESSION['error']; ?>');
+            <?php unset($_SESSION['error']); ?>
+          </script>
+        <?php endif; ?>
+        <div class="card">
               <!-- <div class="card-header">
                 <h3 class="card-title">Users</h3>
               </div> -->
               <!-- /.card-header -->
               <div class="card-body">
-                <table id="user-table" class="table table-bordered table-striped" width="100%">
+                <table id="user-table" class="table table-bordered table-striped table-sm" width="100%">
                   <thead>
                     <tr>
                       <th class="align-items-center text-center">Emp. ID</th>
@@ -138,12 +186,13 @@ $employees = $stmt->fetchAll();
                       <td class="align-items-center text-center"><?php echo $employee['login_access'] ? 'Granted' : 'Denied'; ?></td>
                       <td class="align-items-center text-center">
                         <div class="dropdown">
-                          <a class="btn btn-secondary" style="background-color: transparent; border: none;" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                              ⋮
+                          <a class="btn btn-secondary" style="background-color: transparent; border: none; color: inherit;" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <i class="fas fa-ellipsis-v"></i>
                           </a>
-                          <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                          <div class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">
                             <a href="employee-viewer.php?empId=<?php echo $employee['emp_id']; ?>" class="dropdown-item"><i class="fas fa-eye"></i> View</a>
                             <a href="edit-employee.php?id=<?php echo $employee['emp_id']; ?>" class="dropdown-item"><i class="fas fa-edit"></i> Edit</a>
+                            <a href="#" class="dropdown-item" data-toggle="modal" data-target="#markExitModal" data-emp-id="<?php echo $employee['emp_id']; ?>"><i class="fas fa-sign-out-alt"></i> Mark Exit</a>
                             <a href="delete-employee.php?id=<?php echo $employee['emp_id']; ?>" class="dropdown-item"><i class="fas fa-trash"></i> Delete</a>
                           </div>
                         </div>
@@ -203,9 +252,9 @@ $employees = $stmt->fetchAll();
       "paging": true,
       "searching": true,
       "ordering": true,
-      "order": [[5, 'desc']], // [columnIndex, 'asc' or 'desc']
+      "order": [[5, 'asc']], // [columnIndex, 'asc' or 'desc']
       "info": true,
-      "pageLength": 5, // Set the default number of rows to display
+      "pageLength": 10, // Set the default number of rows to display
       "lengthMenu": [ [10, 25, 50, -1], [10, 25, 50, "All"] ], // Define the options in the page length dropdown menu
       "pagingType": "full_numbers", // Controls the pagination controls' appearance (options: 'simple', 'simple_numbers', 'full', 'full_numbers', 'first_last_numbers')
       "buttons": ["colvis"], //copy, csv, excel, pdf, print, colvis
@@ -325,6 +374,43 @@ $employees = $stmt->fetchAll();
     const queryString = new URLSearchParams(formData).toString();
     window.location.href = 'add-employee.php?' + queryString;
   }
+</script>
+
+<!-- Mark Exit Modal -->
+<div class="modal fade" id="markExitModal" tabindex="-1" role="dialog" aria-labelledby="markExitModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false"> <!-- Static modal -->
+  <div class="modal-dialog modal-dialog-centered" role="document"> <!-- Center the modal -->
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="markExitModalLabel">Mark Employee Exit</h5>
+      </div>
+      <form id="markExitForm" method="POST" action="employees.php">
+        <div class="modal-body">
+          <input type="hidden" id="exitEmpId" name="empId">
+          <div class="form-group">
+            <label for="exitDate">Exit Date <span style="color:red;">*</span></label>
+            <input type="date" class="form-control" id="exitDate" name="exitDate" max="<?php echo date('Y-m-d'); ?>" required>
+          </div>
+          <div class="form-group">
+            <label for="remarks">Remarks</label>
+            <textarea class="form-control" id="remarks" name="exitNote" rows="3" placeholder="Enter remarks (optional)"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Exit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  $('#markExitModal').on('show.bs.modal', function (event) {
+    var button = $(event.relatedTarget); // Button that triggered the modal
+    var empId = button.data('emp-id'); // Extract info from data-* attributes
+    var modal = $(this);
+    modal.find('#exitEmpId').val(empId); // Set the employee ID in the hidden input
+  });
 </script>
 </body>
 </html>

@@ -1,4 +1,7 @@
 <?php
+// Start the session
+session_start();
+
 // Include the database connection file
 require_once 'includes/db_connection.php';
 
@@ -13,17 +16,18 @@ if (isset($_GET['id'])) {
 
     // Bind the emp_id parameter and execute the statement
     if ($stmt->execute([':empId' => $empId])) {
-        // Redirect to the employees list page with a success message
-        header('Location: employees.php?status=success');
-        exit;
+        // Set success message
+        $_SESSION['success'] = "Employee deleted successfully";
     } else {
-        // Redirect to the employees list page with an error message
-        header('Location: employees.php?status=error');
-        exit;
+        // Set error message
+        $_SESSION['error'] = "Error deleting employee";
     }
 } else {
-    // Redirect to the employees list page if emp_id is not set
-    header('Location: employees.php');
-    exit;
+    // Set error message if no ID provided
+    $_SESSION['error'] = "Invalid employee ID";
 }
+
+// Redirect to the employees list page
+header('Location: employees.php');
+exit;
 ?>

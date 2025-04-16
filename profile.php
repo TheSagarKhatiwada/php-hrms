@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['croppedImage'])) {
     $stmt = $pdo->prepare("UPDATE employees SET user_image = :user_image WHERE id = :id");
     $stmt->execute(['user_image' => $targetFile, 'id' => $user_id]);
     $user_data['user_image'] = $targetFile;
+    $_SESSION['success'] = "Profile picture updated successfully";
 }
 
 // Handle password reset
@@ -56,9 +57,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password'])) {
         $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
         $stmt = $pdo->prepare("UPDATE employees SET password = :password WHERE id = :id");
         $stmt->execute(['password' => $hashed_password, 'id' => $user_id]);
-        echo "Password updated successfully.";
+        $_SESSION['success'] = "Password updated successfully.";
     } else {
-        echo "Passwords do not match.";
+        $_SESSION['error'] = "Passwords do not match.";
     }
 }
 ?>
@@ -143,6 +144,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password'])) {
     <!-- Main content -->
     <section class="content">
       <div class="container-fluid">
+        <?php if (isset($_SESSION['success'])): ?>
+          <script>
+            showSuccessToast('<?php echo $_SESSION['success']; ?>');
+            <?php unset($_SESSION['success']); ?>
+          </script>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['error'])): ?>
+          <script>
+            showErrorToast('<?php echo $_SESSION['error']; ?>');
+            <?php unset($_SESSION['error']); ?>
+          </script>
+        <?php endif; ?>
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Employee Information</h3>

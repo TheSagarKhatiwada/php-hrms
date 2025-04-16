@@ -1,8 +1,8 @@
- <!-- Main Sidebar Container -->
+<!-- Main Sidebar Container -->
  <aside class="main-sidebar sidebar-dark-primary elevation-4">
     <!-- Brand Logo -->
     <a href="<?php echo $home;?>" class="brand-link">
-      <img src="dist/img/AdminLTELogo.png" alt="AdminLTE Logo" class="brand-image img-circle elevation-3" style="opacity: .8">
+      <img src="<?php echo $home;?>dist/img/AdminLTELogo.png" alt="AdminLTE Logo" class="brand-image img-circle elevation-3" style="opacity: .8">
       <span class="brand-text font-weight-light"><?php echo $appName; ?></span>
     </a>
 <!-- Sidebar -->
@@ -11,13 +11,12 @@
       <div class="user-panel mt-3 pb-3 mb-3 d-flex align-items-center">
         <?php
         // Include the database connection file
-        include 'includes/db_connection.php';
+        include __DIR__ . '/../includes/db_connection.php';
         // Fetch user details from the database
         $user_id = $_SESSION['user_id'];
         $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = :id");
         $stmt->execute(['id' => $user_id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        
         ?>
         <div class="image">
           <img src="<?php echo htmlspecialchars($user['user_image']); ?>" class="img-circle elevation-2" alt="Employee Image">
@@ -68,21 +67,84 @@
             <ul class="nav nav-treeview">
               <li class="nav-item">
                 <a href="<?php echo $home;?>daily-report.php" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
-                  <i class="far fa-circle nav-icon"></i>
+                  <i class="fas fa-file-alt"></i>
                   <p>Daily</p>
                 </a>
               </li>
               <li class="nav-item">
                 <a href="<?php echo $home;?>monthly-report.php" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
-                  <i class="far fa-circle nav-icon"></i>
+                  <i class="fas fa-calendar"></i>
                   <p>Monthly</p>
                 </a>
               </li>
             </ul>
           </li>
+          <li class="nav-item <?php if($page == 'system-settings' || $page == 'roles'){echo 'menu-open';}?>">
+            <a href="#" class="nav-link <?php if($page == 'system-management'){echo 'active';}?>">
+              <i class="nav-icon fas fa-cogs"></i>
+              <p>
+                System Management
+                <i class="right fas fa-angle-left"></i>
+              </p>
+            </a>
+            <ul class="nav nav-treeview">
+              <li class="nav-item">
+                <a href="<?php echo $home;?>roles.php" class="nav-link <?php if($page == 'roles'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Roles & Permissions</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo $home;?>system-settings.php" class="nav-link <?php if($page == 'system-settings'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>System Settings</p>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item <?php if($page == 'Assets Management' || $page == 'Asset Categories' || $page == 'Fixed Assets' || $page == 'Asset Assignments' || $page == 'Maintenance Records'){echo 'menu-open';}?>">
+            <a href="#" class="nav-link <?php if($page == 'Assets Management'){echo 'active';}?>">
+              <i class="nav-icon fas fa-boxes"></i>
+              <p>
+                Asset Management
+                <i class="right fas fa-angle-left"></i>
+              </p>
+            </a>
+            <ul class="nav nav-treeview">
+              <li class="nav-item">
+                <a href="<?php echo $home;?>assets.php" class="nav-link <?php if($page == 'Assets Management'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Overview</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo $home;?>manage_categories.php" class="nav-link <?php if($page == 'Asset Categories'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Categories</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo $home;?>manage_assets.php" class="nav-link <?php if($page == 'Fixed Assets'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Fixed Assets</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo $home;?>manage_assignments.php" class="nav-link <?php if($page == 'Asset Assignments'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Assignments</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo $home;?>manage_maintenance.php" class="nav-link <?php if($page == 'Maintenance Records'){echo 'active';}?>">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Maintenance</p>
+                </a>
+              </li>
+            </ul>
+          </li>
           <?php 
-            } 
-            if ($user['role'] == 0  ) {
+            }elseif ($user['role'] == 0  ) {
           ?>
           <li class="nav-item">
             <a href="<?php echo $home;?>employee-dashboard.php" class="nav-link <?php if($page == 'Employee Dashboard'){echo 'active';}?>">
@@ -93,8 +155,7 @@
             </a>
           </li>
           <?php 
-            }
-            if ($user['role'] == 2  ) {
+            }elseif ($user['role'] == 2  ) {
           ?>
           <li class="nav-item <?php if($page == 'daily-report' || $page == 'monthly-report'){echo 'menu-open';}?>">
             <a href="#" class="nav-link <?php if($page == 'reports'){echo 'active';}?>">
@@ -120,6 +181,9 @@
             </ul>
           </li>
           <?php 
+            }else{
+              header('Location: index.php');
+              exit();
             }
             $stmt->closeCursor();
           ?>

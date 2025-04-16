@@ -55,46 +55,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $count = $row['count'] + 1;
   $empId = $empBranch . str_pad($count, 2, '0', STR_PAD_LEFT);
 
-  // Insert data into the database using prepared statements
-  $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, join_date, designation, login_access, user_image)
-          VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :empJoinDate, :designation, :loginAccess, :userImage)";
-  $stmt = $pdo->prepare($sql);
-  $stmt->execute([
-      ':empId' => $empId,
-      ':machId' => $machId,
-      ':empBranch' => $empBranch,
-      ':empFirstName' => $empFirstName,
-      ':empMiddleName' => $empMiddleName,
-      ':empLastName' => $empLastName,
-      ':gender' => $gender,
-      ':empEmail' => $empEmail,
-      ':empPhone' => $empPhone,
-      ':empJoinDate' => $empJoinDate,
-      ':designation' => $designation,
-      ':loginAccess' => $loginAccess,
-      ':userImage' => $targetFile
-  ]);
-
-  echo "New record created successfully";
-
-  // Update attendance_logs with emp_Id from employees based on machine_id
   try {
-    // SQL query to update attendance_log with emp_Id from employees based on machine_id
-    $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
+    // Insert data into the database using prepared statements
+    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, join_date, designation, login_access, user_image)
+            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :empJoinDate, :designation, :loginAccess, :userImage)";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        ':empId' => $empId,
+        ':machId' => $machId,
+        ':empBranch' => $empBranch,
+        ':empFirstName' => $empFirstName,
+        ':empMiddleName' => $empMiddleName,
+        ':empLastName' => $empLastName,
+        ':gender' => $gender,
+        ':empEmail' => $empEmail,
+        ':empPhone' => $empPhone,
+        ':empJoinDate' => $empJoinDate,
+        ':designation' => $designation,
+        ':loginAccess' => $loginAccess,
+        ':userImage' => $targetFile
+    ]);
 
-    // Prepare and execute the statement
+    // Update attendance_logs with emp_Id from employees based on machine_id
+    $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
 
-    echo '<div class="alert alert-success">Records updated successfully.</div>';
-
+    $_SESSION['success'] = "Employee added successfully";
+    header("Location: employees.php");
+    exit();
   } catch (PDOException $e) {
-    echo '<div class="alert alert-danger">Error updating records: </div>' . $e->getMessage();
+    $_SESSION['error'] = "Error adding employee: " . $e->getMessage();
+    header("Location: employees.php");
+    exit();
   }
-
-  // Redirect to the users page to prevent form resubmission
-  header("Location: employees.php");
-  exit();
 }
 ?>
 

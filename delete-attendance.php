@@ -18,16 +18,18 @@ if (isset($_GET['id'])) {
         $stmt->bindParam(':id', $attendanceId, PDO::PARAM_INT);
 
         // Execute the query
-        $stmt->execute();
-
-        // Redirect back to the attendance list (or to a success page)
-        header("Location: attendance.php?status=deleted");
-        exit();  // Make sure to stop the script after redirection
+        if ($stmt->execute()) {
+            $_SESSION['success'] = "Attendance record deleted successfully";
+        } else {
+            $_SESSION['error'] = "Error deleting attendance record";
+        }
     } catch (PDOException $e) {
-        // Handle any errors
-        echo "Error: " . $e->getMessage();
+        $_SESSION['error'] = "Error: " . $e->getMessage();
     }
 } else {
-    // If no ID is provided, display an error
-    echo "Error: Invalid ID.";
+    $_SESSION['error'] = "Invalid attendance ID";
 }
+
+// Redirect back to the attendance list
+header("Location: attendance.php");
+exit();
