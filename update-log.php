@@ -1,5 +1,6 @@
 <?php
 include 'includes/db_connection.php'; // Ensure this file contains the PDO connection ($pdo)
+include 'includes/header.php';
 
 try {
     // SQL query to update attendance_log with emp_Id from employees based on machine_id
@@ -9,9 +10,13 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
 
-    echo '<div class="alert alert-success">Records updated successfully.</div>';
+    $_SESSION['success'] = 'Records updated successfully.';
+    header('Location: attendance.php');
+    exit();
 
 } catch (PDOException $e) {
-    echo '<div class="alert alert-danger">Error updating records: </div>' . $e->getMessage();
+    $_SESSION['error'] = 'Error updating records: ' . $e->getMessage();
+    header('Location: attendance.php');
+    exit();
 }
 ?>

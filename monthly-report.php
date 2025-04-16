@@ -83,7 +83,7 @@ include 'includes/db_connection.php';
                                 </div>
                                 <div class="col-md-4 text-right">
                                   <div class="form-group">
-                                      <button type="button" class="btn btn-secondary" id="exportPdfBtn">Export PDF</button>
+                                      <button type="button" class="btn btn-secondary <?php if (isset($_POST['jsonData'])) {echo '';}else{echo 'd-none';} ?>" id="exportPdfBtn">Export PDF</button>
                                   </div>
                                 </div>
                             </div>

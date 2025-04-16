@@ -12,11 +12,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $attendanceDate = $_POST['attendanceDate'];
     $attendanceTime = $_POST['attendanceTime'];
     $reason = $_POST['reason'];
+    $remarks = isset($_POST['remarks']) ? trim($_POST['remarks']) : '';
+
+    // Convert reason code to text
+    $reasonText = '';
+    switch($reason) {
+        case '1':
+            $reasonText = 'Card Forgot';
+            break;
+        case '2':
+            $reasonText = 'Card Lost';
+            break;
+        case '3':
+            $reasonText = 'Forgot to Punch';
+            break;
+        case '4':
+            $reasonText = 'Office Work Delay';
+            break;
+        case '5':
+            $reasonText = 'Field Visit';
+            break;
+        default:
+            $reasonText = 'Unknown';
+    }
+
+    // Combine reason and remarks
+    $manualReason = $reasonText;
+    if (!empty($remarks)) {
+        $manualReason .= ' - ' . $remarks;
+    }
 
     try {
         // SQL query to insert data into the table
         $sql = "INSERT INTO attendance_logs (emp_Id, date, time, method, manual_reason) 
-                VALUES (:empId, :attendanceDate, :attendanceTime, 1, :reason)";
+                VALUES (:empId, :attendanceDate, :attendanceTime, 1, :manualReason)";
         
         // Prepare statement
         $stmt = $pdo->prepare($sql);
@@ -25,19 +54,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->bindParam(':empId', $empId);
         $stmt->bindParam(':attendanceDate', $attendanceDate);
         $stmt->bindParam(':attendanceTime', $attendanceTime);
-        $stmt->bindParam(':reason', $reason);
+        $stmt->bindParam(':manualReason', $manualReason);
         
         // Execute statement
         $stmt->execute();
         
-        // Redirect back to the attendance list (or to a success page)
-        header("Location: attendance.php?status=manual-sucess");
-        exit();  // Make sure to stop the script after redirection
+        $_SESSION['success'] = "Manual attendance recorded successfully";
+        header("Location: attendance.php");
+        exit();
     } catch (PDOException $e) {
-        echo "Error: " . $e->getMessage();
+        $_SESSION['error'] = "Error recording manual attendance: " . $e->getMessage();
+        header("Location: attendance.php");
+        exit();
     }
-
-    // Close the database connection (optional, since PHP will close it when the script ends)
-    $pdo = null;
 }
 ?>
