@@ -85,19 +85,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
 
     // Update attendance_logs with emp_Id from employees based on machine_id
     try {
-        // SQL query to update attendance_log with emp_Id from employees based on machine_id, excluding manual method entries
-        $sql = "UPDATE attendance_logs a 
-                JOIN employees e ON a.mach_id = e.mach_id 
-                SET a.emp_Id = e.emp_id 
-                WHERE a.method = 0;";
+        // SQL query to update attendance_log with emp_Id from employees based on machine_id
+        $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
     
         // Prepare and execute the statement
         $stmt = $pdo->prepare($sql);
         $stmt->execute();
     
-        $_SESSION['message'] = ['type' => 'success', 'content' => 'Records updated successfully.'];
+        echo '<div class="alert alert-success">Records updated successfully.</div>';
+    
     } catch (PDOException $e) {
-        $_SESSION['message'] = ['type' => 'error', 'content' => 'Error updating records: ' . $e->getMessage()];
+        echo '<div class="alert alert-danger">Error updating records: </div>' . $e->getMessage();
     }
 
     header('Location: attendance.php');

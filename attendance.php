@@ -1,16 +1,17 @@
 <?php
 $page = 'attendance';
 include 'includes/header.php';
-include 'includes/db_connection.php';
+include 'includes/db_connection.php';  // Add your database connection file here
 
 // Fetching attendance data
 try {
-    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id, b.name FROM attendance_logs a INNER JOIN employees e ON a.emp_Id = e.emp_id INNER JOIN branches b ON e.branch = b.id  ORDER BY a.date DESC");
+    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id, b.name FROM attendance_logs a INNER JOIN employees e ON a.emp_Id = e.emp_id INNER JOIN branches b ON e.branch = b.id WHERE a.method = 1 ORDER BY a.date DESC");
     $stmt->execute();
     $attendanceRecords = $stmt->fetchAll();
 
 } catch (PDOException $e) {
-    $_SESSION['error'] = "Error fetching attendance data: " . $e->getMessage();
+    echo "Error fetching attendance data: " . $e->getMessage();
+    exit;
 }
 ?>
 
@@ -205,6 +206,25 @@ try {
     // Add custom button below the filter
     $('#attendance-table_filter').after('<div class="custom-filter-button" style="display: flex; justify-content: flex-end; margin-bottom: 10px;"><button class="btn btn-primary" id="custom-filter-btn">Add Attendance</button></div>');
     
+    // Add custom button below the filter
+    $('#custom-filter-btn').before('<div class="custom-filter-button" style="display: flex; justify-content: flex-end; margin-bottom: 0px; margin-right: 5px;"><button class="btn btn-primary" id="update-log">Refresh</button></div>');
+
+    // Refresh the attendance log
+    $(document).ready(function() {
+            $("#update-log").click(function() {
+                $.ajax({
+                    url: "update-log.php", // PHP file to execute
+                    type: "POST",
+                    success: function(response) {
+                        $("#status").html(response); // Display response message
+                    },
+                    error: function() {
+                        $("#status").html('<div class="alert alert-danger">Error processing request.</div>');
+                    }
+                });
+            });
+        });
+
 
     $('#custom-filter-btn').on('click', function() {
       $('#addAttendanceModal').modal({
@@ -327,18 +347,11 @@ try {
                                 <label for="reason" class="form-label">Reason <span style="color:red;">*</span></label>
                               </div>
                             </div>
-                            <div class="col-md-6">
-                              <div class="form-group">
-                                <input class="form-control" name="remarks" id="remarks" placeholder=" ">
-                                <label for="remarks" class="form-label">Remarks #(Optional)</label>
+                              <div class="col-md-6">
+                                <button type="submit" form="manualAttendance" class="btn btn-primary float-right">Save Attendance</button>
                               </div>
-                            </div>
                           </div>
-                          <div class="row">
-                            <div class="col-md-12">
-                              <button type="submit" form="manualAttendance" class="btn btn-primary float-right">Save Attendance</button>
-                            </div>
-                          </div>
+                          
                         </div>
                       </div>
                   </form>

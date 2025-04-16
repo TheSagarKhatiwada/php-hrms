@@ -19,3 +19,4 @@ try {
     // Display a generic error message to the user
     die("Connection failed. Please try again later.");
 }
+?>

@@ -20,9 +20,7 @@ $stmt->execute(['emp_id' => $emp_id]);
 $employee = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$employee) {
-    $_SESSION['error'] = "Employee not found";
-    header('Location: employees.php');
-    exit();
+    die("Employee not found");
 }
 ?>
 <!-- Bootstrap CSS -->
@@ -59,19 +57,6 @@ if (!$employee) {
     <!-- Main content -->
     <section class="content">
      <div class="container-fluid">
-        <?php if (isset($_SESSION['success'])): ?>
-          <script>
-            showSuccessToast('<?php echo $_SESSION['success']; ?>');
-            <?php unset($_SESSION['success']); ?>
-          </script>
-        <?php endif; ?>
-
-        <?php if (isset($_SESSION['error'])): ?>
-          <script>
-            showErrorToast('<?php echo $_SESSION['error']; ?>');
-            <?php unset($_SESSION['error']); ?>
-          </script>
-        <?php endif; ?>
      <div class="card">
               <!-- <div class="card-header">
                 <h3 class="card-title">Add New User</h3>

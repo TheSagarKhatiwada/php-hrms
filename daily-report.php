@@ -122,7 +122,7 @@ include 'includes/db_connection.php';
                 
                 if (isset($_POST['jsonData'])) {
                   $jsonData = json_decode($_POST['jsonData'], true); // Convert JSON to array
-                  
+              
                   if ($jsonData) {
                     foreach ($jsonData as $index => $row) {
                ?>
