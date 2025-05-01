@@ -1,0 +1,12 @@
+# Exclude uploads folder
+resources/userimg/uploads/
+
+# Exclude log files and temporary files
+*.log
+temp/
+
+# Exclude AdminLTE Theme folder
+AdminLTE/
+
+# Exclude a config file
+include/config.php
