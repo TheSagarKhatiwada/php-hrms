@@ -1,414 +1,522 @@
 <?php
 $page = 'monthly-report';
 // Include utilities for role check functions
+require_once 'includes/session_config.php';
 require_once 'includes/utilities.php';
 
-require_once __DIR__ . '/includes/header.php'; // Assumes header.php includes Bootstrap 5 CSS
-include 'includes/db_connection.php';
+// Check if user has permission to access daily reports
+if (!has_permission('view_daily_report') && !is_admin()) {
+    $_SESSION['error'] = "You don't have permission to access Daily Reports.";
+    header('Location: index.php');
+    exit();
+}
+
+// Check if form is submitting (adding a new report)
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'add') {
+    // Check if user has permission to add daily reports
+    if (!has_permission('add_daily_report') && !is_admin()) {
+        $_SESSION['error'] = "You don't have permission to add new Daily Reports.";
+        header('Location: daily-report.php');
+        exit();
+    }
+}
+
+// Include the header (handles head, body, topbar, sidebar, opens wrappers)
+require_once __DIR__ . '/includes/header.php';
+include 'includes/db_connection.php'; // DB connection needed after header potentially?
 ?>
 
-<!-- DataTables Bootstrap 5 CSS -->
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
-<!-- DateRangePicker CSS -->
-<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+<!-- DataTables & CSS -->
+<link rel="stylesheet" href="<?php echo $home; ?>plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
+<link rel="stylesheet" href="<?php echo $home; ?>plugins/datatables-responsive/css/responsive.bootstrap4.min.css">
+<link rel="stylesheet" href="<?php echo $home; ?>plugins/datatables-buttons/css/buttons.bootstrap4.min.css">
+<link rel="stylesheet" href="<?php echo $home; ?>plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css">
+<link rel="stylesheet" href="<?php echo $home; ?>plugins/daterangepicker/daterangepicker.css">
 
-<!-- Removed AdminLTE/BS4 specific CSS -->
-
+<!-- Print-specific styles -->
+<style>
+    /* Print-specific styles - optimized for full width and proper positioning */
+    @media print {
+        /* Reset all margins and paddings */
+        * {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        /* Hide everything by default */
+        body * {
+            visibility: hidden;
+        }
+        
+        /* Show only the tables and logo */
+        .monthly-report-table, 
+        .monthly-report-table *,
+        .print-logo,
+        .print-logo * {
+            visibility: visible !important;
+        }
+        
+        /* Make the logo div visible and position it */
+        .print-logo {
+            display: block !important;
+            position: relative !important;
+            top: 0 !important;
+            right: 0 !important;
+            width: auto !important;
+            z-index: 9999 !important;
+            margin-bottom: 0 !important;
+        }
+        
+        /* Position the table properly for printing all cards */
+        .monthly-report-table {
+            margin: 0 !important;
+            border-collapse: collapse !important;
+            font-size: 9pt !important;
+            display: table !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        
+        /* Force each employee card to start on a new page */
+        .card {
+            visibility: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            page-break-after: always !important;
+        }
+        
+        /* Last card should not have page break after */
+        .card:last-child {
+            page-break-after: avoid !important;
+        }
+        
+        /* Last table should not have page break after */
+        .card:last-child .monthly-report-table {
+            page-break-after: avoid !important;
+        }
+        .monthly-report-table thead { display: table-header-group !important; }
+        .monthly-report-table tbody { display: table-row-group !important; }
+        .monthly-report-table tfoot { display: table-footer-group !important; }
+        .monthly-report-table tr { display: table-row !important; }
+        .monthly-report-table th, 
+        .monthly-report-table td {
+            display: table-cell !important;
+            padding: 1px !important;
+            border: 0.5px solid #000 !important;
+            font-size: 9pt !important;
+            white-space: nowrap !important;
+            color: #000 !important;
+        }
+        
+        /* Make sure the table rows are as compact as possible */
+        .monthly-report-table tr {
+            height: auto !important;
+            line-height: 1 !important;
+        }
+        
+        /* Show the card container too */
+        .card-body {
+            visibility: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        
+        /* Hide all buttons */
+        button, 
+        .buttons-collection,
+        .dt-buttons,
+        .btn-group {
+            display: none !important;
+        }
+        
+        /* Set landscape orientation with minimal margins */
+        @page {
+            size: landscape !important;
+            margin: 0.3cm !important;
+        }
+    }
+</style>
 </head>
-<body> <!-- Removed AdminLTE classes -->
+<!-- Body tag is opened in header.php -->
+<!-- Wrapper div is removed -->
+<!-- Topbar include is removed (handled by header.php) -->
+<!-- Sidebar include is removed (handled by header.php) -->
+<!-- Content Wrapper div is opened in header.php -->
+<!-- Content wrapper -->
 
-<!-- App container likely starts in header.php -->
-<!-- Main Content Area -->
-<div class="container-fluid mt-4">
-    <!-- Page Title and Breadcrumbs -->
-    <div class="row mb-3">
-        <div class="col-md-6">
-            <h1 class="page-title">Monthly Report</h1>
-        </div>
-        <div class="col-md-6">
-        </div>
-    </div>
-
-    <!-- Filter Form -->
-    <div class="card mb-4">
-        <div class="card-header">
-            Report Filters
-        </div>
-        <div class="card-body">
-            <form action="monthly-report.php" method="POST" id="monthly-report-form">
-                <input type="hidden" name="jsonData" value='<?php echo isset($_POST["jsonData"]) ? htmlspecialchars($_POST["jsonData"]) : ""; ?>'>
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-4">
-                        <label for="reportDateRange" class="form-label">Date Range <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <input type="text" class="form-control" id="reportDateRange" name="reportDateRange" required value="<?php echo isset($_POST['reportDateRange']) ? htmlspecialchars($_POST['reportDateRange']) : ''; ?>">
-                            <span class="input-group-text"><i class="fas fa-calendar"></i></span>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
-                        <select class="form-select" id="empBranch" name="empBranch">
-                            <option value="">All Branches</option>
-                            <?php 
-                                $selectedBranch = isset($_POST['empBranch']) ? $_POST['empBranch'] : '';
-                                $branchQuery = "SELECT id, name FROM branches ORDER BY name";
-                                $stmt = $pdo->query($branchQuery);
-                                while ($row = $stmt->fetch()) {
-                                    $selected = ($row['id'] == $selectedBranch) ? 'selected' : '';
-                                    echo "<option value='{$row['id']}' {$selected}>{$row['name']}</option>";
-                                }
-                            ?>
-                        </select>
-                    </div>
-                    <div class="col-md-auto">
-                        <button type="submit" class="btn btn-primary">Search</button>
-                        <button type="submit" formaction="export-to-pdf.php" formtarget="_blank" class="btn btn-secondary" id="exportPdfBtn">Export PDF</button>
+<!-- Content Header (Page header) -->
+        <div class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1 class="m-0">Periodic Report</h1>
                     </div>
                 </div>
-            </form>
+            </div>
         </div>
-    </div>
 
-    <!-- Report Display Area -->
-    <div class="card">
-        <div class="card-header">
-            Report Results
-        </div>
-        <div class="card-body">
-            <?php 
-            if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reportDateRange'])) {
-                // Include the logic to fetch data based on POST
-                // This assumes fetch-monthly-report-data.php returns JSON
-                ob_start();
-                $_POST['isAjax'] = false; // Indicate it's not an AJAX request for the fetch script
-                include 'fetch-monthly-report-data.php';
-                $jsonData = ob_get_clean();
-                $reportData = json_decode($jsonData, true);
-
-                if ($reportData && !empty($reportData['data'])) {
-                    // Group data by employee
-                    $groupedData = [];
-                    foreach ($reportData['data'] as $row) {
-                        $groupedData[$row['emp_id']][] = $row;
-                    }
-
-                    // Generate cards for each employee
-                    foreach ($groupedData as $empId => $employeeData) {
-                        // Initialize summary counts
-                        $present = $absent = $weekend = $holiday = $paidLeave = $unpaidLeave = $missed = $manual = $misc = 0;
-                        $totalOvertimeSeconds = 0;
-                        $totalWorkedSeconds = 0;
-                        $totalScheduledSeconds = 0;
-
-                        foreach ($employeeData as $row) {
-                            switch ($row['marked_as']) {
-                                case 'Present': $present++; break;
-                                case 'Absent': $absent++; break;
-                                case 'Weekend': $weekend++; break;
-                                case 'Holiday': $holiday++; break;
-                                case 'Paid Leave': $paidLeave++; break;
-                                case 'Unpaid Leave': $unpaidLeave++; break;
-                                case 'Missed': $missed++; break;
-                                case 'Manual': $manual++; break;
-                                default: $misc++; break;
-                            }
-                            // Sum durations (assuming HH:MM:SS format)
-                            if (!empty($row['over_time'])) $totalOvertimeSeconds += timeToSeconds($row['over_time']);
-                            if (!empty($row['worked_duration'])) $totalWorkedSeconds += timeToSeconds($row['worked_duration']);
-                            if (!empty($row['working_hour'])) $totalScheduledSeconds += timeToSeconds($row['working_hour']);
-                        }
-                        
-                        // Helper function to convert HH:MM:SS to seconds
-                        function timeToSeconds($time) {
-                            if (empty($time) || !str_contains($time, ':')) return 0;
-                            list($h, $m, $s) = explode(':', $time);
-                            return ($h * 3600) + ($m * 60) + $s;
-                        }
-
-                        // Helper function to convert seconds to HH:MM:SS
-                        function secondsToTime($seconds) {
-                            if ($seconds <= 0) return '00:00:00';
-                            $h = floor($seconds / 3600);
-                            $m = floor(($seconds % 3600) / 60);
-                            $s = $seconds % 60;
-                            return sprintf('%02d:%02d:%02d', $h, $m, $s);
-                        }
-                        ?>
-                        
-                        <div class="card mb-4 shadow-sm">
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-sm table-bordered table-striped monthly-report-table display nowrap" style="width:100%">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th class="text-center fs-5" colspan="16">Prime Express Courier & Cargo Pvt Ltd</th>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-center fs-6" colspan="16">Monthly Attendance Report</th>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-center small" colspan="2">Emp. ID: <?php echo htmlspecialchars($empId); ?></th>
-                                                <th class="text-start small" colspan="3">Name: <?php echo htmlspecialchars($employeeData[0]['employee_name']); ?></th>
-                                                <th class="text-start small" colspan="4">Designation: <?php echo htmlspecialchars($employeeData[0]['designation']); ?></th>
-                                                <th class="text-start small" colspan="4">Report Period: <?php echo htmlspecialchars($reportData['date_range'] ?? ''); ?></th>
-                                                <th class="text-start small" colspan="3">Branch: <?php echo htmlspecialchars($employeeData[0]['branch']); ?></th>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-center small align-middle" rowspan="2">SN</th>
-                                                <th class="text-center small align-middle" rowspan="2">Date</th>
-                                                <th class="text-center small" colspan="3">Planned Time</th>
-                                                <th class="text-center small" colspan="3">Worked Time</th>
-                                                <th class="text-center small align-middle" rowspan="2">Overtime</th>
-                                                <th class="text-center small align-middle" rowspan="2">Late In</th>
-                                                <th class="text-center small align-middle" rowspan="2">Early Out</th>
-                                                <th class="text-center small align-middle" rowspan="2">Early In</th>
-                                                <th class="text-center small align-middle" rowspan="2">Late Out</th>
-                                                <th class="text-center small align-middle" rowspan="2">Marked As</th>
-                                                <th class="text-center small align-middle" rowspan="2">Methods</th>
-                                                <th class="text-center small align-middle" rowspan="2">Remarks</th>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-center small">In</th>
-                                                <th class="text-center small">Out</th>
-                                                <th class="text-center small">Work Hrs</th>
-                                                <th class="text-center small">In</th>
-                                                <th class="text-center small">Out</th>
-                                                <th class="text-center small">Actual</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($employeeData as $index => $row) { ?>
-                                                <tr>
-                                                    <td class="text-center small"><?php echo $index + 1; ?></td>
-                                                    <td class="text-start small"><?php echo date("d-M-Y, D", strtotime($row['date'])); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['scheduled_in']); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['scheduled_out']); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['working_hour']); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['in_time'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['out_time'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['worked_duration'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['over_time'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['late_in'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['early_out'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['early_in'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['late_out'] ?: '--'); ?></td>
-                                                    <td class="text-center small"><?php echo htmlspecialchars($row['marked_as']); ?></td>
-                                                    <td class="text-center small">
-                                                    <?php
-                                                      if (!empty($row['methods'])) {
-                                                          $methods = explode(',', $row['methods']);
-                                                          $output = [];
-                                                          foreach ($methods as $method) {
-                                                              $output[] = ($method == '1') ? 'M' : 'A'; // Manual vs Auto
-                                                          }
-                                                          echo implode(' | ', $output);
-                                                      }
-                                                    ?>
-                                                    </td>
-                                                    <td class="text-start small"><?php echo htmlspecialchars($row['remarks'] ?: ''); ?></td>
-                                                </tr>
-                                            <?php } ?>
-                                        </tbody>
-                                        <tfoot class="table-light">
-                                            <tr>
-                                               <th class="text-end small" colspan="2">Summary:</th>
-                                               <th class="text-center small" colspan="2">Scheduled: <?php echo secondsToTime($totalScheduledSeconds); ?></th>
-                                               <th class="text-center small" colspan="2">Worked: <?php echo secondsToTime($totalWorkedSeconds); ?></th>
-                                               <th class="text-center small" colspan="2">Overtime: <?php echo secondsToTime($totalOvertimeSeconds); ?></th>
-                                               <th class="text-center small">Present: <?php echo $present; ?></th>
-                                               <th class="text-center small">Absent: <?php echo $absent; ?></th>
-                                               <th class="text-center small">Weekend: <?php echo $weekend; ?></th>
-                                               <th class="text-center small">Holiday: <?php echo $holiday; ?></th>
-                                               <th class="text-center small">P.Leave: <?php echo $paidLeave; ?></th>
-                                               <th class="text-center small">U.Leave: <?php echo $unpaidLeave; ?></th>
-                                               <th class="text-center small">Missed: <?php echo $missed; ?></th>
-                                               <th class="text-center small">Manual: <?php echo $manual; ?></th>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
+        <!-- Main content -->
+        <section class="content">
+            <div class="container-fluid">
+                <div class="card">
+                    <div class="card-header" style="padding: 10px;">
+                        <form action="fetch-monthly-report-data.php" method="POST" id="monthly-report-form" class="mt-3">
+                            <input type="hidden" id="hiddenReportDateRange" value="<?php echo isset($_POST['reportDateRange']) ? $_POST['reportDateRange'] : ''; ?>">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <div class="form-group">
+                                        <label for="reportDateRange">Date Range <span class="text-danger">*</span></label>
+                                        <div class="input-field" style="border:1px solid #ddd; width: 100%; border-radius: 5px; padding: 2px; display: flex; align-items: center;">
+                                          <i class="fas fa-calendar-alt mr-2" style="font-size: 1.5rem;"></i>
+                                          <input type="text" class="form-control border-0" id="reportDateRange" name="reportDateRange" required>
+                                        </div>
+                                    </div>
                                 </div>
-                                <!-- Button container for DataTables -->
-                                <div class="dt-buttons btn-group mt-2"></div> 
+                                <div class="col-md-3">
+                                    <div class="form-group">
+                                        <label for="empBranch">Branch <span class="text-danger">*</span></label>
+                                        <div class="input-field" style="border:1px solid #ddd; width:100%; border-radius: 5px; padding: 2px; display: flex; align-items: center;">
+                                          <i class="fas fa-building mr-2" style="font-size: 1.5rem;"></i>
+                                          <select class="form-control border-0" id="empBranch" name="empBranch" required>
+                                            <option disabled>Select a Branch</option>
+                                            <option value="">All Branches</option>
+                                            <?php 
+                                                $selectedBranch = isset($_POST['empBranch']) ? $_POST['empBranch'] : ''; // Store selected value
+                                                $branchQuery = "SELECT id, name FROM branches";
+                                                $stmt = $pdo->query($branchQuery);
+                                                while ($row = $stmt->fetch()) {
+                                                    $selected = ($selectedBranch == $row['id']) ? 'selected' : ''; // Compare values correctly
+                                                    echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
+                                                }
+                                            ?>
+                                          </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 d-flex align-items-end text-center">
+                                    <div class="form-group mb-0">
+                                        <button type="submit" class="btn btn-primary btn-md px-4">
+                                          <i class="fas fa-filter mr-1"></i> Generate Report
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 d-flex align-items-end text-left">
+                                    <div class="form-group mb-0">
+                                        <?php if (isset($_POST['jsonData'])): ?>
+                                        <button type="button" id="print-report-btn" class="btn btn-success btn-md px-4">
+                                          <i class="fas fa-print mr-1"></i> Print
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    <?php 
-                    }
-                } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
-                    echo '<div class="alert alert-warning">No data found for the selected criteria.</div>';
-                } else {
-                    echo '<div class="alert alert-info">Please select a date range and branch, then click Search to generate the report.</div>';
-                }
-            } else {
-                 echo '<div class="alert alert-info">Please select a date range and branch, then click Search to generate the report.</div>';
-            }
-            ?>
-        </div> <!-- /.card-body -->
-    </div> <!-- /.card -->
-</div> <!-- /.container-fluid -->
+                        </form>
+                    </div>
 
-<!-- Include Footer (Assumes footer.php includes Bootstrap 5 JS, jQuery, Popper) -->
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+                    <div class="card-body"> 
+                        <!-- Hidden logo for printing -->
+                        <!-- <div class="d-none print-logo">
+                            <img src="<?php echo $home;?>resources/logo.png" alt="Company Logo" style="height: 80px; float: right; margin-bottom: 10px;">
+                        </div>                        -->
+                        <?php 
+                        if (isset($_POST['jsonData'])) {
+                            $jsonData = json_decode($_POST['jsonData'], true);
 
-<!-- DataTables & Plugins JS -->
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-<script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
-<script src="https://cdn.datatables.net/responsive/2.5.0/js/responsive.bootstrap5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+                            if ($jsonData) {
+                                // Group data by employee
+                                $groupedData = [];
+                                foreach ($jsonData as $row) {
+                                    $groupedData[$row['emp_id']][] = $row;
+                                }
 
-<!-- Moment.js (Required for DateRangePicker) -->
-<script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
-<!-- DateRangePicker JS -->
-<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+                                // Generate cards for each employee
+                                foreach ($groupedData as $empId => $employeeData) {
+                                    // Initialize summary counts
+                                    $present = $absent = $weekend = $holiday = $paidLeave = $unpaidLeave = $missed = $manual = $misc = 0;
+
+                                    foreach ($employeeData as $row) {
+                                        switch ($row['marked_as']) {
+                                            case 'Present': $present++; break;
+                                            case 'Absent': $absent++; break;
+                                            case 'Weekend': $weekend++; break;
+                                            case 'Holiday': $holiday++; break;
+                                            case 'Paid Leave': $paidLeave++; break;
+                                            case 'Unpaid Leave': $unpaidLeave++; break;
+                                            case 'Missed': $missed++; break;
+                                            case 'Manual': $manual++; break;
+                                            default: $misc++; break;
+                                        }
+                                    }
+                                    ?>
+                                    
+                                    <div class="card employee-card mb-4">
+                                        <div class="card-body">
+                                            <!-- Hidden button container for DataTables buttons -->
+                                            <div class="btn-group" style="display: none;"></div>
+                                            <table class="table table-sm table-bordered table-striped monthly-report-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th class="text-center" colspan="16">Periodic Attendance Report: <?php echo $employeeData[0]['date_range'] ?? ''; ?></th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th class="text-center" colspan="2">Emp. ID: <?php echo $empId; ?></th>
+                                                        <th class="text-left" colspan="3">Name: <?php echo $employeeData[0]['employee_name']; ?></th>
+                                                        <th class="text-center" colspan="4">Designation: <?php echo $employeeData[0]['designation']; ?></th>
+                                                        <th class="text-center" colspan="4">Branch: <?php echo $employeeData[0]['branch']; ?></th>
+                                                        <th class="text-center" colspan="3">Department: <?php echo $employeeData[0]['department'] ?? ''; ?></th>
+                                                    </tr>
+                                                    <tr>
+                                                      <th class="align-items-center text-center" rowspan="2">SN</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Date</th>
+                                                      <th class="align-items-center text-center" colspan="3">Planned Time</th>
+                                                      <th class="align-items-center text-center" colspan="3">Worked Time</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Overtime</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Late In</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Early Out</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Early In</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Late Out</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Marked As</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Methods</th>
+                                                      <th class="align-items-center text-center" rowspan="2">Remarks</th>
+                                                    </tr>
+                                                    <tr>
+                                                      <th class="align-items-center text-center">In</th>
+                                                      <th class="align-items-center text-center">Out</th>
+                                                      <th class="align-items-center text-center">Work hrs</th>
+                                                      <th class="align-items-center text-center">In</th>
+                                                      <th class="align-items-center text-center">Out</th>
+                                                      <th class="align-items-center text-center">Actual</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($employeeData as $index => $row) { ?>
+                                                        <tr>
+                                                            <td class="text-center"><?php echo $index + 1; ?></td>
+                                                            <td class="text-left"><?php echo date("Y-m-d, l", strtotime($row['date'])); ?></td>
+                                                            <td class="text-center"><?php echo $row['scheduled_in']; ?></td>
+                                                            <td class="text-center"><?php echo $row['scheduled_out']; ?></td>
+                                                            <td class="text-center"><?php echo $row['working_hour']; ?></td>
+                                                            <td class="text-center"><?php echo $row['in_time'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['out_time'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['worked_duration'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['over_time'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['late_in'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['early_out'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['early_in'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['late_out'] ?: ''; ?></td>
+                                                            <td class="text-center"><?php echo $row['marked_as']; ?></td>
+                                                            <td class="text-center">
+                                                            <?php
+                                                                if (!empty($row['methods'])) {
+                                                                    // Parse the methods from format "In: X, Out: Y"
+                                                                    preg_match('/In: (.*?)(?:, Out: (.*))?$/', $row['methods'], $matches);
+                                                                    
+                                                                    $inMethod = isset($matches[1]) ? trim($matches[1]) : '';
+                                                                    $outMethod = isset($matches[2]) ? trim($matches[2]) : '';
+                                                                    
+                                                                    $methodLabels = [
+                                                                        '0' => 'A', // Automatic
+                                                                        '1' => 'M', // Manual
+                                                                        '2' => 'W'  // Web
+                                                                    ];
+                                                                    
+                                                                    $inMethodLabel = isset($methodLabels[$inMethod]) ? $methodLabels[$inMethod] : $inMethod;
+                                                                    $outMethodLabel = isset($methodLabels[$outMethod]) ? $methodLabels[$outMethod] : $outMethod;
+                                                                    
+                                                                    if ($outMethod) {
+                                                                        echo "{$inMethodLabel} | {$outMethodLabel}";
+                                                                    } else {
+                                                                        echo "{$inMethodLabel}";
+                                                                    }
+                                                                }
+                                                            ?>
+                                                            </td>
+                                                            <td class="text-center"><?php echo $row['remarks'] ?: ''; ?></td>
+                                                        </tr>
+                                                    <?php } ?>
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr>
+                                                       <th class="text-right" colspan="1">Summary:</th>
+                                                       <th class="text-center" colspan="2">Present: <?php echo $present; ?></th>
+                                                       <th class="text-center" colspan="2">Absent: <?php echo $absent; ?></th>
+                                                       <th class="text-center" colspan="2">Weekend: <?php echo $weekend; ?></th>
+                                                       <th class="text-center" colspan="2">Holiday: <?php echo $holiday; ?></th>
+                                                       <th class="text-center" colspan="2">Paid Leave: <?php echo $paidLeave; ?></th>
+                                                       <th class="text-center" colspan="2">Unpaid Leave: <?php echo $unpaidLeave; ?></th>
+                                                       <th class="text-center" colspan="1">Missed: <?php echo $missed; ?></th>
+                                                       <th class="text-center" colspan="2">Manual: <?php echo $manual; ?></th>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                <?php }
+                            }
+                        } ?>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+
+<!-- REQUIRED SCRIPTS -->
+
+<!-- jQuery -->
+<script src="<?php echo $home;?>plugins/jquery/jquery.min.js"></script>
+<!-- Bootstrap -->
+<script src="<?php echo $home;?>plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
+<!-- DataTables  & Plugins -->
+<script src="<?php echo $home;?>plugins/datatables/jquery.dataTables.min.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-responsive/js/dataTables.responsive.min.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-responsive/js/responsive.bootstrap4.min.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-buttons/js/dataTables.buttons.min.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-buttons/js/buttons.bootstrap4.min.js"></script>
+<script src="<?php echo $home;?>plugins/jszip/jszip.min.js"></script>
+<script src="<?php echo $home;?>plugins/pdfmake/pdfmake.min.js"></script>
+<script src="<?php echo $home;?>plugins/pdfmake/vfs_fonts.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-buttons/js/buttons.html5.min.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-buttons/js/buttons.print.min.js"></script>
+<script src="<?php echo $home;?>plugins/datatables-buttons/js/buttons.colVis.min.js"></script>
+<!-- AdminLTE -->
+<script src="<?php echo $home;?>dist/js/adminlte.js"></script>
+<!-- Tempusdominus Bootstrap 4 -->
+<script src="<?php echo $home;?>plugins/moment/moment.min.js"></script>
+<script src="<?php echo $home;?>plugins/tempusdominus-bootstrap-4/js/tempusdominus-bootstrap-4.min.js"></script>
+<!-- daterangepicker -->
+<script src="<?php echo $home;?>plugins/moment/moment.min.js"></script>
+<script src="<?php echo $home;?>plugins/daterangepicker/daterangepicker.js"></script>
 
 <!-- Page Specific Scripts -->
 <script>
 $(function () {
-    // Initialize DataTables for each report table
     $(".monthly-report-table").each(function () {
-        var table = $(this).DataTable({
+        $(this).DataTable({
             "responsive": true,
             "lengthChange": false,
-            "autoWidth": false,
+            "autoWidth": true,
             "paging": false,
-            "searching": false, // Disable native search, use filters
+            "searching": true,
             "ordering": false,
             "info": false,
             "buttons": [
-                'colvis', // Column visibility
-                {
-                    extend: 'copyHtml5',
-                    text: 'Copy',
-                    exportOptions: {
-                        columns: ':visible' // Only copy visible columns
-                    }
-                },
-                {
-                    extend: 'excelHtml5',
-                    text: 'Excel',
-                    title: 'Monthly Attendance Report', // File name
-                    exportOptions: {
-                        columns: ':visible'
-                    }
-                },
-                {
-                    extend: 'pdfHtml5',
-                    text: 'PDF',
-                    title: 'Monthly Attendance Report',
-                    orientation: 'landscape', // Landscape orientation for wide tables
-                    pageSize: 'A4',
-                    exportOptions: {
-                        columns: ':visible'
-                    },
-                    customize: function (doc) {
-                        // Adjust font size and margins
-                        doc.defaultStyle.fontSize = 8;
-                        doc.styles.tableHeader.fontSize = 9;
-                        doc.pageMargins = [ 20, 30, 20, 30 ]; // [left, top, right, bottom]
-                    }
-                },
+                'colvis', // Add column visibility button
                 {
                     extend: 'print',
                     text: 'Print',
-                    title: 'Monthly Attendance Report',
                     exportOptions: {
-                        columns: ':visible'
+                        modifier: {
+                            page: 'all',  // Ensure it applies to all pages
+                        },
+                        header: true  // Include the headers in the print
                     },
+                    autoPrint: false, // Don't auto print - let the user click the button
+                    title: 'Periodic Attendance Report',
+                    messageTop: '',
+                    messageBottom: '',
                     customize: function (win) {
-                        $(win.document.body)
-                            .css('font-size', '10pt');
- 
+                        // Remove any default margins
+                        $(win.document.body).css({
+                            'font-size': '10pt',
+                            'margin': 0,
+                            'padding': 0
+                        });
+                        
                         $(win.document.body).find('table')
                             .addClass('compact')
-                            .css('font-size', 'inherit');
+                            .css({
+                                'font-size': 'inherit',
+                                'margin': 0,
+                                'padding': 0,
+                                'border-spacing': 0
+                            });
+
+                        // Add page break after each employee card for better printing
+                        $(win.document.body).find('.employee-card').css({
+                            'page-break-after': 'always',
+                            'margin': 0,
+                            'padding': 0
+                        });
                         
-                        // Add landscape printing for browser print dialog
-                        var css = '@page { size: landscape; }';
+                        $(win.document.body).find('.employee-card:last-child').css('page-break-after', 'avoid');
+
+                        // Set paper size and orientation with minimal margins
+                        var css = '@page { size: A4 landscape; margin: 0.3cm; }';
                         var head = win.document.head || win.document.getElementsByTagName('head')[0];
                         var style = win.document.createElement('style');
                         style.type = 'text/css';
                         style.media = 'print';
                         if (style.styleSheet) {
-                          style.styleSheet.cssText = css;
+                            style.styleSheet.cssText = css;
                         } else {
-                          style.appendChild(win.document.createTextNode(css));
+                            style.appendChild(win.document.createTextNode(css));
                         }
                         head.appendChild(style);
                     }
                 }
-            ],
+            ], 
             "language": {
-                // Standard Bootstrap 5 pagination icons if paging were enabled
                 "paginate": {
-                    "previous": "&laquo;",
-                    "next": "&raquo;"
+                    "first": '<i class="fas fa-angle-double-left"></i>',
+                    "previous": '<i class="fas fa-angle-left"></i>',
+                    "next": '<i class="fas fa-angle-right"></i>',
+                    "last": '<i class="fas fa-angle-double-right"></i>'
                 },
-                "emptyTable": "No data available for this employee in the selected period."
-                // Add other language options if needed
+                "emptyTable": "No data available in table",
+                "info": "Showing _START_ to _END_ of _TOTAL_ entries",
+                "infoEmpty": "Showing 0 to 0 of 0 entries",
+                "infoFiltered": "(filtered from _MAX_ total entries)",
+                "lengthMenu": "Show _MENU_ entries",
+                "loadingRecords": "Loading...",
+                "processing": "Processing...",
+                "search": "Search:",
+                "zeroRecords": "No matching records found"
             }
-        });
-
-        // Move buttons to the container div in the card body
-        table.buttons().container().appendTo($(this).closest('.card-body').find('.dt-buttons'));
+        }).buttons().container().appendTo($(this).closest('.card-body').find('.btn-group:first-child')); 
     });
-
-    // Initialize DateRangePicker
-    const dateRangeInput = $('#reportDateRange');
-    const initialDateRange = dateRangeInput.val(); // Get value set by PHP if POST occurred
-    let startDate = moment().startOf('month');
-    let endDate = moment().endOf('month');
-
-    // If there's an initial value from POST, parse it
-    if (initialDateRange) {
-        const dates = initialDateRange.split(' - ');
-        if (dates.length === 2) {
-            startDate = moment(dates[0], 'DD/MM/YYYY');
-            endDate = moment(dates[1], 'DD/MM/YYYY');
-        }
-    }
-
-    dateRangeInput.daterangepicker({
-        locale: {
-          format: 'DD/MM/YYYY' // Display format
-        },
-        opens: 'right',
-        startDate: startDate,
-        endDate: endDate,
-        maxDate: moment(), // Prevent selecting future dates
-        autoApply: false, // Show Apply/Cancel buttons
-        ranges: {
-           'Today': [moment(), moment()],
-           'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
-           'Last 7 Days': [moment().subtract(6, 'days'), moment()],
-           'Last 30 Days': [moment().subtract(29, 'days'), moment()],
-           'This Month': [moment().startOf('month'), moment().endOf('month')],
-           'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
-        }
-    });
-
-    // Clear the input if no date is selected initially (on first load)
-    if (!initialDateRange) {
-        dateRangeInput.val('');
-    }
     
-    dateRangeInput.on('cancel.daterangepicker', function(ev, picker) {
-      // Clear the input when cancelled
-      $(this).val('');
+    // Print button functionality
+    $('#print-report-btn').on('click', function() {
+        window.print();
+    });
+});
+
+$('#reportDateRange').daterangepicker({
+    locale: {
+      format: 'DD/MM/YYYY' // Date format for start and end dates
+    },
+    opens: 'auto',
+    alwaysShowCalendars: false,
+    startDate: moment().subtract(1, 'months').startOf('month'),
+    endDate: moment().subtract(1, 'months').endOf('month'),
+    maxDate: moment(),
+    autoApply: false,
+    ranges: {
+      'This Month': [moment().startOf('month'), moment().endOf('month')],
+      'Last Month': [moment().subtract(1, 'months').startOf('month'), moment().subtract(1, 'months').endOf('month')],
+      'Last 30 Days': [moment().subtract(29, 'days'), moment()]
+    }
+});
+
+// Ensure the reportDateRange input is populated correctly
+$(document).ready(function() {
+    $('#reportDateRange').on('change', function() {
+        const selectedDateRange = $(this).val();
+        $('#hiddenReportDateRange').val(selectedDateRange);
     });
 
+    // Set the initial value of hiddenReportDateRange
+    const initialDateRange = $('#reportDateRange').val();
+    $('#hiddenReportDateRange').val(initialDateRange);
 });
 </script>
-
-<!-- Removed AdminLTE demo.js -->
+<!-- AdminLTE for demo purposes -->
+<script src="<?php echo $home;?>dist/js/demo.js"></script>
 
 </body>
 </html>

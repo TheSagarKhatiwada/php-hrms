@@ -30,7 +30,12 @@ $empId = $_GET['empId'] ?? '';
 
 // Fetch employee details from the database
 if ($empId) {
-    $stmt = $pdo->prepare("SELECT e.*, b.name AS branch_name FROM employees e INNER JOIN branches b ON e.branch = b.id WHERE e.emp_id = :empId");
+    $stmt = $pdo->prepare("SELECT e.*, b.name AS branch_name, d.title AS designation_title, r.name AS role_name 
+                         FROM employees e 
+                         INNER JOIN branches b ON e.branch = b.id 
+                         LEFT JOIN designations d ON e.designation = d.id 
+                         LEFT JOIN roles r ON e.role_id = r.id 
+                         WHERE e.emp_id = :empId");
     $stmt->execute([':empId' => $empId]);
     $employee = $stmt->fetch();
 
@@ -38,6 +43,20 @@ if ($empId) {
         echo "<p>Employee not found.</p>";
         exit();
     }
+
+    // Fetch assigned assets for the employee
+    $assigned_assets_stmt = $pdo->prepare("SELECT 
+                                        fa.AssetName, 
+                                        fa.AssetSerial, 
+                                        aa.AssignmentDate,
+                                        fa.Status AS AssetStatus
+                                    FROM AssetAssignments aa
+                                    JOIN FixedAssets fa ON aa.AssetID = fa.AssetID
+                                    WHERE aa.EmployeeID = :employee_id AND aa.ReturnDate IS NULL
+                                    ORDER BY aa.AssignmentDate DESC");
+    // Use $employee['id'] which is the primary key for the employees table and likely the foreign key in AssetAssignments
+    $assigned_assets_stmt->execute(['employee_id' => $employee['id']]); 
+    $assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Check if employee image is empty and set default image
     if (empty($employee['user_image'])) {
@@ -265,7 +284,7 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
             <?php echo ucwords(htmlspecialchars($employee['first_name']) . ' ' . htmlspecialchars($employee['middle_name']) . ' ' . htmlspecialchars($employee['last_name'])); ?>
           </h3>
           <p class="text-muted mb-3">
-            <?php echo ucwords(htmlspecialchars($employee['designation'])); ?>
+            <?php echo ucwords(htmlspecialchars($employee['designation_title'] ?: 'Not Assigned')); ?>
           </p>
 
           <ul class="list-group list-group-flush mb-3">
@@ -299,21 +318,25 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
         </div>
         <!-- /.card-header -->
         <div class="card-body">
-          <strong><i class="fas fa-envelope me-2"></i> Email</strong>
-          <p class="text-muted"><?php echo htmlspecialchars($employee['email']); ?></p>
+          <h5><strong><i class="fas fa-user-circle me-2"></i> Personal</strong></h5>
+          <p class="text-muted">
+            <i class="fas fa-envelope me-2"></i> <?php echo htmlspecialchars($employee['email']); ?><br>
+            <i class="fas fa-phone-alt me-2"></i> <?php echo htmlspecialchars($employee['phone']); ?>
+          </p>
+
+          <?php if (!empty($employee['office_email']) || !empty($employee['office_phone'])): ?>
           <hr>
-          <strong><i class="fas fa-phone-alt me-2"></i> Phone</strong>
-          <p class="text-muted"><?php echo htmlspecialchars($employee['phone']); ?></p>
-          <?php if (!empty($employee['office_email'])): ?>
-          <hr>
-          <strong><i class="fas fa-at me-2"></i> Office Email</strong>
-          <p class="text-muted"><?php echo htmlspecialchars($employee['office_email']); ?></p>
+          <h5><strong><i class="fas fa-briefcase me-2"></i> Official</strong></h5>
+          <p class="text-muted">
+            <?php if (!empty($employee['office_email'])): ?>
+                <i class="fas fa-at me-2"></i> <?php echo htmlspecialchars($employee['office_email']); ?><br>
+            <?php endif; ?>
+            <?php if (!empty($employee['office_phone'])): ?>
+                <i class="fas fa-phone-square-alt me-2"></i> <?php echo htmlspecialchars($employee['office_phone']); ?>
+            <?php endif; ?>
+          </p>
           <?php endif; ?>
-          <?php if (!empty($employee['office_phone'])): ?>
-          <hr>
-          <strong><i class="fas fa-phone me-2"></i> Office Phone</strong>
-          <p class="text-muted"><?php echo htmlspecialchars($employee['office_phone']); ?></p>
-          <?php endif; ?>
+
           <?php if (!empty($employee['address'])): ?>
           <hr>
           <strong><i class="fas fa-map-marker-alt me-2"></i> Address</strong>
@@ -386,7 +409,11 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
                     <div class="card-body p-0">
                       <div class="profile-info-item">
                         <strong>Designation:</strong>
-                        <p class="mb-0"><?php echo htmlspecialchars($employee['designation']); ?></p>
+                        <p class="mb-0"><?php echo htmlspecialchars($employee['designation_title'] ?: 'Not Assigned'); ?></p>
+                      </div>
+                      <div class="profile-info-item">
+                        <strong>Role:</strong>
+                        <p class="mb-0"><?php echo htmlspecialchars($employee['role_name'] ?: 'Not Assigned'); ?></p>
                       </div>
                       <div class="profile-info-item">
                         <strong>Status:</strong>
@@ -419,7 +446,7 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
                   <i class="fas fa-user bg-primary"></i>
                   <div class="timeline-item">
                     <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y', strtotime($employee['join_date'])); ?></span>
-                    <h3 class="timeline-header">Joined as <?php echo htmlspecialchars($employee['designation']); ?></h3>
+                    <h3 class="timeline-header">Joined as <?php echo htmlspecialchars($employee['designation_title'] ?: 'Not Assigned'); ?></h3>
                     <div class="timeline-body">
                       Joined <?php echo htmlspecialchars($employee['branch_name']); ?> branch.
                     </div>
@@ -455,34 +482,32 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td>1.</td>
-                      <td>Laptop</td>
-                      <td>LP-2023-001</td>
-                      <td><?php echo date('d M Y', strtotime($employee['join_date'])); ?></td>
-                      <td><span class="badge bg-success">Active</span></td>
-                    </tr>
-                    <tr>
-                      <td>2.</td>
-                      <td>Mobile Phone</td>
-                      <td>MP-2023-045</td>
-                      <td><?php echo date('d M Y', strtotime($employee['join_date'])); ?></td>
-                      <td><span class="badge bg-success">Active</span></td>
-                    </tr>
-                    <tr>
-                      <td>3.</td>
-                      <td>ID Card</td>
-                      <td><?php echo htmlspecialchars($employee['emp_id']); ?></td>
-                      <td><?php echo date('d M Y', strtotime($employee['join_date'])); ?></td>
-                      <td><span class="badge bg-success">Active</span></td>
-                    </tr>
-                    <tr>
-                      <td>4.</td>
-                      <td>Access Card</td>
-                      <td>AC-<?php echo htmlspecialchars($employee['emp_id']); ?></td>
-                      <td><?php echo date('d M Y', strtotime($employee['join_date'])); ?></td>
-                      <td><span class="badge bg-success">Active</span></td>
-                    </tr>
+                    <?php if (!empty($assigned_assets)):
+                        $asset_count = 1;
+                        foreach ($assigned_assets as $asset):
+                    ?>
+                        <tr>
+                            <td><?php echo $asset_count++; ?>.</td>
+                            <td><?php echo htmlspecialchars($asset['AssetName']); ?></td>
+                            <td><?php echo htmlspecialchars($asset['AssetSerial']); ?></td>
+                            <td><?php echo htmlspecialchars(date('M d, Y', strtotime($asset['AssignmentDate']))); ?></td>
+                            <td>
+                                <span class="badge bg-<?php 
+                                    echo $asset['AssetStatus'] == 'Assigned' ? 'success' : 
+                                        ($asset['AssetStatus'] == 'Maintenance' ? 'warning' : 'danger'); 
+                                ?>">
+                                    <?php echo htmlspecialchars($asset['AssetStatus']); ?>
+                                </span>
+                            </td>
+                        </tr>
+                    <?php 
+                        endforeach;
+                    else:
+                    ?>
+                        <tr>
+                            <td colspan="5" class="text-center">No assets currently assigned.</td>
+                        </tr>
+                    <?php endif; ?>
                   </tbody>
                 </table>
               </div>

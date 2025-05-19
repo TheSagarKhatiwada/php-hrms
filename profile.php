@@ -21,9 +21,15 @@ $stmt = $pdo->prepare("SELECT e.first_name,
                                       e.branch, 
                                       e.dob, 
                                       e.exit_date, 
-                                      b.name AS branch_name 
+                                      b.name AS branch_name, 
+                                      r.name AS role_name, 
+                                      d.title AS designation_title, 
+                                      e.office_email, 
+                                      e.office_phone 
                                       FROM employees e 
                                       INNER JOIN branches b ON e.branch = b.id 
+                                      LEFT JOIN roles r ON e.role_id = r.id 
+                                      LEFT JOIN designations d ON e.designation = d.id 
                                       WHERE e.id = :id");
 $stmt->execute(['id' => $user_id]);
 $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -35,6 +41,19 @@ if (!$user_data) {
     header('Location: index.php');
     exit;
 }
+
+// Fetch assigned assets for the user
+$assigned_assets_stmt = $pdo->prepare("SELECT 
+                                        fa.AssetName, 
+                                        fa.AssetSerial, 
+                                        aa.AssignmentDate,
+                                        fa.Status AS AssetStatus
+                                    FROM AssetAssignments aa
+                                    JOIN FixedAssets fa ON aa.AssetID = fa.AssetID
+                                    WHERE aa.EmployeeID = :employee_id AND aa.ReturnDate IS NULL
+                                    ORDER BY aa.AssignmentDate DESC");
+$assigned_assets_stmt->execute(['employee_id' => $user_id]); // Assuming $user_id is the ID from the employees table used in AssetAssignments.EmployeeID
+$assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Handle profile picture update
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['croppedImage'])) {
@@ -330,15 +349,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                     </form>
 
                     <h3 class="profile-username mb-1">
-                        <?php echo htmlspecialchars($user_data['first_name'] . ' ' . $user_data['middle_name'] . ' ' . $user_data['last_name']); ?>
+                        <?php echo htmlspecialchars($user_data['first_name'] . ' ' . ($user_data['middle_name'] ?? '') . ' ' . $user_data['last_name']); ?>
                     </h3>
                     <p class="text-muted mb-3">
-                        <?php echo htmlspecialchars($user_data['designation']); ?>
+                        <?php echo htmlspecialchars($user_data['designation_title'] ?? 'Not Assigned'); ?> <!-- Changed to designation_title -->
                     </p>
 
                     <ul class="list-group list-group-flush mb-3">
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            <b>Employee ID</b> <span><?php echo htmlspecialchars($user_data['emp_id']); ?></span>
+                            <b>Employee ID</b> <span><?php echo htmlspecialchars($user_data['emp_id'] ?? ''); ?></span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0">
                             <b>Branch</b> <span><?php echo htmlspecialchars($user_data['branch_name']); ?></span>
@@ -359,11 +378,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                 </div>
                 <!-- /.card-header -->
                 <div class="card-body">
-                    <strong><i class="fas fa-envelope me-2"></i> Email</strong>
-                    <p class="text-muted"><?php echo htmlspecialchars($user_data['email']); ?></p>
+                    <h5><strong><i class="fas fa-user-circle me-2"></i> Personal</strong></h5>
+                    <p class="text-muted">
+                        <i class="fas fa-envelope me-2"></i> <?php echo htmlspecialchars($user_data['email']); ?><br>
+                        <i class="fas fa-phone-alt me-2"></i> <?php echo htmlspecialchars($user_data['phone']); ?>
+                    </p>
+                    
+                    <?php if (!empty($user_data['office_email']) || !empty($user_data['office_phone'])): ?>
                     <hr>
-                    <strong><i class="fas fa-phone-alt me-2"></i> Phone</strong>
-                    <p class="text-muted"><?php echo htmlspecialchars($user_data['phone']); ?></p>
+                    <h5><strong><i class="fas fa-briefcase me-2"></i> Official</strong></h5>
+                    <p class="text-muted">
+                        <?php if (!empty($user_data['office_email'])): ?>
+                            <i class="fas fa-at me-2"></i> <?php echo htmlspecialchars($user_data['office_email']); ?><br>
+                        <?php endif; ?>
+                        <?php if (!empty($user_data['office_phone'])): ?>
+                            <i class="fas fa-phone-square-alt me-2"></i> <?php echo htmlspecialchars($user_data['office_phone']); ?>
+                        <?php endif; ?>
+                    </p>
+                    <?php endif; ?>
+                    
                     <hr>
                     <strong><i class="fas fa-map-marker-alt me-2"></i> Address</strong>
                     <p class="text-muted">Tinkune, Kathmandu</p>
@@ -424,7 +457,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                         <div class="card-body p-0">
                                             <div class="profile-info-item">
                                                 <strong>Designation:</strong>
-                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['designation']); ?></p>
+                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['designation_title'] ?? 'Not Assigned'); ?></p> <!-- Changed to designation_title -->
+                                            </div>
+                                            <div class="profile-info-item">
+                                                <strong>Role:</strong>
+                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['role_name'] ?? 'Not Assigned'); ?></p>
                                             </div>
                                             <div class="profile-info-item">
                                                 <strong>Status:</strong>
@@ -452,8 +489,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                 <div>
                                     <i class="fas fa-user bg-primary"></i>
                                     <div class="timeline-item">
-                                        <span class="time"><i class="far fa-clock"></i> <?php echo htmlspecialchars($user_data['join_date']); ?></span>
-                                        <h3 class="timeline-header">Joined as <?php echo htmlspecialchars($user_data['designation']); ?></h3>
+                                        <span class="time"><i class="far fa-clock"></i> <?php echo htmlspecialchars($user_data['join_date'] ?? 'Unknown'); ?></span>
+                                        <h3 class="timeline-header">Joined as <?php echo htmlspecialchars($user_data['designation_title'] ?? 'Employee'); ?></h3> <!-- Changed to designation_title -->
                                         <div class="timeline-body">
                                             Joined <?php echo htmlspecialchars($user_data['branch_name']); ?> branch.
                                         </div>
@@ -489,34 +526,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr>
-                                            <td>1.</td>
-                                            <td>Laptop</td>
-                                            <td>LP-2023-001</td>
-                                            <td><?php echo htmlspecialchars($user_data['join_date']); ?></td>
-                                            <td><span class="badge bg-success">Active</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td>2.</td>
-                                            <td>Mobile Phone</td>
-                                            <td>MP-2023-045</td>
-                                            <td><?php echo htmlspecialchars($user_data['join_date']); ?></td>
-                                            <td><span class="badge bg-success">Active</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td>3.</td>
-                                            <td>ID Card</td>
-                                            <td><?php echo htmlspecialchars($user_data['emp_id']); ?></td>
-                                            <td><?php echo htmlspecialchars($user_data['join_date']); ?></td>
-                                            <td><span class="badge bg-success">Active</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td>4.</td>
-                                            <td>Access Card</td>
-                                            <td>AC-<?php echo htmlspecialchars($user_data['emp_id']); ?></td>
-                                            <td><?php echo htmlspecialchars($user_data['join_date']); ?></td>
-                                            <td><span class="badge bg-success">Active</span></td>
-                                        </tr>
+                                        <?php if (!empty($assigned_assets)): ?>
+                                            <?php $asset_count = 1; ?>
+                                            <?php foreach ($assigned_assets as $asset): ?>
+                                                <tr>
+                                                    <td><?php echo $asset_count++; ?>.</td>
+                                                    <td><?php echo htmlspecialchars($asset['AssetName']); ?></td>
+                                                    <td><?php echo htmlspecialchars($asset['AssetSerial']); ?></td>
+                                                    <td><?php echo htmlspecialchars(date('M d, Y', strtotime($asset['AssignmentDate']))); ?></td>
+                                                    <td>
+                                                        <span class="badge bg-<?php 
+                                                            echo $asset['AssetStatus'] == 'Assigned' ? 'success' : 
+                                                                ($asset['AssetStatus'] == 'Maintenance' ? 'warning' : 'danger'); 
+                                                        ?>">
+                                                            <?php echo htmlspecialchars($asset['AssetStatus']); ?>
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <tr>
+                                                <td colspan="5" class="text-center">No assets currently assigned.</td>
+                                            </tr>
+                                        <?php endif; ?>
                                     </tbody>
                                 </table>
                             </div>

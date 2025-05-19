@@ -17,10 +17,10 @@ include 'includes/header.php';
       <h1 class="fs-2 fw-bold mb-1">Fixed Assets</h1>
     </div>
     <div>
-      <a href="manage_categories.php?addModal=open" class="btn btn-secondary">
+      <a href="manage_categories.php?addModal=open" class="btn btn-outline-secondary">
         <i class="fas fa-plus me-2"></i> Add Category
       </a>
-      <button id="add-asset-btn" class="btn btn-primary">
+      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAssetModal">
         <i class="fas fa-plus me-2"></i> Add Asset
       </button>
     </div>
@@ -133,10 +133,10 @@ include 'includes/header.php';
                 </td>
                 <td class="text-center align-middle">
                   <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a href="#" class="text-secondary" role="button" id="dropdownMenuButton<?php echo $asset['AssetID']; ?>" data-bs-toggle="dropdown" aria-expanded="false">
                       <i class="fas fa-ellipsis-v"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton">
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton<?php echo $asset['AssetID']; ?>">
                       <li><a class="dropdown-item view-asset" href="#" data-bs-toggle="modal" data-bs-target="#viewAssetModal"
                             data-id="<?php echo $asset['AssetID']; ?>"
                             data-name="<?php echo htmlspecialchars($asset['AssetName']); ?>"
@@ -144,11 +144,11 @@ include 'includes/header.php';
                             data-serial="<?php echo $asset['AssetSerial']; ?>"
                             data-purchase-date="<?php echo date('d M Y', strtotime($asset['PurchaseDate'])); ?>"
                             data-purchase-cost="Rs. <?php echo number_format($asset['PurchaseCost'], 2); ?>"
-                            data-warranty-end="<?php echo date('d M Y', strtotime($asset['WarrantyEndDate'])); ?>"
-                            data-condition="<?php echo htmlspecialchars($asset['AssetCondition']); ?>"
-                            data-location="<?php echo htmlspecialchars($asset['AssetLocation']); ?>"
-                            data-status="<?php echo $asset['Status']; ?>"
-                            data-description="<?php echo htmlspecialchars($asset['AssetsDescription']); ?>"
+                            data-warranty-end="<?php echo !empty($asset['WarrantyEndDate']) ? date('d M Y', strtotime($asset['WarrantyEndDate'])) : '-'; ?>"
+                            data-condition="<?php echo htmlspecialchars($asset['AssetCondition'] ?? ''); ?>"
+                            data-location="<?php echo htmlspecialchars($asset['AssetLocation'] ?? ''); ?>"
+                            data-status="<?php echo $asset['Status'] ?? ''; ?>"
+                            data-description="<?php echo htmlspecialchars($asset['AssetsDescription'] ?? ''); ?>"
                             data-image="<?php echo !empty($asset['AssetImage']) ? $asset['AssetImage'] : ''; ?>">
                         <i class="fas fa-eye me-2"></i> View</a></li>
                       <li><a class="dropdown-item edit-asset" href="#" data-bs-toggle="modal" data-bs-target="#editAssetModal"
@@ -158,9 +158,9 @@ include 'includes/header.php';
                             data-purchase-date="<?php echo $asset['PurchaseDate']; ?>"
                             data-purchase-cost="<?php echo $asset['PurchaseCost']; ?>"
                             data-warranty-end="<?php echo $asset['WarrantyEndDate']; ?>"
-                            data-condition="<?php echo htmlspecialchars($asset['AssetCondition']); ?>"
-                            data-location="<?php echo htmlspecialchars($asset['AssetLocation']); ?>"
-                            data-description="<?php echo htmlspecialchars($asset['AssetsDescription']); ?>"
+                            data-condition="<?php echo htmlspecialchars($asset['AssetCondition'] ?? ''); ?>"
+                            data-location="<?php echo htmlspecialchars($asset['AssetLocation'] ?? ''); ?>"
+                            data-description="<?php echo htmlspecialchars($asset['AssetsDescription'] ?? ''); ?>"
                             data-image="<?php echo !empty($asset['AssetImage']) ? $asset['AssetImage'] : ''; ?>">
                         <i class="fas fa-edit me-2"></i> Edit</a></li>
                       <li><a class="dropdown-item print-sticker" href="#"

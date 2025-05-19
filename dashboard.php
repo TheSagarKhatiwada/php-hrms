@@ -1,27 +1,22 @@
 <?php
-// Start the session if not already started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+// Set page title
+$page = "Dashboard";
 
-// Debug: Log session values to error_log
-error_log("Regular Dashboard - Session Debug - user_id: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'not set'));
-error_log("Regular Dashboard - Session Debug - user_role: " . (isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'not set'));
-
-$page = 'User Dashboard';
-require_once __DIR__ . '/includes/header.php';
-include 'includes/db_connection.php';
+// Include required files
+require_once 'includes/header.php';
+require_once 'includes/db_connection.php';
+require_once 'includes/settings.php'; // Include settings to get timezone
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     // User not logged in, redirect to login page
     header('Location: index.php');
     exit();
-} elseif (isset($_SESSION['user_role']) && $_SESSION['user_role'] == '1') {
-    // If admin user somehow lands here, redirect to admin dashboard
-    header('Location: admin-dashboard.php');
-    exit();
 }
+
+// Get timezone from settings
+$timezone = get_setting('timezone', 'UTC');
+date_default_timezone_set($timezone);
 
 // Get current date
 $today = date('Y-m-d');
@@ -29,7 +24,13 @@ $today = date('Y-m-d');
 // Get current user data
 $userId = $_SESSION['user_id'];
 try {
-    $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ?");
+    // Get user data with designation title
+    $stmt = $pdo->prepare("
+        SELECT e.*, d.title as designation_title 
+        FROM employees e
+        LEFT JOIN designations d ON e.designation = d.id
+        WHERE e.id = ?
+    ");
     $stmt->execute([$userId]);
     $userData = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -40,7 +41,8 @@ try {
     
     // Get attendance for last 7 days
     $stmt = $pdo->prepare("
-        SELECT date, MIN(time) as clock_in, MAX(time) as clock_out
+        SELECT date, MIN(time) as clock_in, MAX(time) as clock_out, 
+               ANY_VALUE(method) as method
         FROM attendance_logs 
         WHERE emp_Id = ? 
         AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)
@@ -59,351 +61,752 @@ try {
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>User Dashboard | HR Management System</title>
-  
-  <!-- DataTables -->
-  <link rel="stylesheet" href="plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
-  <link rel="stylesheet" href="plugins/datatables-responsive/css/responsive.bootstrap4.min.css">
-  <link rel="stylesheet" href="plugins/datatables-buttons/css/buttons.bootstrap4.min.css">
-  
-  <!-- Dashboard custom styles -->
-  <style>
-    /* Base styles for modern info boxes */
+<!-- Dashboard Styles -->
+<style>
+    /* Welcome section with gradient */
+    .welcome-section {
+        background: linear-gradient(120deg, var(--primary-color), var(--primary-hover));
+        color: #ffffff;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        transition: all 0.3s ease;
+    }
+    
+    body.dark-mode .welcome-section {
+        background: linear-gradient(120deg, #343a40, #212529);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.25);
+    }
+    
+    /* Info boxes styling - Enhanced */
     .modern-info-box {
-      border-radius: 10px;
-      transition: transform 0.3s, box-shadow 0.3s;
-      overflow: hidden;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 0.75rem;
+        transition: transform 0.3s, box-shadow 0.3s;
+        overflow: hidden;
+        box-shadow: var(--card-shadow);
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        padding: 0.75rem;
+        background-color: #fff;
     }
     
     .modern-info-box:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+        transform: translateY(-5px);
+        box-shadow: var(--card-shadow-hover);
     }
     
+    body.dark-mode .modern-info-box {
+        background-color: #343a40;
+    }
+    
+    /* Icon container styling */
+    .info-box-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        font-size: 1.5rem;
+        color: #fff;
+    }
+    
+    /* Gradient backgrounds with enhanced colors */
     .bg-gradient-info {
-      background: linear-gradient(45deg, #17a2b8, #00c9ff) !important;
+        background: linear-gradient(135deg, #17a2b8, #0097a7) !important;
     }
     
     .bg-gradient-primary {
-      background: linear-gradient(45deg, #007bff, #00c6ff) !important;
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-hover)) !important;
     }
     
     .bg-gradient-success {
-      background: linear-gradient(45deg, #28a745, #48d368) !important;
+        background: linear-gradient(135deg, #28a745, #2E7D32) !important;
     }
     
-    .welcome-section {
-      background: linear-gradient(120deg, #2b4b6f, #1e7ba5);
-      color: white;
-      border-radius: 10px;
-      padding: 20px;
-      margin-bottom: 20px;
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #ffc107, #fb8c00) !important;
     }
     
-    .welcome-section h2 {
-      font-weight: 300;
-      margin-bottom: 5px;
+    /* Info box content styling */
+    .info-box-content {
+        flex: 1;
     }
     
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-right: 8px;
+    .info-box-text {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #6c757d;
     }
     
-    .status-active {
-      background-color: #28a745;
+    body.dark-mode .info-box-text {
+        color: #adb5bd;
     }
     
-    .time-refresh {
-      animation: fadeInOut 2s infinite;
+    .info-box-number {
+        display: block;
+        font-weight: 600;
+        font-size: 1.25rem;
     }
     
-    @keyframes fadeInOut {
-      0% { opacity: 0.5; }
-      50% { opacity: 1; }
-      100% { opacity: 0.5; }
+    body.dark-mode .info-box-number {
+        color: #f8f9fa;
     }
     
+    /* Clock icon styling */
+    .clock-icon {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 0.75rem auto;
+        box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.2);
+        font-size: 1.75rem;
+        color: var(--primary-color);
+        background-color: rgba(var(--primary-rgb), 0.05);
+        transition: all 0.3s ease;
+    }
+    
+    .clock-card:hover .clock-icon {
+        transform: rotate(15deg);
+    }
+    
+    /* Cards styling */
     .modern-card {
-      border-radius: 10px;
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
-      transition: transform 0.3s, box-shadow 0.3s;
-      margin-bottom: 20px;
+        border-radius: 0.75rem;
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+        transition: transform 0.3s, box-shadow 0.3s;
+        margin-bottom: 1.5rem;
+        border: none;
     }
     
     .modern-card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        transform: translateY(-5px);
+        box-shadow: var(--card-shadow-hover);
     }
     
+    body.dark-mode .modern-card {
+        background-color: #343a40;
+        color: #f8f9fa;
+    }
+    
+    body.dark-mode .modern-card .card-header {
+        background-color: #2c3136;
+        border-color: #495057;
+    }
+    
+    /* Clock styling */
     .clock-card {
-      text-align: center;
-      padding: 20px;
+        text-align: center;
+        padding: 1.25rem;
     }
     
     .clock-display {
-      font-size: 3rem;
-      font-weight: 600;
-      margin: 10px 0;
+        font-size: 2.5rem;
+        font-weight: 600;
+        margin: 0.75rem 0;
+        font-family: 'Poppins', sans-serif;
     }
     
+    body.dark-mode .clock-display {
+        color: #f8f9fa;
+    }
+    
+    /* Attendance status badges */
     .attendance-status {
-      display: inline-block;
-      padding: 8px 15px;
-      border-radius: 20px;
-      font-weight: 500;
-      margin-top: 10px;
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 2rem;
+        font-weight: 500;
+        margin-top: 0.625rem;
     }
     
     .status-present {
-      background-color: rgba(40, 167, 69, 0.15);
-      color: #28a745;
+        background-color: rgba(40, 167, 69, 0.15);
+        color: #28a745;
+    }
+    
+    body.dark-mode .status-present {
+        background-color: rgba(40, 167, 69, 0.25);
+        color: #68d289;
     }
     
     .status-absent {
-      background-color: rgba(220, 53, 69, 0.15);
-      color: #dc3545;
+        background-color: rgba(220, 53, 69, 0.15);
+        color: #dc3545;
     }
-  </style>
-</head>
-<body class="hold-transition sidebar-mini layout-footer-fixed layout-navbar-fixed layout-fixed dark-mode">
-<div class="wrapper">
-  <?php 
-    include 'includes/topbar.php';
-    include 'includes/sidebar.php';
-  ?>
+    
+    body.dark-mode .status-absent {
+        background-color: rgba(220, 53, 69, 0.25);
+        color: #e35d6a;
+    }
+    
+    /* Animation for time display */
+    .time-refresh {
+        animation: fadeInOut 2s infinite;
+    }
+    
+    @keyframes fadeInOut {
+        0% { opacity: 0.7; }
+        50% { opacity: 1; }
+        100% { opacity: 0.7; }
+    }
+    
+    /* Profile image */
+    .profile-user-img {
+        width: 100px;
+        height: 100px;
+        object-fit: cover;
+        border: 4px solid rgba(var(--primary-rgb), 0.2);
+    }
+    
+    /* Quick links */
+    .quick-link {
+        transition: all 0.2s ease;
+        padding: 0.75rem 1rem;
+        display: flex;
+        align-items: center;
+        border-radius: 0.5rem;
+        margin-bottom: 0.5rem;
+        text-decoration: none !important;
+    }
+    
+    .quick-link:hover {
+        background-color: rgba(var(--primary-rgb), 0.1);
+        transform: translateX(5px);
+    }
+    
+    body.dark-mode .quick-link:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    /* List group updates */
+    body.dark-mode .list-group-item {
+        background-color: #343a40;
+        border-color: #495057;
+    }
+    
+    /* Table styling */
+    body.dark-mode .table {
+        color: #f8f9fa;
+    }
+    
+    body.dark-mode .table-striped tbody tr:nth-of-type(odd) {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    body.dark-mode .badge-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    /* Button styling */
+    .btn-attendance {
+        border-radius: 2rem;
+        padding: 0.5rem 1.5rem;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-attendance:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
 
-  <!-- Content Wrapper. Contains page content -->
-  <div class="content-wrapper">
-    <!-- Main content -->
-    <section class="content">
-      <div class="container-fluid">
-        <!-- Welcome Section -->
-        <div class="welcome-section mb-4 mt-3">
-          <div class="row">
-            <div class="col-md-8">
-              <h2>Welcome, <?php echo $userData['first_name']; ?>!</h2>
-              <p><?php echo date('l, F j, Y'); ?> • <span class="time-refresh" id="live-time">Loading time...</span></p>
+    /* Quick Links Grid Modernization */
+    .quick-links-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+        padding: 1.25rem;
+    }
+    .quick-link-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        border-radius: 0.75rem;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        padding: 1.25rem 0.75rem;
+        text-decoration: none !important;
+        transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+        min-height: 140px;
+        border: none;
+        position: relative;
+    }
+    .quick-link-card:hover {
+        background: rgba(var(--primary-rgb), 0.07);
+        transform: translateY(-4px) scale(1.03);
+        box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+        z-index: 2;
+    }
+    .quick-link-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-bottom: 0.75rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+    .quick-link-text h6 {
+        font-weight: 600;
+        font-size: 1.05rem;
+        margin-bottom: 0.15rem;
+        color: #212529;
+    }
+    .quick-link-text small {
+        color: #6c757d;
+    }
+    body.dark-mode .quick-link-card {
+        background: #23272b;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.22);
+    }
+    body.dark-mode .quick-link-card:hover {
+        background: rgba(255,255,255,0.04);
+    }
+    body.dark-mode .quick-link-text h6 {
+        color: #f8f9fa;
+    }
+    body.dark-mode .quick-link-text small {
+        color: #adb5bd;
+    }
+</style>
+
+<!-- Main Content Container -->
+<div class="container-fluid p-4">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <?php 
+                // Get user information
+                $firstName = $userData['first_name'] ?? 'User'; // Default value
+                
+                echo "<h1 class='mb-1'>Welcome, {$firstName}!</h1>";
+            ?>
+        </div>
+    </div>
+    
+    <!-- Date Time Card -->
+    <div class="card mb-4 text-white shadow rounded-3 datetime-card" style="background: linear-gradient(135deg, var(--primary-color) 0%, #4e73df 100%);">
+        <div class="card-body py-3">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h2 class=" mb-0"><?php echo date('l'); ?></h2>
+                    <h4 class="opacity-85" id="date"><?php echo date('F j, Y'); ?></h4>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div class="d-flex align-items-center justify-content-md-end">
+                        <div class="attendance-status <?php echo !empty($todayAttendance) ? 'status-present' : 'status-absent'; ?> mb-0">
+                            <i class="fas <?php echo !empty($todayAttendance) ? 'fa-check-circle' : 'fa-exclamation-circle'; ?> me-2"></i>
+                            <?php echo !empty($todayAttendance) ? 'Present Today' : 'Not Checked In'; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="col-md-4 text-right">
-              <div class="attendance-status <?php echo isset($todayAttendance) ? 'status-present' : 'status-absent'; ?>">
-                <?php echo isset($todayAttendance) ? 'Present Today' : 'Not Checked In'; ?>
-              </div>
+        </div>
+    </div>
+    
+    <!-- Main Dashboard Content -->
+    <div class="row">
+        <!-- Left Column (8 cols) -->
+        <div class="col-lg-8">
+            <!-- User Profile Card (Redesigned with Bootstrap 5 classes) -->
+            <div class="card shadow mb-4 rounded-3 overflow-hidden">
+                <div class="row g-0 h-100">
+                    <!-- Left side with profile image and background - now full height -->
+                    <div class="col-md-4 text-center text-white position-relative p-0">
+                        <div class="d-flex flex-column justify-content-center align-items-center h-100 p-4"
+                             style="background: linear-gradient(135deg, var(--primary-color), #4e73df);"> 
+                            <div class="position-relative mx-auto mb-4">
+                                <img src="<?php echo $userData['user_image'] ?? 'resources/images/default-user.png'; ?>" 
+                                     class="rounded-circle img-thumbnail border-4 shadow"
+                                     style="width: 130px; height: 130px; object-fit: cover;">
+                                <div class="position-absolute bottom-0 end-0 translate-middle-y">
+                                    <div class="rounded-circle border-3 border-white d-flex align-items-center justify-content-center bg-<?php echo !empty($userData['exit_date']) ? 'danger' : 'success'; ?>"
+                                         style="width: 32px; height: 32px;">
+                                        <i class="fas fa-<?php echo !empty($userData['exit_date']) ? 'times' : 'check'; ?> fa-sm text-white"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <h5 class="fw-bold mb-1">
+                                <?php echo htmlspecialchars($userData['first_name'] . ' ' . $userData['last_name']); ?>
+                            </h5>
+                            <p class="opacity-75 mb-4"><?php echo htmlspecialchars($userData['designation_title'] ?? 'Not Assigned'); ?></p>
+                            <a href="profile.php" class="btn btn-light btn-sm rounded-pill px-4 shadow-sm fw-medium">
+                                <i class="fas fa-user me-1"></i> View Profile
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Right side with user details -->
+                    <div class="col-md-8">
+                        <div class="p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold mb-0">Profile Information</h5>
+                                <span class="badge bg-<?php echo !empty($userData['exit_date']) ? 'danger' : 'success'; ?> rounded-pill py-1 px-3">
+                                    <?php echo !empty($userData['exit_date']) ? 'Inactive' : 'Active'; ?>
+                                </span>
+                            </div>
+                            
+                            <div class="row g-3 mb-3">
+                                <div class="col-sm-6">
+                                    <div class="border-start border-primary ps-3 py-1">
+                                        <small class="text-muted d-block">Email Address</small>
+                                        <span class="fw-medium"><?php echo htmlspecialchars($userData['email']); ?></span>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="border-start border-success ps-3 py-1">
+                                        <small class="text-muted d-block">Employee ID</small>
+                                        <span class="fw-medium"><?php echo htmlspecialchars($userData['emp_id']); ?></span>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="border-start border-info ps-3 py-1">
+                                        <small class="text-muted d-block">Department</small>
+                                        <span class="fw-medium">
+                                            <?php 
+                                                try {
+                                                    $stmt = $pdo->prepare("SELECT departments.dept_name FROM departments 
+                                                                        JOIN employees ON departments.id = employees.department 
+                                                                        WHERE employees.id = ?");
+                                                    $stmt->execute([$userId]);
+                                                    $dept = $stmt->fetchColumn();
+                                                    echo htmlspecialchars($dept ?? 'Not assigned');
+                                                } catch (PDOException $e) {
+                                                    echo 'Not available';
+                                                }
+                                            ?>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="border-start border-warning ps-3 py-1">
+                                        <small class="text-muted d-block">Position</small>
+                                        <span class="fw-medium"><?php echo htmlspecialchars($userData['designation_title'] ?? 'Not Assigned'); ?></span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <hr>
+                            
+                            <!-- Quick Stats -->
+                            <div class="row g-2 text-center">
+                                <div class="col-4">
+                                    <div class="bg-body-tertiary p-3 rounded-3 shadow-sm border-0">
+                                        <h3 class="mb-0 fs-3 text-primary"><?php echo count($recentAttendance); ?></h3>
+                                        <small class="text-muted">Days Present</small>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="bg-body-tertiary p-3 rounded-3 shadow-sm border-0">
+                                        <h3 class="mb-0 fs-3 text-success">
+                                            <?php 
+                                                // Get leave count if available
+                                                $leaveCount = 0;
+                                                try {
+                                                    $stmt = $pdo->prepare("SELECT COUNT(*) FROM leaves WHERE emp_id = ? AND status = 'approved'");
+                                                    if ($stmt) {
+                                                        $stmt->execute([$userData['emp_id']]);
+                                                        $leaveCount = $stmt->fetchColumn() ?: 0;
+                                                    }
+                                                } catch (PDOException $e) {
+                                                    // Table might not exist, just show 0
+                                                }
+                                                echo $leaveCount;
+                                            ?>
+                                        </h3>
+                                        <small class="text-muted">Leaves</small>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="bg-body-tertiary p-3 rounded-3 shadow-sm border-0">
+                                        <h3 class="mb-0 fs-3 text-info">
+                                            <?php 
+                                                // Calculate tenure if join date is available
+                                                $tenure = 'N/A';
+                                                if (!empty($userData['join_date'])) {
+                                                    $joinDate = new DateTime($userData['join_date']);
+                                                    $now = new DateTime();
+                                                    $interval = $joinDate->diff($now);
+                                                    $tenure = $interval->y;
+                                                }
+                                                echo $tenure;
+                                            ?>
+                                        </h3>
+                                        <small class="text-muted">Years</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
+            
+            <!-- Recent Attendance Card -->
+            <div class="card modern-card">
+                <div class="card-header bg-transparent border-bottom">
+                    <h5 class="card-title mb-0">Your Recent Attendance</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Clock In</th>
+                                    <th>Clock Out</th>
+                                    <th>Duration</th>
+                                    <th>Method</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if(empty($recentAttendance)): ?>
+                                    <tr>
+                                        <td colspan="4" class="text-center">No attendance records found for the last 7 days</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach($recentAttendance as $record): ?>
+                                        <tr>
+                                            <td><?php echo date('D, M d', strtotime($record['date'])); ?></td>
+                                            <td><?php echo date('h:i A', strtotime($record['clock_in'])); ?></td>
+                                            <td>
+                                                <?php 
+                                                    if($record['clock_out'] && $record['clock_out'] != $record['clock_in']) {
+                                                        echo date('h:i A', strtotime($record['clock_out']));
+                                                    } else {
+                                                        echo '<span class="badge bg-warning">No checkout</span>';
+                                                    }
+                                                ?>
+                                            </td>
+                                            <td>
+                                                <?php 
+                                                    if($record['clock_out'] && $record['clock_out'] != $record['clock_in']) {
+                                                        $in = strtotime($record['clock_in']);
+                                                        $out = strtotime($record['clock_out']);
+                                                        $hours = round(($out - $in) / 3600, 2);
+                                                        echo $hours . ' hrs';
+                                                    } else {
+                                                        echo '-';
+                                                    }
+                                                ?>
+                                            </td>
+                                            <td>
+                                                <?php 
+                                                    switch ($record['method']) {
+                                                        case 0:
+                                                            echo '<span class="badge bg-primary">Auto</span>';
+                                                            break;
+                                                        case 1:
+                                                            echo '<span class="badge bg-warning" style="color: #000;">Manual</span>';
+                                                            break;
+                                                        case 2:
+                                                            echo '<span class="badge bg-info">Web</span>';
+                                                            break;
+                                                        default:
+                                                            echo '<span class="badge bg-secondary">Unknown</span>';
+                                                            break;
+                                                    }
+                                                ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-end mt-3">
+                        <a href="attendance.php" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-calendar-alt me-1"></i> View Full Attendance
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
         
-        <!-- Main content row -->
-        <div class="row">
-          <!-- Left column -->
-          <div class="col-lg-8">
-            <!-- Clock In/Out Card -->
+        <!-- Right Column (4 cols) -->
+        <div class="col-lg-4">
+            <!-- Today's Attendance Card (Moved from left column) -->
             <div class="card modern-card">
-              <div class="card-header">
-                <h3 class="card-title">Today's Attendance</h3>
-              </div>
-              <div class="card-body">
-                <div class="row">
-                  <div class="col-md-7 clock-card">
-                    <h5>Current Time</h5>
-                    <div class="clock-display" id="digital-clock">00:00:00</div>
-                    <div class="mt-3">
-                      <?php if (!isset($todayAttendance)): ?>
-                        <button id="clockInBtn" class="btn btn-success btn-lg">
-                          <i class="fas fa-sign-in-alt mr-2"></i> Clock In
-                        </button>
-                      <?php else: ?>
-                        <div class="text-success mb-3">
-                          <i class="fas fa-check-circle mr-1"></i>
-                          You clocked in at <?php echo date('h:i A', strtotime($todayAttendance['time'])); ?>
+                <div class="card-header bg-transparent border-bottom">
+                    <h5 class="card-title mb-0">Today's Attendance</h5>
+                </div>
+                <div class="card-body">
+                    <div class="clock-card mb-3">
+                        <div class="clock-icon">
+                            <i class="far fa-clock"></i>
                         </div>
-                        <button id="clockOutBtn" class="btn btn-primary btn-lg">
-                          <i class="fas fa-sign-out-alt mr-2"></i> Clock Out
-                        </button>
-                      <?php endif; ?>
-                    </div>
-                  </div>
-                  <div class="col-md-5">
-                    <div class="info-box modern-info-box mb-3">
-                      <span class="info-box-icon bg-gradient-info"><i class="far fa-calendar-check"></i></span>
-                      <div class="info-box-content">
-                        <span class="info-box-text">Last 7 Days</span>
-                        <span class="info-box-number"><?php echo count($recentAttendance); ?> days</span>
-                        <div class="progress">
-                          <div class="progress-bar" style="width: <?php echo (count($recentAttendance)/7) * 100; ?>%"></div>
+                        <h6 class="text-muted">Current Time</h6>
+                        <div class="clock-display" id="digital-clock">00:00:00</div>
+                        <div class="mt-3">
+                            <?php if (empty($todayAttendance)): ?>
+                                <button id="clockInBtn" class="btn btn-success btn-attendance">
+                                    <i class="fas fa-sign-in-alt me-2"></i> Clock In
+                                </button>
+                            <?php else: ?>
+                                <div class="text-success mb-3">
+                                    <i class="fas fa-check-circle me-1"></i>
+                                    You clocked in at <?php echo !empty($todayAttendance['time']) ? date('h:i A', strtotime($todayAttendance['time'])) : 'N/A'; ?>
+                                </div>
+                                <button id="clockOutBtn" class="btn btn-primary btn-attendance">
+                                    <i class="fas fa-sign-out-alt me-2"></i> Clock Out
+                                </button>
+                            <?php endif; ?>
                         </div>
-                      </div>
                     </div>
+                    
                     <div class="info-box modern-info-box">
-                      <span class="info-box-icon bg-gradient-success"><i class="fas fa-business-time"></i></span>
-                      <div class="info-box-content">
-                        <span class="info-box-text">Your Role</span>
-                        <span class="info-box-number"><?php echo $userData['designation']; ?></span>
-                      </div>
+                        <span class="info-box-icon bg-gradient-info"><i class="far fa-calendar-check"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">Last 7 Days Attendance</span>
+                            <span class="info-box-number"><?php echo count($recentAttendance); ?> days
+                                <small class="text-muted">(<?php echo round((count($recentAttendance)/7) * 100); ?>%)</small>
+                            </span>
+                            <div class="progress" style="height: 5px; margin-top: 5px;">
+                                <div class="progress-bar bg-info" style="width: <?php echo (count($recentAttendance)/7) * 100; ?>%"></div>
+                            </div>
+                        </div>
                     </div>
-                  </div>
                 </div>
-              </div>
             </div>
             
-            <!-- Recent Attendance Table -->
+            <!-- Quick Links Card - Redesigned -->
             <div class="card modern-card">
-              <div class="card-header">
-                <h3 class="card-title">Your Recent Attendance</h3>
-              </div>
-              <div class="card-body">
-                <table class="table table-bordered table-striped">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Clock In</th>
-                      <th>Clock Out</th>
-                      <th>Duration</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <?php foreach($recentAttendance as $record): ?>
-                      <tr>
-                        <td><?php echo date('D, M d', strtotime($record['date'])); ?></td>
-                        <td><?php echo date('h:i A', strtotime($record['clock_in'])); ?></td>
-                        <td>
-                          <?php 
-                            if($record['clock_out'] && $record['clock_out'] != $record['clock_in']) {
-                              echo date('h:i A', strtotime($record['clock_out']));
-                            } else {
-                              echo '<span class="badge badge-warning">No checkout</span>';
-                            }
-                          ?>
-                        </td>
-                        <td>
-                          <?php 
-                            if($record['clock_out'] && $record['clock_out'] != $record['clock_in']) {
-                              $in = strtotime($record['clock_in']);
-                              $out = strtotime($record['clock_out']);
-                              $hours = round(($out - $in) / 3600, 2);
-                              echo $hours . ' hrs';
-                            } else {
-                              echo '-';
-                            }
-                          ?>
-                        </td>
-                      </tr>
-                    <?php endforeach; ?>
-                    <?php if(empty($recentAttendance)): ?>
-                      <tr>
-                        <td colspan="4" class="text-center">No attendance records found for the last 7 days</td>
-                      </tr>
-                    <?php endif; ?>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Right column -->
-          <div class="col-lg-4">
-            <!-- User Profile Card -->
-            <div class="card modern-card">
-              <div class="card-body box-profile">
-                <div class="text-center">
-                  <img class="profile-user-img img-fluid img-circle" 
-                      src="<?php echo $userData['user_image'] ?? 'dist/img/default-avatar.png'; ?>" 
-                      alt="User profile picture">
+                <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Quick Links</h5>
+                    <span class="badge rounded-pill bg-primary">5 links</span>
                 </div>
-                <h3 class="profile-username text-center">
-                  <?php echo $userData['first_name'] . ' ' . $userData['last_name']; ?>
-                </h3>
-                <p class="text-muted text-center"><?php echo $userData['designation']; ?></p>
-                <ul class="list-group list-group-unbordered mb-3">
-                  <li class="list-group-item">
-                    <b>Email</b> <a class="float-right"><?php echo $userData['email']; ?></a>
-                  </li>
-                  <li class="list-group-item">
-                    <b>Employee ID</b> <a class="float-right"><?php echo $userData['emp_id']; ?></a>
-                  </li>
-                  <li class="list-group-item">
-                    <b>Department</b>
-                    <a class="float-right">
-                      <?php 
-                        try {
-                          $stmt = $pdo->prepare("SELECT departments.dept_name FROM departments 
-                                                JOIN employees ON departments.id = employees.department 
-                                                WHERE employees.id = ?");
-                          $stmt->execute([$userId]);
-                          $dept = $stmt->fetchColumn();
-                          echo $dept ?? 'Not assigned';
-                        } catch (PDOException $e) {
-                          echo 'Not available';
-                        }
-                      ?>
-                    </a>
-                  </li>
-                </ul>
-                <a href="profile.php" class="btn btn-primary btn-block">
-                  <b>View Full Profile</b>
-                </a>
-              </div>
+                <div class="card-body p-0">
+                    <div class="quick-links-grid">
+                        <a href="attendance.php" class="quick-link-card">
+                            <div class="quick-link-icon bg-primary-light">
+                                <i class="fas fa-calendar-alt text-primary"></i>
+                            </div>
+                            <div class="quick-link-text">
+                                <h6 class="mb-0">Attendance</h6>
+                                <small class="text-muted">View your records</small>
+                            </div>
+                        </a>
+                        
+                        <a href="profile.php" class="quick-link-card">
+                            <div class="quick-link-icon bg-success-light">
+                                <i class="fas fa-user text-success"></i>
+                            </div>
+                            <div class="quick-link-text">
+                                <h6 class="mb-0">Profile</h6>
+                                <small class="text-muted">View details</small>
+                            </div>
+                        </a>
+                        
+                        <a href="#" class="quick-link-card" data-bs-toggle="modal" data-bs-target="#leaveRequestModal">
+                            <div class="quick-link-icon bg-danger-light">
+                                <i class="fas fa-calendar-minus text-danger"></i>
+                            </div>
+                            <div class="quick-link-text">
+                                <h6 class="mb-0">Leave</h6>
+                                <small class="text-muted">Request time off</small>
+                            </div>
+                        </a>
+                        
+                        <a href="notifications.php" class="quick-link-card">
+                            <div class="quick-link-icon bg-warning-light">
+                                <i class="fas fa-bell text-warning"></i>
+                            </div>
+                            <div class="quick-link-text">
+                                <h6 class="mb-0">Alerts</h6>
+                                <small class="text-muted">View notifications</small>
+                            </div>
+                        </a>
+                        
+                        <a href="#" class="quick-link-card">
+                            <div class="quick-link-icon bg-info-light">
+                                <i class="fas fa-file-alt text-info"></i>
+                            </div>
+                            <div class="quick-link-text">
+                                <h6 class="mb-0">Pay Slip</h6>
+                                <small class="text-muted">Download documents</small>
+                            </div>
+                        </a>
+                    </div>
+                </div>
             </div>
             
-            <!-- Quick Links Card -->
+            <!-- Upcoming Events Card -->
             <div class="card modern-card">
-              <div class="card-header">
-                <h3 class="card-title">Quick Links</h3>
-              </div>
-              <div class="card-body p-0">
-                <ul class="list-group list-group-flush">
-                  <li class="list-group-item">
-                    <a href="attendance.php" class="d-flex align-items-center">
-                      <i class="fas fa-calendar-alt mr-2 text-primary"></i> View My Attendance
-                    </a>
-                  </li>
-                  <li class="list-group-item">
-                    <a href="profile.php" class="d-flex align-items-center">
-                      <i class="fas fa-user-edit mr-2 text-success"></i> Update My Profile
-                    </a>
-                  </li>
-                  <li class="list-group-item">
-                    <a href="#" class="d-flex align-items-center" data-toggle="modal" data-target="#leaveRequestModal">
-                      <i class="fas fa-calendar-minus mr-2 text-danger"></i> Request Leave
-                    </a>
-                  </li>
-                  <li class="list-group-item">
-                    <a href="#" class="d-flex align-items-center">
-                      <i class="fas fa-file-alt mr-2 text-warning"></i> Download Pay Slip
-                    </a>
-                  </li>
-                </ul>
-              </div>
+                <div class="card-header bg-transparent border-bottom">
+                    <h5 class="card-title mb-0">Upcoming Events</h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center py-4">
+                        <i class="far fa-calendar-alt fa-3x text-muted mb-3"></i>
+                        <p class="mb-0">No upcoming events at this time.</p>
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
-    </section>
-  </div>
-
-  <?php include 'includes/footer.php'; ?>
+    </div>
 </div>
 
-<!-- REQUIRED SCRIPTS -->
-<!-- jQuery -->
-<script src="plugins/jquery/jquery.min.js"></script>
-<!-- Bootstrap -->
-<script src="plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
-<!-- AdminLTE -->
-<script src="dist/js/adminlte.js"></script>
+<!-- Leave Request Modal -->
+<div class="modal fade" id="leaveRequestModal" tabindex="-1" aria-labelledby="leaveRequestModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="leaveRequestModalLabel">Request Leave</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="leaveRequestForm">
+                    <div class="mb-3">
+                        <label for="leaveType" class="form-label">Leave Type</label>
+                        <select class="form-select" id="leaveType" required>
+                            <option value="">Select leave type</option>
+                            <option value="sick">Sick Leave</option>
+                            <option value="vacation">Vacation</option>
+                            <option value="personal">Personal Leave</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="startDate" class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="startDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="endDate" class="form-label">End Date</label>
+                        <input type="date" class="form-control" id="endDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="leaveReason" class="form-label">Reason</label>
+                        <textarea class="form-control" id="leaveReason" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submitLeaveRequest">Submit Request</button>
+            </div>
+        </div>
+    </div>
+</div>
 
+<!-- Dashboard Scripts -->
 <script>
-$(document).ready(function() {
-    // Live digital clock function
+document.addEventListener('DOMContentLoaded', function() {
+    // Digital clock function
     function updateClock() {
         const now = new Date();
         let hours = now.getHours();
@@ -414,31 +817,134 @@ $(document).ready(function() {
         const seconds = now.getSeconds().toString().padStart(2, '0');
         const timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
         
-        $('#digital-clock').text(timeString);
-        $('#live-time').text(timeString);
+        // Update digital clock in Today's Attendance card
+        const digitalClock = document.getElementById('digital-clock');
+        if (digitalClock) {
+            digitalClock.textContent = timeString;
+        }
+        
+        // Update live time in top date card if it exists
+        const liveTime = document.getElementById('live-time');
+        if (liveTime) {
+            liveTime.textContent = timeString;
+        }
     }
     
     // Initial call and then update every second
     updateClock();
     setInterval(updateClock, 1000);
     
-    // Handle clock in button click
-    $('#clockInBtn').click(function() {
-        // You would implement an AJAX call to record attendance
-        alert('Clock in functionality would be implemented here');
-        // After successful clock in, reload the page
-        // window.location.reload();
-    });
+    // Handle attendance button clicks (both clock in and clock out)
+    const clockInBtn = document.getElementById('clockInBtn');
+    const clockOutBtn = document.getElementById('clockOutBtn');
     
-    // Handle clock out button click
-    $('#clockOutBtn').click(function() {
-        // You would implement an AJAX call to update attendance
-        alert('Clock out functionality would be implemented here');
-        // After successful clock out, reload the page
-        // window.location.reload();
-    });
+    function recordAttendance() {
+        // Determine if this is a clock-in or clock-out button press
+        const isClockIn = document.getElementById('clockInBtn') !== null;
+        
+        // Show loading state
+        Swal.fire({
+            title: 'Processing...',
+            text: isClockIn ? 'Recording clock in...' : 'Recording clock out...',
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            willOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
+        // Make an AJAX request to record attendance
+        fetch('record_attendance.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'action=record_attendance&emp_id=<?php echo $userData['emp_id']; ?>',
+            // Add timeout to prevent hanging requests
+            timeout: 10000
+        })
+        .then(response => {
+            // Check if the response is ok (status in the range 200-299)
+            if (!response.ok) {
+                throw new Error('Server returned ' + response.status + ': ' + response.statusText);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.success) {
+                // No need to save timestamp separately - just show success message
+                Swal.fire({
+                    icon: 'success',
+                    title: data.action === 'check-in' ? 'Clocked In!' : 'Clocked Out!',
+                    text: data.message || 'Your attendance has been recorded.',
+                    showConfirmButton: false,
+                    timer: 2000
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message || 'Failed to record attendance. Please try again.',
+                    showConfirmButton: true
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Attendance error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Network Error',
+                html: 'A network error occurred while recording attendance.<br><br>' +
+                      '<strong>Possible causes:</strong><br>' +
+                      '• Database connection issue<br>' +
+                      '• Server is not responding<br>' +
+                      '• Network connectivity problem',
+                showConfirmButton: true,
+                confirmButtonText: 'Try Again',
+                showCancelButton: true,
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // If user clicks "Try Again", call this function again
+                    recordAttendance();
+                }
+            });
+        });
+    }
+    
+    // Add click handlers to both buttons
+    if (clockInBtn) {
+        clockInBtn.addEventListener('click', recordAttendance);
+    }
+    
+    if (clockOutBtn) {
+        clockOutBtn.addEventListener('click', recordAttendance);
+    }
+    
+    // Handle leave request submission
+    const submitLeaveRequest = document.getElementById('submitLeaveRequest');
+    if (submitLeaveRequest) {
+        submitLeaveRequest.addEventListener('click', function() {
+            const form = document.getElementById('leaveRequestForm');
+            if (form.checkValidity()) {
+                // AJAX call would go here in a production environment
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Request Submitted!',
+                    text: 'Your leave request has been submitted for approval.',
+                    showConfirmButton: true
+                }).then(() => {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('leaveRequestModal'));
+                    modal.hide();
+                });
+            } else {
+                form.reportValidity();
+            }
+        });
+    }
 });
 </script>
 
-</body>
-</html>
+<?php require_once 'includes/footer.php'; ?>

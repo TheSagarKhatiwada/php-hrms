@@ -18,11 +18,14 @@ if (isset($_SESSION['message']) && isset($_SESSION['message_type'])) {
 function showSuccessToast(message) {
     const Toast = Swal.mixin({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end',
         showConfirmButton: false,
         showCloseButton: true,
         timer: 5000,
         timerProgressBar: true,
+        customClass: {
+            popup: 'success-toast'
+        },
         didOpen: (toast) => {
             toast.addEventListener('mouseenter', Swal.stopTimer)
             toast.addEventListener('mouseleave', Swal.resumeTimer)
@@ -39,11 +42,14 @@ function showSuccessToast(message) {
 function showErrorToast(message) {
     const Toast = Swal.mixin({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end', // Errors at top for more visibility
         showConfirmButton: false,
         showCloseButton: true,
         timer: 5000,
         timerProgressBar: true,
+        customClass: {
+            popup: 'error-toast'
+        },
         didOpen: (toast) => {
             toast.addEventListener('mouseenter', Swal.stopTimer)
             toast.addEventListener('mouseleave', Swal.resumeTimer)
@@ -60,11 +66,14 @@ function showErrorToast(message) {
 function showWarningToast(message) {
     const Toast = Swal.mixin({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end',
         showConfirmButton: false,
         showCloseButton: true,
         timer: 5000,
         timerProgressBar: true,
+        customClass: {
+            popup: 'warning-toast'
+        },
         didOpen: (toast) => {
             toast.addEventListener('mouseenter', Swal.stopTimer)
             toast.addEventListener('mouseleave', Swal.resumeTimer)
@@ -81,11 +90,14 @@ function showWarningToast(message) {
 function showInfoToast(message) {
     const Toast = Swal.mixin({
         toast: true,
-        position: 'top-end',
+        position: 'bottom-end',
         showConfirmButton: false,
         showCloseButton: true,
         timer: 5000,
         timerProgressBar: true,
+        customClass: {
+            popup: 'info-toast'
+        },
         didOpen: (toast) => {
             toast.addEventListener('mouseenter', Swal.stopTimer)
             toast.addEventListener('mouseleave', Swal.resumeTimer)

@@ -9,12 +9,14 @@ include 'includes/utilities.php';
 
 // Fetching attendance data
 try {
-    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id, b.name 
+    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id, b.name , d.title AS designation, a.manual_reason
                            FROM attendance_logs a 
                            INNER JOIN employees e ON a.emp_Id = e.emp_id 
                            INNER JOIN branches b ON e.branch = b.id 
+                           LEFT JOIN designations d ON e.designation = d.id
+                           WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                            ORDER BY a.date DESC, a.time DESC 
-                           LIMIT 100");
+                           LIMIT 200");
     $stmt->execute();
     $attendanceRecords = $stmt->fetchAll();
 } catch (PDOException $e) {
@@ -69,7 +71,7 @@ require_once __DIR__ . '/includes/header.php';
                            class="rounded-circle me-3" 
                            style="width: 40px; height: 40px; object-fit: cover;">
                       <div>
-                        <div class="fw-bold"><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['last_name']); ?></div>
+                        <div class="fw-bold"><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['middle_name'] . ' ' . $record['last_name']); ?></div>
                         <small class="text-muted"><?php echo htmlspecialchars($record['designation'] ?: 'Not Assigned'); ?></small>
                       </div>
                     </div>
@@ -78,11 +80,23 @@ require_once __DIR__ . '/includes/header.php';
                   <td class="text-center align-middle"><?php echo date('M d, Y', strtotime($record['date'])); ?></td>
                   <td class="text-center align-middle"><?php echo htmlspecialchars($record['time']); ?></td>
                   <td class="text-center align-middle">
-                    <?php if ($record['method'] == 0): ?>
-                      <span class="badge bg-success">Auto</span>
-                    <?php else: ?>
-                      <span class="badge bg-warning text-dark">Manual</span>
-                    <?php endif; ?>
+                    <?php 
+                    $methodText = '<span class="badge bg-secondary">Unknown</span>'; // Default
+                    if (isset($record['method'])) {
+                        switch ($record['method']) {
+                            case 0:
+                                $methodText = '<span class="badge bg-primary">Auto</span>';
+                                break;
+                            case 1:
+                                $methodText = '<span class="badge bg-warning" style="color: #000;">Manual</span>';
+                                break;
+                            case 2:
+                                $methodText = '<span class="badge bg-info">Web</span>';
+                                break;
+                        }
+                    }
+                    echo $methodText;
+                    ?>
                   </td>
                   <td>
                     <?php 
@@ -97,11 +111,11 @@ require_once __DIR__ . '/includes/header.php';
                         case '3': echo 'Forgot to Punch'; break;
                         case '4': echo 'Office Work Delay'; break;
                         case '5': echo 'Field Visit'; break;
-                        default: echo $reasonId;
+                        default: echo "-" . $reasonId;
                       }
                       
                       if (!empty($remarks)) {
-                        echo "<br><small class='text-muted'>" . htmlspecialchars($remarks) . "</small>";
+                        echo "<br><small class='text-muted'>-" . htmlspecialchars($remarks) . "</small>";
                       }
                     } else {
                       echo '<span class="text-muted">-</span>';
@@ -110,8 +124,13 @@ require_once __DIR__ . '/includes/header.php';
                   </td>
                   <td class="text-center align-middle">
                     <?php if ($record['method'] == 1): ?>
-                    <div class="btn-group">
-                      <button type="button" class="btn btn-sm btn-outline-primary edit-attendance" 
+                    <div class="dropdown">
+                      <a href="#" class="text-secondary" role="button" id="dropdownMenuButton<?php echo $record['id']; ?>" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-ellipsis-v"></i>
+                      </a>
+                      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton<?php echo $record['id']; ?>">
+                        <li>
+                          <a class="dropdown-item edit-attendance" href="#"
                               data-bs-toggle="modal" 
                               data-bs-target="#editAttendanceModal" 
                               data-id="<?php echo $record['id']; ?>"
@@ -124,14 +143,19 @@ require_once __DIR__ . '/includes/header.php';
                               data-emp-image="<?php echo $record['user_image']; ?>"
                               data-designation="<?php echo $record['designation']; ?>"
                               data-branch="<?php echo $record['name']; ?>">
-                        <i class="fas fa-edit"></i>
-                      </button>
-                      <a href="#" class="btn btn-sm btn-outline-danger delete-attendance" 
-                         data-bs-toggle="modal" 
-                         data-bs-target="#deleteAttendanceModal"
-                         data-id="<?php echo $record['id']; ?>">
-                        <i class="fas fa-trash"></i>
-                      </a>
+                            <i class="fas fa-edit me-2"></i> Edit
+                          </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                          <a class="dropdown-item text-danger delete-attendance" href="#"
+                             data-bs-toggle="modal" 
+                             data-bs-target="#deleteAttendanceModal"
+                             data-id="<?php echo $record['id']; ?>">
+                            <i class="fas fa-trash me-2"></i> Delete
+                          </a>
+                        </li>
+                      </ul>
                     </div>
                     <?php else: ?>
                     <span class="text-muted">-</span>
@@ -262,7 +286,7 @@ require_once __DIR__ . '/includes/header.php';
           <input type="hidden" id="edit_attendance_id" name="attendanceId">
           
           <!-- Employee Details Section -->
-          <div class="p-3 mb-3 bg-light rounded">
+          <div class="p-3 mb-3 rounded">
             <div class="d-flex align-items-center">
               <img id="edit_emp_image" src="" alt="Employee Image" class="rounded-circle me-3" style="width: 60px; height: 60px; object-fit: cover;">
               <div>

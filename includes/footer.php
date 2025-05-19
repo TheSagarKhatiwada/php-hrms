@@ -66,11 +66,36 @@ body.dark-mode .theme-border {
 
 @media (max-width: 575.98px) {
   .main-footer {
-    padding: 0.75rem 1rem;
+    padding: 0.35rem 0.5rem;
   }
   
   .main-footer .gap-3 {
     gap: 0.5rem !important;
+  }
+}
+
+/* Mobile Auto-Hide Footer on Scroll */
+@media (max-width: 767.98px) {
+  .main-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1020;
+    transition: transform 0.3s ease;
+  }
+  
+  .footer-scroll-up {
+    transform: translateY(0);
+  }
+  
+  .footer-scroll-down {
+    transform: translateY(100%);
+  }
+  
+  /* Add padding to body to prevent content from being hidden behind fixed footer */
+  body {
+    padding-bottom: var(--footer-height, 60px);
   }
 }
 
@@ -96,6 +121,264 @@ html {
 html * {
   transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
+
+/* SweetAlert2 Toast Customization */
+.swal2-popup.swal2-toast {
+  padding: 0.85rem 1.15rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.15);
+  border: 1px solid transparent;
+  font-family: inherit;
+  transition: all 0.3s ease;
+  max-width: 360px;
+}
+
+/* Toast title */
+.swal2-popup.swal2-toast .swal2-title {
+  margin: 0.25rem 0;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Toast timer */
+.swal2-popup.swal2-toast .swal2-timer-progress-bar {
+  height: 4px;
+  opacity: 0.7;
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+/* Toast icons */
+.swal2-popup.swal2-toast .swal2-icon {
+  width: 1.5em;
+  min-width: 1.5em;
+  height: 1.5em;
+  margin: 0 0.75em 0 0;
+  position: relative;
+  box-sizing: content-box;
+  border-width: 0.15em;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.swal2-popup.swal2-toast .swal2-icon .swal2-icon-content {
+  font-size: 1.2em;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Fix animated icons for success toast */
+.swal2-popup.swal2-toast .swal2-success {
+  border-color: #4CAF50;
+  color: #4CAF50;
+}
+
+.swal2-popup.swal2-toast .swal2-success [class^=swal2-success-line] {
+  height: 0.3em;
+  background-color: #4CAF50;
+  display: block;
+  position: absolute;
+  z-index: 2;
+  border-radius: 0.125em;
+}
+
+.swal2-popup.swal2-toast .swal2-success [class^=swal2-success-line][class$=tip] {
+  top: 0.8em;
+  left: 0.2em;
+  width: 0.6em;
+  transform: rotate(45deg);
+}
+
+.swal2-popup.swal2-toast .swal2-success [class^=swal2-success-line][class$=long] {
+  top: 0.65em;
+  right: 0.2em;
+  width: 0.95em;
+  transform: rotate(-45deg);
+}
+
+/* Fix animated icons for error toast */
+.swal2-popup.swal2-toast .swal2-error {
+  border-color: #F44336;
+  color: #F44336;
+}
+
+.swal2-popup.swal2-toast .swal2-error [class^=swal2-x-mark-line] {
+  position: absolute;
+  height: 0.15em;
+  width: 1em;
+  background-color: #F44336;
+  display: block;
+  top: 0.65em;
+  border-radius: 0.125em;
+}
+
+.swal2-popup.swal2-toast .swal2-error [class^=swal2-x-mark-line][class$=left] {
+  left: 0.25em;
+  transform: rotate(45deg);
+}
+
+.swal2-popup.swal2-toast .swal2-error [class^=swal2-x-mark-line][class$=right] {
+  right: 0.25em;
+  transform: rotate(-45deg);
+}
+
+/* Fix animated icons for warning toast */
+.swal2-popup.swal2-toast .swal2-warning {
+  border-color: #FF9800;
+  color: #FF9800;
+}
+
+/* Fix animated icons for info toast */
+.swal2-popup.swal2-toast .swal2-info {
+  border-color: #2196F3;
+  color: #2196F3;
+}
+
+/* Toast close button */
+.swal2-popup.swal2-toast .swal2-close {
+  margin-left: 0.5em;
+  font-size: 1.5em;
+  color: #6c757d;
+  transition: color 0.2s ease;
+}
+
+.swal2-popup.swal2-toast .swal2-close:hover {
+  color: #495057;
+}
+
+/* Toast background and text colors - LIGHT THEME */
+.swal2-popup.swal2-toast.success-toast {
+  background-color: #E8F5E9;
+  border-color: #A5D6A7;
+  color: #1B5E20;
+}
+
+.swal2-popup.swal2-toast.error-toast {
+  background-color: #FFEBEE;
+  border-color: #FFCDD2;
+  color: #B71C1C;
+}
+
+.swal2-popup.swal2-toast.warning-toast {
+  background-color: #FFF3E0;
+  border-color: #FFCC80;
+  color: #E65100;
+}
+
+.swal2-popup.swal2-toast.info-toast {
+  background-color: #E3F2FD;
+  border-color: #90CAF9;
+  color: #0D47A1;
+}
+
+/* Timer progress bar colors */
+.swal2-popup.swal2-toast.success-toast .swal2-timer-progress-bar {
+  background-color: #4CAF50;
+}
+
+.swal2-popup.swal2-toast.error-toast .swal2-timer-progress-bar {
+  background-color: #F44336;
+}
+
+.swal2-popup.swal2-toast.warning-toast .swal2-timer-progress-bar {
+  background-color: #FF9800;
+}
+
+.swal2-popup.swal2-toast.info-toast .swal2-timer-progress-bar {
+  background-color: #2196F3;
+}
+
+/* Dark mode styles */
+body.dark-mode .swal2-popup.swal2-toast {
+  box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.35);
+}
+
+body.dark-mode .swal2-popup.swal2-toast.success-toast {
+  background-color: #1B3724;
+  border-color: #4CAF50;
+  color: #A5D6A7;
+}
+
+body.dark-mode .swal2-popup.swal2-toast.error-toast {
+  background-color: #3E1F22;
+  border-color: #F44336;
+  color: #FFCDD2;
+}
+
+body.dark-mode .swal2-popup.swal2-toast.warning-toast {
+  background-color: #3E2A10;
+  border-color: #FF9800;
+  color: #FFCC80;
+}
+
+body.dark-mode .swal2-popup.swal2-toast.info-toast {
+  background-color: #102A43;
+  border-color: #2196F3;
+  color: #90CAF9;
+}
+
+body.dark-mode .swal2-popup.swal2-toast .swal2-close {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .swal2-popup.swal2-toast .swal2-close:hover {
+  color: #ffffff;
+}
+
+/* Add a subtle left border accent for better visual distinction */
+.swal2-popup.swal2-toast.success-toast {
+  border-left: 4px solid #4CAF50;
+}
+
+.swal2-popup.swal2-toast.error-toast {
+  border-left: 4px solid #F44336;
+}
+
+.swal2-popup.swal2-toast.warning-toast {
+  border-left: 4px solid #FF9800;
+}
+
+.swal2-popup.swal2-toast.info-toast {
+  border-left: 4px solid #2196F3;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 576px) {
+  .swal2-popup.swal2-toast {
+    padding: 0.65rem 0.85rem;
+    width: 300px;
+    max-width: 90vw;
+  }
+  
+  .swal2-popup.swal2-toast .swal2-title {
+    font-size: 0.95rem;
+  }
+  
+  .swal2-popup.swal2-toast .swal2-icon {
+    width: 1.25em;
+    min-width: 1.25em;
+    height: 1.25em;
+    margin: 0 0.4em 0 0;
+  }
+  
+  .swal2-popup.swal2-toast .swal2-icon .swal2-icon-content {
+    font-size: 1em;
+  }
+  
+  /* Position adjustment for mobile */
+  body.swal2-toast-shown .swal2-container.swal2-top-end,
+  body.swal2-toast-shown .swal2-container.swal2-top-right {
+    right: 10px;
+    top: 10px;
+  }
+}
 </style>
 
 <!-- REQUIRED SCRIPTS -->
@@ -111,76 +394,82 @@ html * {
 <!-- SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+<!-- Notifications System JS -->
+<script src="<?php echo isset($home) ? $home : './'; ?>resources/js/notifications.js"></script>
+
 <!-- Loading Overlay Script -->
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  // Hide loading overlay once the page is fully loaded
-  const loadingOverlay = document.getElementById('loadingOverlay');
+// Force hide the loading overlay immediately and again after a short timeout
+(function() {
+  // Hide immediately
+  var loadingOverlay = document.getElementById('loadingOverlay');
   if (loadingOverlay) {
-    loadingOverlay.style.opacity = '0';
-    setTimeout(() => {
-      loadingOverlay.style.display = 'none';
-    }, 300);
+    loadingOverlay.style.display = 'none';
   }
-});
+  
+  // Also hide on DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', function() {
+    var loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'none';
+    }
+  });
+  
+  // Failsafe - force hide after 1 second
+  setTimeout(function() {
+    var loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) {
+      loadingOverlay.style.display = 'none';
+    }
+  }, 1000);
+})();
 </script>
 
 <!-- Notification System -->
 <script>
-function showNotification(type, message) {
-  Swal.fire({
-    icon: type, // 'success', 'error', 'warning', 'info'
-    title: type.charAt(0).toUpperCase() + type.slice(1),
-    text: message,
-    toast: true,
-    position: 'top-end',
-    showConfirmButton: false,
-    timer: 3000,
-    timerProgressBar: true,
-    didOpen: (toast) => {
-      toast.addEventListener('mouseenter', Swal.stopTimer)
-      toast.addEventListener('mouseleave', Swal.resumeTimer)
-    }
-  });
-}
-
-// Helper functions for common notifications
-function showSuccessToast(message) {
-  showNotification('success', message);
-}
-
-function showErrorToast(message) {
-  showNotification('error', message);
-}
-
-function showWarningToast(message) {
-  showNotification('warning', message);
-}
-
-function showInfoToast(message) {
-  showNotification('info', message);
-}
-
-// Handle PHP Session Messages if they exist
-<?php if(isset($_SESSION['success'])): ?>
-  showSuccessToast('<?php echo addslashes($_SESSION['success']); ?>');
-  <?php unset($_SESSION['success']); ?>
-<?php endif; ?>
-
-<?php if(isset($_SESSION['error'])): ?>
-  showErrorToast('<?php echo addslashes($_SESSION['error']); ?>');
-  <?php unset($_SESSION['error']); ?>
-<?php endif; ?>
-
-<?php if(isset($_SESSION['warning'])): ?>
-  showWarningToast('<?php echo addslashes($_SESSION['warning']); ?>');
-  <?php unset($_SESSION['warning']); ?>
-<?php endif; ?>
-
-<?php if(isset($_SESSION['info'])): ?>
-  showInfoToast('<?php echo addslashes($_SESSION['info']); ?>');
-  <?php unset($_SESSION['info']); ?>
-<?php endif; ?>
+  <?php if (isset($_SESSION['success'])): ?>
+        // Success Toast Notification
+        Swal.fire({
+            position: 'bottom-end',
+            icon: 'success',
+            title: '<?php echo $_SESSION['success']; ?>',
+            showConfirmButton: false,
+            timer: 3000,
+            toast: true,
+            timerProgressBar: true,
+            showCloseButton: true,
+            customClass: {
+                popup: 'success-toast'
+            },
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer)
+                toast.addEventListener('mouseleave', Swal.resumeTimer)
+            }
+        });
+        // Clear session variable after showing the toast
+        <?php unset($_SESSION['success']); ?>
+    <?php elseif (isset($_SESSION['error'])): ?>
+        // Error Toast Notification
+        Swal.fire({
+            position: 'top-end',
+            icon: 'error',
+            title: '<?php echo $_SESSION['error']; ?>',
+            showConfirmButton: false,
+            timer: 3000,
+            toast: true,
+            timerProgressBar: true,
+            showCloseButton: true,
+            customClass: {
+                popup: 'error-toast'
+            },
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer)
+                toast.addEventListener('mouseleave', Swal.resumeTimer)
+            }
+        });
+        // Clear session variable after showing the toast
+        <?php unset($_SESSION['error']); ?>
+    <?php endif; ?>
 </script>
 
 <!-- Date and Time Display -->
@@ -350,14 +639,22 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- Sidebar Collapse/Expand Script -->
+<!-- Unified Sidebar Management Script -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const sidebar = document.getElementById('main-sidebar');
-  const toggleButton = document.getElementById('sidebar-toggle'); // Assuming the main toggle button has this ID
+  const toggleButton = document.getElementById('sidebar-toggle'); // Desktop toggle button
   const mobileToggleButton = document.getElementById('mobile-sidebar-toggle');
   const sidebarCloseButton = document.getElementById('sidebar-close');
 
+  console.log('Sidebar elements:', { 
+    sidebar: sidebar, 
+    toggleButton: toggleButton,
+    mobileToggleButton: mobileToggleButton, 
+    sidebarCloseButton: sidebarCloseButton 
+  });
+
+  // Function to apply collapsed/expanded state for desktop view
   const applySidebarState = (isCollapsed) => {
     if (isCollapsed) {
       document.body.classList.add('sidebar-collapse');
@@ -374,7 +671,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => window.dispatchEvent(new Event('resize')), 350); 
   };
 
-  // Desktop Toggle
+  // Desktop Toggle Button (Collapse/Expand)
   if (toggleButton && sidebar) {
     toggleButton.addEventListener('click', function(e) {
       e.preventDefault();
@@ -382,18 +679,21 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Mobile Toggle (Show/Hide)
+  // Mobile Toggle Button (Show/Hide)
   if (mobileToggleButton && sidebar) {
-    mobileToggleButton.addEventListener('click', function() {
-      sidebar.classList.toggle('show'); // For mobile overlay visibility
-      // Optionally collapse desktop view if mobile opens?
-      // applySidebarState(false); // Uncomment if opening mobile should always expand desktop layout
+    mobileToggleButton.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Mobile toggle clicked - showing/hiding sidebar');
+      sidebar.classList.toggle('show');
     });
   }
 
   // Mobile Close Button
   if (sidebarCloseButton && sidebar) {
-    sidebarCloseButton.addEventListener('click', function() {
+    sidebarCloseButton.addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log('Close button clicked - hiding sidebar');
       sidebar.classList.remove('show');
     });
   }
@@ -406,52 +706,20 @@ document.addEventListener('DOMContentLoaded', function() {
         mobileToggleButton && 
         !mobileToggleButton.contains(event.target) &&
         sidebar.classList.contains('show')) {
+      console.log('Outside click detected - hiding sidebar');
       sidebar.classList.remove('show');
     }
   });
 
   // Apply initial state from localStorage on desktop
   if (window.innerWidth > 768) {
-      const savedState = localStorage.getItem('sidebarState');
-      applySidebarState(savedState === 'collapsed');
+    const savedState = localStorage.getItem('sidebarState');
+    applySidebarState(savedState === 'collapsed');
   } else {
-      // Ensure mobile starts hidden and layout is not collapsed
-      if(sidebar) sidebar.classList.remove('show');
-      applySidebarState(false); 
+    // Ensure mobile starts hidden and layout is not collapsed
+    if (sidebar) sidebar.classList.remove('show');
+    applySidebarState(false); 
   }
-});
-</script>
-
-<!-- Mobile Sidebar Management Script -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const mobileToggle = document.getElementById('mobile-sidebar-toggle');
-  const sidebar = document.getElementById('main-sidebar');
-  const sidebarClose = document.getElementById('sidebar-close');
-  
-  if (mobileToggle && sidebar) {
-    mobileToggle.addEventListener('click', function() {
-      sidebar.classList.toggle('show');
-    });
-  }
-  
-  if (sidebarClose && sidebar) {
-    sidebarClose.addEventListener('click', function() {
-      sidebar.classList.remove('show');
-    });
-  }
-  
-  // Close sidebar when clicking outside on mobile
-  document.addEventListener('click', function(event) {
-    if (window.innerWidth <= 768 && 
-        sidebar && 
-        !sidebar.contains(event.target) && 
-        mobileToggle && 
-        !mobileToggle.contains(event.target) &&
-        sidebar.classList.contains('show')) {
-      sidebar.classList.remove('show');
-    }
-  });
 });
 </script>
 
@@ -482,51 +750,71 @@ $(function() {
 });
 </script>
 
-<!-- Online/Offline Status Detection -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const indicators = document.querySelectorAll('.connection-dot');
-  const statusTexts = document.querySelectorAll('#connection-text');
-  
-  function updateOnlineStatus() {
-    if (navigator.onLine) {
-      indicators.forEach(indicator => {
-        indicator.classList.remove('offline');
-        indicator.classList.add('online');
-      });
-      statusTexts.forEach(text => {
-        if (text) text.textContent = 'Online';
-      });
-    } else {
-      indicators.forEach(indicator => {
-        indicator.classList.remove('online');
-        indicator.classList.add('offline');
-      });
-      statusTexts.forEach(text => {
-        if (text) text.textContent = 'Offline';
-      });
-    }
-  }
-  
-  window.addEventListener('online', updateOnlineStatus);
-  window.addEventListener('offline', updateOnlineStatus);
-  updateOnlineStatus(); // Initial check
-});
-</script>
-
 <!-- PWA Service Worker Registration -->
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('<?php echo isset($home) ? $home : ''; ?>sw.js')
-      .then(registration => {
-        console.log('ServiceWorker registration successful');
-      })
-      .catch(err => {
-        console.log('ServiceWorker registration failed: ', err);
+  window.addEventListener('load', async () => {
+    try {
+      // First, unregister any existing service workers to force reload of the new one
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+        console.log('ServiceWorker unregistered successfully');
+      }
+      
+      // Then register the new service worker
+      const registration = await navigator.serviceWorker.register('<?php echo isset($home) ? $home : ''; ?>sw.js?v=<?php echo time(); ?>', {
+        updateViaCache: 'none'
       });
+      console.log('ServiceWorker registration successful with scope:', registration.scope);
+    } catch (error) {
+      console.error('ServiceWorker registration failed:', error);
+    }
   });
 }
+</script>
+
+<!-- Auto-hide Footer on Scroll for Mobile -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Auto-hide footer on scroll for mobile
+  if (window.innerWidth < 768) {
+    const footer = document.getElementById('main-footer');
+    let lastScrollTop = 0;
+    let scrollTimer;
+    
+    // Add initial class
+    if (footer) {
+      footer.classList.add('footer-scroll-up');
+      
+      window.addEventListener('scroll', function() {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        
+        // Clear previous timeout
+        clearTimeout(scrollTimer);
+        
+        // Scrolling down
+        if (scrollTop > lastScrollTop && scrollTop > 100) {
+          footer.classList.remove('footer-scroll-up');
+          footer.classList.add('footer-scroll-down');
+        } 
+        // Scrolling up
+        else if (scrollTop < lastScrollTop) {
+          footer.classList.remove('footer-scroll-down');
+          footer.classList.add('footer-scroll-up');
+        }
+        
+        // Show footer when user stops scrolling for a short while
+        scrollTimer = setTimeout(function() {
+          footer.classList.remove('footer-scroll-down');
+          footer.classList.add('footer-scroll-up');
+        }, 2000);
+        
+        lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
+      }, { passive: true });
+    }
+  }
+});
 </script>
 
 <!-- Common AJAX Forms Handler -->
@@ -603,6 +891,70 @@ $(function() {
         submitBtn.prop('disabled', false);
       }
     });
+  });
+});
+</script>
+
+<!-- JS to prevent caching and ensure fresh data -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Add timestamp to AJAX requests to prevent caching
+  $.ajaxSetup({
+    cache: false,
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    },
+    beforeSend: function(xhr) {
+      // Add a timestamp to the URL to prevent caching
+      this.url += (this.url.indexOf('?') === -1 ? '?' : '&') + '_t=' + new Date().getTime();
+    }
+  });
+
+  // Force reload of data-sensitive pages when user returns to the app after inactivity
+  let lastActivity = Date.now();
+  const inactivityThreshold = 5 * 60 * 1000; // 5 minutes
+
+  // Update last activity time on user interaction
+  ['click', 'keypress', 'scroll', 'mousemove', 'touchstart'].forEach(function(event) {
+    document.addEventListener(event, function() {
+      lastActivity = Date.now();
+    }, true);
+  });
+
+  // Check if page needs refresh when user returns to window/tab
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      const timeSinceActivity = Date.now() - lastActivity;
+      if (timeSinceActivity > inactivityThreshold) {
+        // Only reload data-sensitive pages
+        const dataSensitivePages = ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 
+                                   'daily-report.php', 'monthly-report.php', 'employees.php',
+                                   'assets.php', 'manage_assets.php'];
+        
+        const currentPage = window.location.pathname.split('/').pop();
+        if (dataSensitivePages.includes(currentPage)) {
+          // Show a subtle reload notification
+          const notification = document.createElement('div');
+          notification.style.position = 'fixed';
+          notification.style.top = '60px';
+          notification.style.right = '20px';
+          notification.style.padding = '10px 15px';
+          notification.style.backgroundColor = 'rgba(13, 110, 253, 0.9)';
+          notification.style.color = 'white';
+          notification.style.borderRadius = '4px';
+          notification.style.zIndex = '9999';
+          notification.innerHTML = '<i class="fas fa-sync-alt"></i> Refreshing data...';
+          document.body.appendChild(notification);
+          
+          // Refresh the page after a short delay
+          setTimeout(function() {
+            window.location.reload();
+          }, 1000);
+        }
+      }
+    }
   });
 });
 </script>

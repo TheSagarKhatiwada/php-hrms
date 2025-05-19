@@ -2,26 +2,73 @@
 // Include session configuration first
 require_once 'includes/session_config.php';
 
-// Include database connection
+// Include database connection and utilities
 include 'includes/db_connection.php';
 include 'includes/configuration.php';
+include 'includes/settings.php';
+include 'includes/utilities.php'; // Add this line to include utilities.php
+
+// Define the application name
+$appName = get_setting('app_name', 'App Name');
+
+// Fetch saved company short name
+$companyShortName = get_setting('company_name', 'Company Short Name');
+
+// Fetch saved company full name
+$companyFullName = get_setting('company_full_name', 'Company Full Name');
+
+// Fetch saved company logo URL
+$companyLogoURL = get_setting('company_logo', 'resources\images\company_logo.png');
+
+// Fetch saved Primary and secondary colors
+$primaryColor = get_setting('company_primary_color', '#FFFFFF');
+$secondaryColor = get_setting('company_secondary_color', '#000000');
+
+// Function to adjust color brightness
+function adjustBrightness($hex, $steps) {
+    // Steps should be between -255 and 255. Negative = darker, positive = lighter
+    $steps = max(-255, min(255, $steps));
+
+    // Format the hex color string
+    $hex = str_replace('#', '', $hex);
+    if (strlen($hex) == 3) {
+        $hex = str_repeat(substr($hex, 0, 1), 2) . str_repeat(substr($hex, 1, 1), 2) . str_repeat(substr($hex, 2, 1), 2);
+    }
+
+    // Convert to RGB
+    $r = hexdec(substr($hex, 0, 2));
+    $g = hexdec(substr($hex, 2, 2));
+    $b = hexdec(substr($hex, 4, 2));
+
+    // Adjust
+    $r = max(0, min(255, $r + $steps));
+    $g = max(0, min(255, $g + $steps));
+    $b = max(0, min(255, $b + $steps));
+
+    // Convert back to hex
+    $r_hex = str_pad(dechex($r), 2, '0', STR_PAD_LEFT);
+    $g_hex = str_pad(dechex($g), 2, '0', STR_PAD_LEFT);
+    $b_hex = str_pad(dechex($b), 2, '0', STR_PAD_LEFT);
+
+    return '#' . $r_hex . $g_hex . $b_hex;
+}
 
 // Check if user is already logged in and this is a direct page access (not a form submission)
 if (isset($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] != 'POST') {
     // Determine where to redirect based on user role
-    $dashboard = $_SESSION['user_role'] == '1' ? 'admin-dashboard.php' : 'employee-dashboard.php';
+    $dashboard = $_SESSION['user_role'] == '1' ? 'admin-dashboard.php' : 'dashboard.php';
     header("Location: $dashboard");
     exit();
 }
 
 // Handling login form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = $_POST['email'];
+    $login_id = $_POST['login_id'];
     $password = $_POST['password'];
 
     // Fetch user from the database
-    $stmt = $pdo->prepare("SELECT * FROM employees WHERE email = ?");
-    $stmt->execute([$email]);
+    $stmt = $pdo->prepare("SELECT * FROM employees WHERE email = ? OR emp_id = ?");
+    $stmt->execute([$login_id, $login_id]);
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password'])) {
@@ -31,28 +78,38 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $_SESSION['designation'] = $user['designation'];
         $_SESSION['fullName'] = $user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name'];
         $_SESSION['userImage'] = $user['user_image'];
-        $_SESSION['user_role'] = $user['role'];
+        // Check which role field exists in the database and use it
+        $_SESSION['user_role'] = isset($user['role']) ? $user['role'] : (isset($user['role_id']) ? $user['role_id'] : '0');
         $_SESSION['login_access'] = $user['login_access'];
 
         // Check login access
         if ($user['login_access'] == '0') {
-            $_SESSION['error'] = "Access Denied.";
+            // Clear the session since this user shouldn't be logged in
+            session_unset();
+            session_destroy();
+            // Start a fresh session to be able to show the error message
+            session_start();
+            $_SESSION['error'] = "Access Denied. Your account is currently disabled. Please contact the administrator.";
+            // Force reload of the page to clear the form
+            header('Location: index.php');
+            exit();
         } else {
             // Redirect based on session or role
             if (isset($_SESSION['redirect_to'])) {
                 $redirect_to = $_SESSION['redirect_to'];
                 unset($_SESSION['redirect_to']); // Clear the session variable
-                header("Location: " . $redirect_to);
+                header("Location: " . append_sid($redirect_to));
                 exit();
             } else {
-                $dashboard = $user['role'] == '1' ? 'admin-dashboard.php' : 'employee-dashboard.php';
-                header('Location: ' . $dashboard);
+                // Make the redirection code consistent with the session variable
+                $dashboard = $_SESSION['user_role'] == '1' ? 'admin-dashboard.php' : 'dashboard.php';
+                header('Location: ' . append_sid($dashboard));
                 exit();
             }
         }
     } else {
         // Invalid credentials
-        $_SESSION['error'] = "Invalid email or password.";
+        $_SESSION['error'] = "Invalid login ID or password.";
     }
 }
 
@@ -61,6 +118,7 @@ $page = 'Login';
 
 // Define the $is_auth_page variable to prevent redirection loops in header.php
 $is_auth_page = true;
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -93,10 +151,14 @@ $is_auth_page = true;
     <!-- Custom Styling for Login Page -->
     <style>
         :root {
-            --primary-color: #0d6efd;
-            --primary-hover: #0b5ed7;
+            --primary-color: <?php echo PRIMARY_COLOR; ?>;
+            --primary-hover: <?php echo adjustBrightness(PRIMARY_COLOR, -10); ?>;
             --dark-color: #212529;
             --light-color: #f8f9fa;
+        }
+
+        .text-primary{
+            color: <?php echo $primaryColor; ?> !important;
         }
         
         body {
@@ -172,6 +234,14 @@ $is_auth_page = true;
             border-color: var(--primary-color);
         }
         
+        /* Company logo styling */
+        .company-logo {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            margin-bottom: 10px;
+        }
+        
         /* Dark mode support */
         .dark-mode .login-card {
             background-color: #343a40;
@@ -238,7 +308,7 @@ $is_auth_page = true;
         <div class="card border-0 login-card">
             <div class="card-header-logo text-center bg-transparent border-0">
                 <a href="index.php" class="text-decoration-none">
-                    <img src="resources/images/favicon.svg" alt="Logo" class="img-fluid mb-2" style="width: 60px;">
+                    <img src="<?php echo $companyLogoURL; ?>" alt="Company Logo" class="company-logo mb-2">
                     <h2 class="mb-0">
                         <span class="text-primary fw-bold"><?php echo $appName; ?></span>
                     </h2>
@@ -250,12 +320,13 @@ $is_auth_page = true;
 
                 <!-- Login Form -->
                 <form action="index.php" method="post">
+                    <?php echo sid_field(); // Add session ID field ?>
                     <div class="mb-4">
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0">
-                                <i class="fas fa-envelope text-primary"></i>
+                                <i class="fas fa-user text-primary"></i>
                             </span>
-                            <input type="email" class="form-control border-start-0" name="email" placeholder="Email" required>
+                            <input type="text" class="form-control border-start-0" name="login_id" placeholder="Email or Employee ID" required>
                         </div>
                     </div>
                     <div class="mb-4">
@@ -280,7 +351,7 @@ $is_auth_page = true;
                         </div>
                     </div>
                     <div class="text-center">
-                        <a href="forgot-password.php" class="text-decoration-none text-primary">
+                        <a href="<?php echo append_sid('forgot-password.php'); ?>" class="text-decoration-none text-primary">
                             <i class="fas fa-lock me-1"></i>Forgot password?
                         </a>
                     </div>

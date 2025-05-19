@@ -327,8 +327,8 @@ try {
                   </tr>
                 </thead>
                 <tbody id="categoryAssetsList">
-                  <!-- Assets will be loaded here -->
-                </tbody>
+                    <!-- Assets will be loaded here via JavaScript -->
+                                    </tbody>
               </table>
             </div>
           </div>
@@ -398,14 +398,11 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('viewCategoryDescription').textContent = description || 'No description provided';
       
       // Show or hide assets section based on count
+      document.getElementById('categoryAssetsSection').classList.remove('d-none');
       if (parseInt(assetCount) > 0) {
-        document.getElementById('categoryAssetsSection').classList.remove('d-none');
         document.getElementById('noCategoryAssets').classList.add('d-none');
         document.getElementById('categoryAssetsTable').classList.remove('d-none');
-        
-        // Clear the table body
-        document.getElementById('categoryAssetsList').innerHTML = '';
-        
+        document.getElementById('categoryAssetsList').innerHTML = '<tr><td colspan="5" class="text-center">Loading assets...</td></tr>';
         // Load assets for this category via AJAX
         fetch('fetch_assets.php', {
           method: 'POST',
@@ -418,32 +415,28 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
           if (data.data && data.data.length > 0) {
             const tbody = document.getElementById('categoryAssetsList');
+            tbody.innerHTML = '';
             data.data.forEach(asset => {
               const row = document.createElement('tr');
-              
               // Asset Name
               const nameCell = document.createElement('td');
               nameCell.textContent = asset.AssetName;
               row.appendChild(nameCell);
-              
               // Serial
               const serialCell = document.createElement('td');
               serialCell.textContent = asset.Serial;
               row.appendChild(serialCell);
-              
               // Purchase Date
               const dateCell = document.createElement('td');
               dateCell.textContent = asset.PurchaseDate;
               row.appendChild(dateCell);
-              
               // Status
               const statusCell = document.createElement('td');
               statusCell.className = 'text-center';
               const badgeType = asset.Status === 'Available' ? 'success' : 
-                              (asset.Status === 'Maintenance' ? 'warning' : 'danger');
+                                (asset.Status === 'Maintenance' ? 'warning' : 'danger');
               statusCell.innerHTML = `<span class="badge bg-${badgeType}">${asset.Status}</span>`;
               row.appendChild(statusCell);
-              
               // Actions
               const actionsCell = document.createElement('td');
               actionsCell.className = 'text-center';
@@ -456,7 +449,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 </a>
               `;
               row.appendChild(actionsCell);
-              
               tbody.appendChild(row);
             });
           } else {
@@ -467,11 +459,10 @@ document.addEventListener('DOMContentLoaded', function() {
           console.error('Error loading assets:', error);
           document.getElementById('categoryAssetsList').innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error loading assets. Please try again.</td></tr>';
         });
-        
       } else {
-        document.getElementById('categoryAssetsSection').classList.remove('d-none');
         document.getElementById('noCategoryAssets').classList.remove('d-none');
         document.getElementById('categoryAssetsTable').classList.add('d-none');
+        document.getElementById('categoryAssetsList').innerHTML = '';
       }
       
       const viewModal = new bootstrap.Modal(document.getElementById('viewCategoryModal'));

@@ -4,6 +4,7 @@ require_once 'includes/session_config.php';
 
 session_start();
 require 'includes/db_connection.php'; // Include database connection
+require_once 'includes/utilities.php'; // Include utilities
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Get form data
@@ -20,9 +21,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $designation = $_POST['designation']; 
     $loginAccess = $_POST['login_access']; 
     $croppedImage = $_POST['croppedImage'];
+    $dob = $_POST['dob'];
+    $role_id = $_POST['role_id']; // Changed from role to role_id
+    $office_email = filter_var($_POST['office_email'], FILTER_VALIDATE_EMAIL) ? $_POST['office_email'] : null;
+    $office_phone = preg_match('/^\+?[0-9]*$/', $_POST['office_phone']) ? $_POST['office_phone'] : null;
 
     if (!$empEmail || !$empPhone) {
-        die("Invalid email or phone number");
+        $_SESSION['error'] = "Invalid email or phone number";
+        header("Location: edit-employee.php?id=$emp_id&_nocache=" . time());
+        exit();
     }
 
     // Fetch employee details
@@ -31,7 +38,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $employee = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$employee) {
-        die("Employee not found");
+        $_SESSION['error'] = "Employee not found";
+        header("Location: employees.php");
+        exit();
     }
 
     // Handle file upload
@@ -43,7 +52,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             mkdir($targetDir, 0777, true);
         }
 
-        $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
+        $imageData = base64_decode(preg_split('#^data:image/\w+;base64,#i', $croppedImage)[1]);
         $imageName = uniqid() . '.png';
         $targetFile = $targetDir . $imageName;
         file_put_contents($targetFile, $imageData);
@@ -51,8 +60,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $targetFile = $employee['user_image']; // Keep existing image
     }
 
-    // Generate a random password if login access is granted
-    if ($loginAccess == '1') {
+    // Generate a random password if login access is granted and was not previously granted
+    if ($loginAccess == '1' && $employee['login_access'] != '1') {
         $randomPassword = bin2hex(random_bytes(4)); // Generate a random 8-character password
         $hashedPassword = password_hash($randomPassword, PASSWORD_BCRYPT); // Hash the password
     } else {
@@ -73,44 +82,126 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             designation = :designation,
             login_access = :loginAccess,
             user_image = :userImage,
-            password = :password
+            password = :password,
+            dob = :dob,
+            role_id = :role_id,
+            office_email = :office_email,
+            office_phone = :office_phone
             WHERE emp_id = :emp_id";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':emp_id' => $emp_id,
-        ':machId' => $machId,
-        ':empBranch' => $empBranch,
-        ':empFirstName' => $empFirstName,
-        ':empMiddleName' => $empMiddleName,
-        ':empLastName' => $empLastName,
-        ':gender' => $gender,
-        ':empEmail' => $empEmail,
-        ':empPhone' => $empPhone,
-        ':empJoinDate' => $empJoinDate,
-        ':designation' => $designation,
-        ':loginAccess' => $loginAccess,
-        ':userImage' => $targetFile,
-        ':password' => $hashedPassword
-    ]);
+    
+    try {
+        $stmt->execute([
+            ':emp_id' => $emp_id,
+            ':machId' => $machId,
+            ':empBranch' => $empBranch,
+            ':empFirstName' => $empFirstName,
+            ':empMiddleName' => $empMiddleName,
+            ':empLastName' => $empLastName,
+            ':gender' => $gender,
+            ':empEmail' => $empEmail,
+            ':empPhone' => $empPhone,
+            ':empJoinDate' => $empJoinDate,
+            ':designation' => $designation,
+            ':loginAccess' => $loginAccess,
+            ':userImage' => $targetFile,
+            ':password' => $hashedPassword,
+            ':dob' => $dob,
+            ':role_id' => $role_id, // Changed from role to role_id
+            ':office_email' => $office_email,
+            ':office_phone' => $office_phone
+        ]);
 
-    $_SESSION['success'] = "Employee record updated successfully";
-
-    // Send email if login access is granted
-    if ($loginAccess == '1') {
-        $to = $empEmail;
-        $subject = "Login Access Granted";
-        $message = "Dear $empFirstName $empLastName,\n\nYour login access has been granted. You can now log in to the system using the following credentials:\n\nLogin ID: $empEmail\nPassword: $randomPassword\n\nPlease change your password after logging in for the first time.\n\nBest regards,\nHRMS Team";
-        $headers = "From: no-reply@yourdomain.com";
-
-        if (mail($to, $subject, $message, $headers)) {
-            $_SESSION['success'] .= "\nLogin credentials have been sent to the employee's email.";
-        } else {
-            $_SESSION['error'] = "Failed to send login credentials email.";
+        // Send notification to the employee about the profile update
+        notify_employee($employee['id'], 'updated');
+        
+        // Track and notify for significant changes
+        $changes = [];
+        
+        // Check for significant changes to track
+        if ($employee['branch'] != $empBranch) {
+            $changes[] = 'branch';
+            
+            // Get branch name
+            $branchStmt = $pdo->prepare("SELECT name FROM branches WHERE id = :id");
+            $branchStmt->execute([':id' => $empBranch]);
+            $branchName = $branchStmt->fetchColumn() ?: 'Unknown Branch';
+            
+            notify_system(
+                'Employee Branch Change', 
+                "Employee $empFirstName $empLastName's branch has been updated to $branchName",
+                'info'
+            );
         }
+        
+        if ($employee['designation'] != $designation) {
+            $changes[] = 'designation';
+            
+            // Get designation title
+            $designationStmt = $pdo->prepare("SELECT title FROM designations WHERE id = :id");
+            $designationStmt->execute([':id' => $designation]);
+            $designationTitle = $designationStmt->fetchColumn() ?: 'Unknown Designation';
+            
+            // This is a significant change - notify HR/Management
+            $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role_id = 1 OR role_id = 2"); // Changed from role to role_id
+            $adminStmt->execute();
+            $adminIds = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            if (!empty($adminIds)) {
+                notify_users(
+                    $adminIds,
+                    'Employee Designation Change',
+                    "Employee $empFirstName $empLastName's designation has been updated to $designationTitle",
+                    'info',
+                    'employees.php'
+                );
+            }
+        }
+        
+        // If login access was granted, send notification
+        if ($loginAccess == '1' && $employee['login_access'] != '1') {
+            notify_employee($employee['id'], 'access_granted', [
+                'access_type' => 'login'
+            ]);
+            
+            // Notify admins
+            notify_system(
+                'Login Access Granted', 
+                "Login access has been granted to employee $empFirstName $empLastName",
+                'success'
+            );
+        }
+        
+        // If login access was revoked, send notification
+        if ($loginAccess == '0' && $employee['login_access'] == '1') {
+            notify_system(
+                'Login Access Revoked', 
+                "Login access has been revoked for employee $empFirstName $empLastName",
+                'warning'
+            );
+        }
+
+        $_SESSION['success'] = "Employee record updated successfully";
+
+        // Send email if login access is granted and was not previously granted
+        if ($loginAccess == '1' && $employee['login_access'] != '1') {
+            $to = $empEmail;
+            $subject = "Login Access Granted";
+            $message = "Dear $empFirstName $empLastName,\n\nYour login access has been granted. You can now log in to the system using the following credentials:\n\nLogin ID: $empEmail\nPassword: $randomPassword\n\nPlease change your password after logging in for the first time.\n\nBest regards,\nHRMS Team";
+            $headers = "From: no-reply@yourdomain.com";
+
+            if (mail($to, $subject, $message, $headers)) {
+                $_SESSION['success'] .= "\nLogin credentials have been sent to the employee's email.";
+            } else {
+                $_SESSION['error'] = "Failed to send login credentials email.";
+            }
+        }
+    } catch (PDOException $e) {
+        $_SESSION['error'] = "Error updating employee: " . $e->getMessage();
     }
 
-    // Redirect to the employees page to prevent form resubmission
-    header("Location: employees.php");
+    // Redirect to the employees page
+    header("Location: employees.php?_nocache=" . time());
     exit();
 }

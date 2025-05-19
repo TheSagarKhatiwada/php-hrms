@@ -1,0 +1,310 @@
+// Admin Dashboard Specific Styles
+// Custom styles for the dashboard page with improved UI/UX elements
+
+// Gradient cards
+.bg-gradient-primary {
+  background: linear-gradient(135deg, var(--primary-color) 0%, #4e73df 100%) !important;
+}
+
+// Dashboard stats card animations
+.dashboard-stat-card {
+  transition: all 0.3s ease;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    
+    .stat-icon {
+      transform: scale(1.1);
+    }
+  }
+  
+  .stat-icon {
+    transition: transform 0.3s ease;
+  }
+  
+  // Subtle shine effect on hover
+  &::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      to bottom right,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    transform: rotate(30deg);
+    z-index: -1;
+    transition: transform 0.5s ease;
+    opacity: 0;
+  }
+  
+  &:hover::after {
+    opacity: 1;
+    transform: rotate(30deg) translate(10%, 10%);
+  }
+}
+
+// Date-time card with animated background
+.datetime-card {
+  overflow: hidden;
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
+    z-index: 0;
+    animation: shimmer 2s infinite linear;
+  }
+  
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  
+  .connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    
+    &.online {
+      background-color: #10b981;
+      box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+      animation: pulse 2s infinite;
+    }
+    
+    &.offline {
+      background-color: #ef4444;
+    }
+  }
+  
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+  }
+}
+
+// Celebration cards improvements
+.celebration-card {
+  .employee-badge {
+    transition: all 0.3s ease;
+    
+    &:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+    }
+  }
+  
+  .celebration-icon {
+    animation: bounce 2s infinite;
+  }
+  
+  @keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+      transform: translateY(0);
+    }
+    40% {
+      transform: translateY(-5px);
+    }
+    60% {
+      transform: translateY(-3px);
+    }
+  }
+}
+
+// Quick action buttons
+.dashboard-action-btn {
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  border: none;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
+    z-index: -1;
+  }
+  
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    
+    i {
+      transform: scale(1.1);
+    }
+  }
+  
+  i {
+    transition: transform 0.3s ease;
+  }
+}
+
+// Performance indicator card
+.performance-card {
+  overflow: hidden;
+  position: relative;
+  
+  .performance-meter {
+    height: 8px;
+    border-radius: 4px;
+    background-color: #e9ecef;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+    
+    .performance-value {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 1s ease;
+      position: relative;
+      overflow: hidden;
+      
+      &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(90deg, 
+          rgba(255, 255, 255, 0.1) 0%, 
+          rgba(255, 255, 255, 0.2) 50%, 
+          rgba(255, 255, 255, 0.1) 100%);
+        animation: shimmer 2s infinite linear;
+      }
+    }
+  }
+  
+  .performance-excellent {
+    background-color: #10b981;
+  }
+  
+  .performance-good {
+    background-color: #3b82f6;
+  }
+  
+  .performance-average {
+    background-color: #f59e0b;
+  }
+  
+  .performance-poor {
+    background-color: #ef4444;
+  }
+}
+
+// Improved attendance chart container
+.chart-container {
+  position: relative;
+  height: 250px;
+  
+  .chart-legend {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.5rem;
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      font-size: 0.75rem;
+      
+      .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        margin-right: 4px;
+      }
+    }
+  }
+}
+
+// Animated placeholder for loading state
+.animated-placeholder {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: placeholderShimmer 1.5s infinite linear;
+  border-radius: 4px;
+  height: 16px;
+  margin-bottom: 8px;
+  
+  @keyframes placeholderShimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+}
+
+// Dark mode adjustments
+body.dark-mode {
+  .dashboard-stat-card {
+    &::after {
+      background: linear-gradient(
+        to bottom right,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.03) 50%,
+        rgba(255, 255, 255, 0) 100%
+      );
+    }
+  }
+  
+  .datetime-card::before {
+    background: linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
+  }
+  
+  .performance-meter {
+    background-color: #343a40;
+  }
+  
+  .animated-placeholder {
+    background: linear-gradient(90deg, #343a40 25%, #414850 50%, #343a40 75%);
+    background-size: 200% 100%;
+  }
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .dashboard-stat-card {
+    margin-bottom: 1rem;
+  }
+  
+  .datetime-card {
+    margin-bottom: 1rem;
+  }
+}

@@ -333,7 +333,7 @@ include 'includes/footer.php';
                 },
                 autoPrint: true,
                 title: 'HRMS | Reports', // Custom title for print dialog
-                title: 'Daily Attendance Report of <?php echo  $_POST['reportdate'] ?>',
+                title: 'Daily Attendance Report of <?php echo  $_POST['reportdate'] ?? '' ?>',
                 messageTop: '', // Subtitle text for the printed page
                 customize: function (win) {
                     $(win.document.body)

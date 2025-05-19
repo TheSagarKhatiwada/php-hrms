@@ -46,10 +46,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $sqlEmployees = "SELECT 
                         e.emp_id, 
                         CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS employee_name, 
-                        e.designation, 
+                        d.title as designation, 
                         b.name AS branch
                     FROM employees e
-                    LEFT JOIN branches b ON e.branch = b.id";
+                    LEFT JOIN branches b ON e.branch = b.id
+                    LEFT JOIN designations d ON e.designation = d.id";
 
     if (!empty($empBranch)) {
         $sqlEmployees .= " WHERE e.branch = :empBranch";
@@ -120,9 +121,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             new DateInterval('P1D'),
             (new DateTime($endDate))->modify('+1 day') // Ensure it includes the last day
         );
-
+        
         foreach ($period as $dateObj) {
             $date = $dateObj->format('Y-m-d');
+            // Check if the date is a weekend
+            $isWeekend = (date('N', strtotime($date)) == 6);
             $row = [
                 'emp_id' => $empid,
                 'employee_name' => $employeeName,
@@ -130,24 +133,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'branch' => $employeeBranch,
                 'date' => $date,
                 'date_range' => $daterange,
-                'scheduled_in' => $scheduled_in->format('H:i'),
-                'scheduled_out' => $scheduled_out->format('H:i'),
-                'working_hour' => $formatted_working_hours,
-                'in_time' => '',
-                'out_time' => '',
-                'worked_duration' => '',
-                'over_time' => '',
-                'late_in' => '',
-                'early_out' => '',
-                'early_in' => '',
-                'late_out' => '',
+                'scheduled_in' => $isWeekend ? '-' : $scheduled_in->format('H:i'),
+                'scheduled_out' => $isWeekend ? '-' : $scheduled_out->format('H:i'),
+                'working_hour' => $isWeekend ? '-' : $formatted_working_hours,
+                'in_time' => $isWeekend ? '-' : '',
+                'out_time' => $isWeekend ? '-' : '',
+                'worked_duration' => $isWeekend ? '-' : '',
+                'over_time' => $isWeekend ? '-' : '',
+                'late_in' => $isWeekend ? '-' : '',
+                'early_out' => $isWeekend ? '-' : '',
+                'early_in' => $isWeekend ? '-' : '',
+                'late_out' => $isWeekend ? '-' : '',
                 'marked_as' => (date('N', strtotime($date)) == 6) ? 'Weekend' : 'Absent',
                 'methods' => '',
                 'remarks' => ''
             ];
 
             if (isset($attendanceMap[$empid][$date])) {
+                // Employee was present on this date
                 $attendance = $attendanceMap[$empid][$date];
+                // Get the in and out times
                 $in_time = new DateTime($attendance['in_time']);
                 $out_time = new DateTime($attendance['out_time']);
 
@@ -194,9 +199,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Determine attendance status
                 $row['marked_as'] = 'Present';
 
-                // Include methods used and manual reasons
-                $row['methods'] = $attendance['methods_used'] ?? '';
-                $row['remarks'] = $attendance['manual_reasons'] ?? '';
+                // Include methods used and manual reasons but Get only first and last methods/reasons
+                $methodsArray = explode(', ', $attendance['methods_used'] ?? '');
+                $reasonsArray = explode('; ', $attendance['manual_reasons'] ?? '');
+                                
+                $inMethod = $methodsArray[0] ?? '';
+                $outMethod = end($methodsArray) !== $inMethod ? end($methodsArray) : '';
+                                
+                $inReason = $reasonsArray[0] ?? '';
+                $outReason = end($reasonsArray) !== $inReason ? end($reasonsArray) : '';
+                                
+                $row['methods'] = "In: " . $inMethod . ($outMethod ? ", Out: " . $outMethod : "");
+                $row['remarks'] = $inReason . ($outReason ? " | " . $outReason : "");
             }
 
             // Add the row to the data array

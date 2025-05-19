@@ -263,21 +263,6 @@ try {
   <!-- Settings Card -->
   <div class="card border-0 shadow-sm">
     <div class="card-body">
-      <?php if (isset($_SESSION['success'])): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-          <?php echo $_SESSION['success']; ?>
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-        <?php unset($_SESSION['success']); ?>
-      <?php endif; ?>
-      
-      <?php if (isset($_SESSION['error'])): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-          <?php echo $_SESSION['error']; ?>
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-        <?php unset($_SESSION['error']); ?>
-      <?php endif; ?>
       
       <form id="settingsForm" method="POST" action="">
         <div class="row">
@@ -322,10 +307,39 @@ try {
           </div>
           
           <div class="col-md-9 order-md-1">
-            <div class="mb-3">
-              <label for="app_name" class="form-label">Application Name</label>
-              <input type="text" class="form-control" id="app_name" name="app_name" 
-                     value="<?php echo htmlspecialchars($settings['app_name'] ?? 'HRMS Pro'); ?>" required>
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="app_name" class="form-label">Application Name</label>
+                <input type="text" class="form-control" id="app_name" name="app_name" 
+                       value="<?php echo htmlspecialchars($settings['app_name'] ?? 'HRMS Pro'); ?>" required>
+              </div>
+              
+              <div class="col-md-6">
+                <div class="row">
+                  <div class="col-md-6">
+                    <label for="company_primary_color" class="form-label">Primary Color</label>
+                    <div class="input-group">
+                      <input type="color" class="form-control form-control-color" id="company_primary_color" name="company_primary_color" 
+                            value="<?php echo htmlspecialchars($settings['company_primary_color'] ?? '#007bff'); ?>" 
+                            title="Choose primary color">
+                      <input type="text" class="form-control" id="primary_color_hex" 
+                            value="<?php echo htmlspecialchars($settings['company_primary_color'] ?? '#007bff'); ?>" 
+                            readonly>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                      <label for="company_secondary_color" class="form-label">Secondary Color</label>
+                      <div class="input-group">
+                        <input type="color" class="form-control form-control-color" id="company_secondary_color" name="company_secondary_color" 
+                              value="<?php echo htmlspecialchars($settings['company_secondary_color'] ?? '#6c757d'); ?>" 
+                              title="Choose secondary color">
+                        <input type="text" class="form-control" id="secondary_color_hex" 
+                              value="<?php echo htmlspecialchars($settings['company_secondary_color'] ?? '#6c757d'); ?>" 
+                              readonly>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div class="row">
@@ -358,43 +372,6 @@ try {
             
             <div class="row">
               <div class="col-md-6 mb-3">
-                <label for="company_primary_color" class="form-label">Primary Color</label>
-                <div class="input-group">
-                  <input type="color" class="form-control form-control-color" id="company_primary_color" name="company_primary_color" 
-                         value="<?php echo htmlspecialchars($settings['company_primary_color'] ?? '#007bff'); ?>" 
-                         title="Choose primary color">
-                  <input type="text" class="form-control" id="primary_color_hex" 
-                         value="<?php echo htmlspecialchars($settings['company_primary_color'] ?? '#007bff'); ?>" 
-                         readonly>
-                </div>
-              </div>
-              
-              <div class="col-md-6 mb-3">
-                <label for="company_secondary_color" class="form-label">Secondary Color</label>
-                <div class="input-group">
-                  <input type="color" class="form-control form-control-color" id="company_secondary_color" name="company_secondary_color" 
-                         value="<?php echo htmlspecialchars($settings['company_secondary_color'] ?? '#6c757d'); ?>" 
-                         title="Choose secondary color">
-                  <input type="text" class="form-control" id="secondary_color_hex" 
-                         value="<?php echo htmlspecialchars($settings['company_secondary_color'] ?? '#6c757d'); ?>" 
-                         readonly>
-                </div>
-              </div>
-            </div>
-            
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label for="company_work_hour" class="form-label">Work Hours</label>
-                <div class="input-group">
-                  <span class="input-group-text"><i class="fas fa-clock"></i></span>
-                  <input type="text" class="form-control" id="company_work_hour" name="company_work_hour" 
-                         value="<?php echo htmlspecialchars($settings['company_work_hour'] ?? '9:00 AM - 5:00 PM'); ?>"
-                         placeholder="9:00 AM - 5:00 PM">
-                </div>
-                <small class="form-text text-muted">Enter work hours in format: Start Time - End Time</small>
-              </div>
-              
-              <div class="col-md-6 mb-3">
                 <label for="timezone" class="form-label">Timezone</label>
                 <select class="form-select" id="timezone" name="timezone">
                   <?php
@@ -417,6 +394,17 @@ try {
                   }
                   ?>
                 </select>
+              </div>
+              
+              <div class="col-md-6 mb-3">
+                <label for="company_work_hour" class="form-label">Work Hours</label>
+                <div class="input-group">
+                  <span class="input-group-text"><i class="fas fa-clock"></i></span>
+                  <input type="text" class="form-control" id="company_work_hour" name="company_work_hour" 
+                         value="<?php echo htmlspecialchars($settings['company_work_hour'] ?? '9:00 AM - 5:00 PM'); ?>"
+                         placeholder="9:00 AM - 5:00 PM">
+                </div>
+                <small class="form-text text-muted">Enter work hours in format: Start Time - End Time</small>
               </div>
             </div>
           </div>
@@ -612,7 +600,7 @@ document.addEventListener('DOMContentLoaded', function() {
       minHeight: 100,
       maxWidth: 1000,
       maxHeight: 1000,
-      fillColor: '#fff',
+      fillColor: 'transparent', // Change from '#fff' to 'transparent' to preserve transparency
       imageSmoothingEnabled: true,
       imageSmoothingQuality: 'high',
     });

@@ -10,9 +10,10 @@ if (isset($_POST['branch'])) {
         try {
             // Prepare the query to fetch employees and their branch name
             $stmt = $pdo->prepare("
-                SELECT e.emp_id, CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS full_name, e.designation, b.name
+                SELECT e.emp_id, CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS full_name, d.title AS designation, b.name
                 FROM employees e
                 JOIN branches b ON e.branch = b.id
+                JOIN designations d ON e.designation = d.id
                 WHERE b.id = :id
             ");
             $stmt->execute(['id' => $branchId]);

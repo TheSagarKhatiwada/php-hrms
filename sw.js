@@ -1,111 +1,66 @@
-const CACHE_NAME = 'hrms-cache-v1';
+const CACHE_NAME = 'hrms-cache-v3'; // Incremented cache version
 const urlsToCache = [
-  './',
-  './index.php',
-  './login.php',
-  './admin-dashboard.php',
-  './user-dashboard.php',
-  './manage_categories.php',
-  './manage_assets.php',
-  './attendance.php',
-  './employees.php',
-  './manage_assignments.php',
-  './manage_maintenance.php',
-  './profile.php',
-  './assets.php',
-  './monthly-report.php',
-  './daily-report.php',
+  // Only cache static assets, not PHP pages
   './resources/css/style.css',
   './resources/js/main.js',
-  './resources/js/assets-db.js',
-  './resources/images/logo.png',
+  './resources/images/favicon.png',
   './manifest.json',
-  'https://code.jquery.com/jquery-3.6.0.min.js',
-  'https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css',
-  'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css',
-  'https://cdn.jsdelivr.net/npm/sweetalert2@11',
-  './resources/images/icon.svg'
+  'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+  'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css'
 ];
 
-// Install event - cache the assets
+// Install event - cache the assets with better error handling
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        return cache.addAll(urlsToCache);
+        // Use Promise.allSettled instead of Promise.all to continue even if some files fail
+        return Promise.allSettled(
+          urlsToCache.map(url => {
+            return cache.add(url).catch(error => {
+              console.warn(`Failed to cache: ${url}`, error);
+              // Continue despite the error
+              return null;
+            });
+          })
+        );
       })
   );
 });
 
-// Fetch event - serve from cache if available
+// Fetch event - serve from cache if available, but never cache PHP files
 self.addEventListener('fetch', event => {
-  // Handle API requests
-  if (event.request.url.includes('/api/')) {
+  const url = new URL(event.request.url);
+  
+  // For PHP files or URLs with query parameters, always fetch from network
+  if (url.pathname.endsWith('.php') || url.search) {
     event.respondWith(
       fetch(event.request)
-        .catch(() => {
-          // Return offline response for API requests
-          return new Response(JSON.stringify({
-            offline: true,
-            message: 'You are currently offline. Changes will be synced when you are back online.'
-          }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        })
+    );
+  } 
+  // Handle API requests - always fetch from network
+  else if (event.request.url.includes('/api/')) {
+    event.respondWith(
+      fetch(event.request)
     );
   } else {
-    // Handle regular requests
+    // For static assets, check cache first, then network
     event.respondWith(
       caches.match(event.request)
-        .then(response => response || fetch(event.request))
+        .then(cachedResponse => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          
+          // Not in cache, fetch from network
+          return fetch(event.request);
+        })
     );
   }
 });
 
-// Sync event - handle offline changes when back online
-self.addEventListener('sync', event => {
-  if (event.tag === 'sync-assets') {
-    event.waitUntil(syncOfflineChanges());
-  }
-});
-
-// Function to sync offline changes
-async function syncOfflineChanges() {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction(['offlineChanges'], 'readonly');
-    const store = transaction.objectStore('offlineChanges');
-    const index = store.index('status');
-    const changes = await index.getAll('pending');
-    
-    for (const change of changes) {
-      try {
-        const response = await fetch('/api/sync-assets', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(change)
-        });
-        
-        if (response.ok) {
-          // Mark change as synced
-          const syncTransaction = db.transaction(['offlineChanges'], 'readwrite');
-          const syncStore = syncTransaction.objectStore('offlineChanges');
-          change.status = 'synced';
-          await syncStore.put(change);
-        }
-      } catch (error) {
-        console.error('Error syncing change:', error);
-      }
-    }
-  } catch (error) {
-    console.error('Error in sync process:', error);
-  }
-}
-
-// Activate event - clean up old caches
+// Activate event - clean up old caches and avoid caching employees.php
 self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
@@ -115,8 +70,19 @@ self.addEventListener('activate', event => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
             return caches.delete(cacheName);
           }
-        })
+        }).concat([
+          // Ensure employees.php is never cached
+          caches.open(CACHE_NAME).then(cache => {
+            return cache.keys().then(requests => {
+              return Promise.all(
+                requests
+                  .filter(request => request.url.includes('employees.php'))
+                  .map(request => cache.delete(request))
+              );
+            });
+          })
+        ])
       );
     })
   );
-}); 
+});

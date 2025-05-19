@@ -47,21 +47,6 @@ require_once __DIR__ . '/includes/header.php';
     </a>
   </div>
   
-  <!-- Alert messages -->
-  <?php if (isset($_SESSION['success'])): ?>
-    <div class="alert alert-success alert-dismissible fade show">
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
-    </div>
-  <?php endif; ?>
-  
-  <?php if (isset($_SESSION['error'])): ?>
-    <div class="alert alert-danger alert-dismissible fade show">
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
-    </div>
-  <?php endif; ?>
-  
   <!-- Employee Edit Card -->
   <div class="card border-0 shadow-sm">
     <div class="card-body">
@@ -73,7 +58,7 @@ require_once __DIR__ . '/includes/header.php';
             <div class="row mb-3">
               <div class="col-md-4">
                 <label for="machId" class="form-label">Machine ID</label>
-                <input type="text" class="form-control" id="machId" name="machId" value="<?php echo htmlspecialchars($employee['mach_id']); ?>">
+                <input type="text" class="form-control" id="machId" name="machId" value="<?php echo htmlspecialchars($employee['mach_id'] ?? ''); ?>">
               </div>
               <div class="col-md-8">
                 <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
@@ -98,15 +83,19 @@ require_once __DIR__ . '/includes/header.php';
               </div>
               <div class="col-md-4">
                 <label for="empMiddleName" class="form-label">Middle Name</label>
-                <input type="text" class="form-control" id="empMiddleName" name="empMiddleName" value="<?php echo htmlspecialchars($employee['middle_name']); ?>">
+                <input type="text" class="form-control" id="empMiddleName" name="empMiddleName" value="<?php echo htmlspecialchars($employee['middle_name'] ?? ''); ?>">
               </div>
               <div class="col-md-4">
                 <label for="empLastName" class="form-label">Last Name <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="empLastName" name="empLastName" required value="<?php echo htmlspecialchars($employee['last_name']); ?>">
               </div>
             </div>
-            
+
             <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="dob" class="form-label">Date of Birth</label>
+                <input type="date" class="form-control" id="dob" name="dob" value="<?php echo htmlspecialchars($employee['dob'] ?? ''); ?>">
+              </div>
               <div class="col-md-6">
                 <label for="gender" class="form-label">Gender <span class="text-danger">*</span></label>
                 <select class="form-select" id="gender" name="gender" required>
@@ -120,17 +109,32 @@ require_once __DIR__ . '/includes/header.php';
                   ?>
                 </select>
               </div>
+            </div>
+            
+            <div class="row mb-3">
               <div class="col-md-6">
-                <label for="empPhone" class="form-label">Phone <span class="text-danger">*</span></label>
+                <label for="empPhone" class="form-label">Personal Phone <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="empPhone" name="empPhone" required 
                        pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign" 
                        value="<?php echo htmlspecialchars($employee['phone']); ?>">
               </div>
+              <div class="col-md-6">
+                <label for="office_phone" class="form-label">Office Phone</label>
+                <input type="text" class="form-control" id="office_phone" name="office_phone" 
+                       pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign" 
+                       value="<?php echo htmlspecialchars($employee['office_phone'] ?? ''); ?>">
+              </div>
             </div>
             
-            <div class="mb-3">
-              <label for="empEmail" class="form-label">Email <span class="text-danger">*</span></label>
-              <input type="email" class="form-control" id="empEmail" name="empEmail" required value="<?php echo htmlspecialchars($employee['email']); ?>">
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="empEmail" class="form-label">Personal Email <span class="text-danger">*</span></label>
+                <input type="email" class="form-control" id="empEmail" name="empEmail" required value="<?php echo htmlspecialchars($employee['email']); ?>">
+              </div>
+              <div class="col-md-6">
+                <label for="office_email" class="form-label">Office Email</label>
+                <input type="email" class="form-control" id="office_email" name="office_email" value="<?php echo htmlspecialchars($employee['office_email'] ?? ''); ?>">
+              </div>
             </div>
             
             <div class="row mb-3">
@@ -142,23 +146,48 @@ require_once __DIR__ . '/includes/header.php';
               </div>
               <div class="col-md-6">
                 <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="designation" name="designation" required 
-                       value="<?php echo htmlspecialchars($employee['designation']); ?>">
+                <select class="form-select" id="designation" name="designation" required>
+                  <option value="" disabled>Select a Designation</option>
+                  <?php 
+                    $designationQuery = "SELECT id, title FROM designations ORDER BY title";
+                    $stmt = $pdo->query($designationQuery);
+                    while ($row = $stmt->fetch()) {
+                      $selected = ($row['id'] == $employee['designation']) ? 'selected' : ''; 
+                      echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
+                    }
+                  ?>
+                </select>
               </div>
             </div>
-            
-            <div class="mb-3">
-              <label for="login_access" class="form-label">Login Access <span class="text-danger">*</span></label>
-              <select class="form-select" id="login_access" name="login_access" required>
-                <option disabled>Select Login Access</option>
-                <?php 
-                  $LoginAccess = ['1' => 'Granted', '0' => 'Denied'];
-                  foreach ($LoginAccess as $key => $value) {
-                    $selected = ($employee['login_access'] == $key) ? 'selected' : '';
-                    echo "<option value='$key' $selected>$value</option>";
-                  }
-                ?>
-              </select>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="role" class="form-label">Role <span class="text-danger">*</span></label>
+                <select class="form-select" id="role" name="role_id" required> <!-- Changed name to role_id -->
+                  <option value="" disabled>Select a Role</option>
+                  <?php 
+                    $roleQuery = "SELECT id, name FROM roles ORDER BY name"; // Assuming you have a 'roles' table
+                    $stmtRole = $pdo->query($roleQuery);
+                    while ($rowRole = $stmtRole->fetch()) {
+                      $selectedRole = ($rowRole['id'] == $employee['role_id']) ? 'selected' : ''; // Use role_id for comparison
+                      echo "<option value='{$rowRole['id']}' $selectedRole>{$rowRole['name']}</option>";
+                    }
+                  ?>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="login_access" class="form-label">Login Access <span class="text-danger">*</span></label>
+                <select class="form-select" id="login_access" name="login_access" required>
+                  <option disabled>Select Login Access</option>
+                  <?php 
+                    $LoginAccess = ['1' => 'Granted', '0' => 'Denied'];
+                    foreach ($LoginAccess as $key => $value) {
+                      $selected = ($employee['login_access'] == $key) ? 'selected' : '';
+                      echo "<option value='$key' $selected>$value</option>";
+                    }
+                  ?>
+                </select>
+              </div>
             </div>
           </div>
           

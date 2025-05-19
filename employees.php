@@ -13,51 +13,6 @@ if (!is_admin()) {
 
 include 'includes/db_connection.php';
 
-// Handle employee creation form submission
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['machId'], $_POST['empBranch'], $_POST['empFirstName'], $_POST['empLastName'], $_POST['empEmail'], $_POST['empPhone'], $_POST['empJoinDate'])) {
-    // Get form data
-    $machId = $_POST['machId'];
-    $empBranch = $_POST['empBranch'];
-    $empFirstName = $_POST['empFirstName'];
-    $empMiddleName = isset($_POST['empMiddleName']) ? $_POST['empMiddleName'] : null; // Optional field
-    $empLastName = $_POST['empLastName'];
-    $empEmail = $_POST['empEmail'];
-    $empPhone = $_POST['empPhone'];
-    $empJoinDate = $_POST['empJoinDate'];
-
-    // Generate empID based on branch value and auto-increment
-    $stmt = $pdo->prepare("SELECT COUNT(*) AS count FROM employees WHERE branch = :branch");
-    $stmt->execute([':branch' => $empBranch]);
-    $row = $stmt->fetch();
-    $count = $row['count'] + 1;
-    $empId = $empBranch . str_pad($count, 2, '0', STR_PAD_LEFT);
-
-    // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, email, phone, join_date)
-            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :empEmail, :empPhone, :empJoinDate)";
-    $stmt = $pdo->prepare($sql);
-    try {
-        $stmt->execute([
-            ':empId' => $empId,
-            ':machId' => $machId,
-            ':empBranch' => $empBranch,
-            ':empFirstName' => $empFirstName,
-            ':empMiddleName' => $empMiddleName,
-            ':empLastName' => $empLastName,
-            ':empEmail' => $empEmail,
-            ':empPhone' => $empPhone,
-            ':empJoinDate' => $empJoinDate
-        ]);
-        $_SESSION['success'] = "Employee added successfully!";
-        header('Location: employees.php');
-        exit();
-    } catch (PDOException $e) {
-        $_SESSION['error'] = "Error adding employee: " . $e->getMessage();
-        header('Location: employees.php');
-        exit();
-    }
-}
-
 // Handle exit date and note update
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['exitDate'])) {
     $empId = $_POST['empId'];
@@ -73,19 +28,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['exitDate'])) {
             ':empId' => $empId
         ]);
         $_SESSION['success'] = "Employee exit details updated successfully!";
-        header('Location: employees.php');
+        header('Location: employees.php?_nocache=' . time());
         exit();
     } catch (PDOException $e) {
         $_SESSION['error'] = "Error updating exit details: " . $e->getMessage();
-        header('Location: employees.php');
+        header('Location: employees.php?_nocache=' . time());
         exit();
     }
 }
 
 // Fetch data from the database
-$stmt = $pdo->prepare("SELECT e.*, b.name FROM employees e JOIN branches b ON e.branch = b.id ORDER BY e.join_date DESC");
+$stmt = $pdo->prepare("SELECT e.*, b.name, d.title AS designation_title 
+                FROM employees e 
+                JOIN branches b ON e.branch = b.id 
+                LEFT JOIN designations d ON e.designation = d.id 
+                ORDER BY e.join_date DESC");
 $stmt->execute();
 $employees = $stmt->fetchAll();
+
+// Force fresh load by checking for cache-busting parameter
+if (!isset($_GET['_nocache'])) {
+    header("Location: employees.php?_nocache=" . time());
+    exit();
+}
 
 // Include the header (which includes topbar, starts main-wrapper and content-wrapper)
 require_once __DIR__ . '/includes/header.php';
@@ -95,7 +60,7 @@ require_once __DIR__ . '/includes/header.php';
 <!-- Sidebar is included in header.php -->
 
 <!-- Content Wrapper (already started in header.php) -->
-<!-- <div class="content-wrapper"> --> <!-- This div is opened in header.php -->
+  <!-- This div is opened in header.php -->
     <!-- Topbar is included in header.php -->
     
     <!-- Main content -->
@@ -105,9 +70,14 @@ require_once __DIR__ . '/includes/header.php';
         <div>
           <h1 class="fs-2 fw-bold mb-1">Manage Employees</h1>
         </div>
-        <a href="add-employee.php" class="btn btn-primary">
-          <i class="fas fa-user-plus me-2"></i> Add Employee
-        </a>
+        <div class="d-flex gap-2">
+          <button type="button" id="refreshEmployees" class="btn btn-outline-primary" onclick="forceRefresh()">
+            <i class="fas fa-sync-alt"></i> Refresh
+          </button>
+          <a href="add-employee.php" class="btn btn-primary">
+            <i class="fas fa-user-plus me-2"></i> Add Employee
+          </a>
+        </div>
       </div>
       
       <!-- Employees Table Card -->
@@ -137,8 +107,15 @@ require_once __DIR__ . '/includes/header.php';
                            class="rounded-circle me-3" 
                            style="width: 40px; height: 40px; object-fit: cover;">
                       <div>
-                        <div class="fw-bold"><?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']); ?></div>
-                        <small class="text-muted"><?php echo htmlspecialchars($employee['designation'] ?: 'Not Assigned'); ?></small>
+                        <div class="fw-bold"><?php 
+                          $fullName = $employee['first_name'];
+                          if (!empty($employee['middle_name'])) {
+                              $fullName .= ' ' . $employee['middle_name'];
+                          }
+                          $fullName .= ' ' . $employee['last_name'];
+                          echo htmlspecialchars($fullName);
+                        ?></div>
+                        <small class="text-muted"><?php echo htmlspecialchars($employee['designation_title'] ?: 'Not Assigned'); ?></small>
                       </div>
                     </div>
                   </td>
@@ -150,24 +127,40 @@ require_once __DIR__ . '/includes/header.php';
                   <td class="text-center align-middle"><?php echo date('M d, Y', strtotime($employee['join_date'])); ?></td>
                   <td class="text-center align-middle">
                     <?php if ($employee['exit_date']): ?>
-                      <span class="badge bg-danger">Exited</span>
+                      <span class="badge bg-danger">Exited on</span></br><?php echo date('M d, Y', strtotime($employee['exit_date'])); ?>
                     <?php else: ?>
                       <span class="badge bg-success">Active</span>
                     <?php endif; ?>
                   </td>
                   <td class="text-center align-middle">
                     <div class="dropdown">
-                      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                      <a href="#" class="text-secondary" role="button" id="dropdownMenuButton<?php echo $employee['emp_id']; ?>" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fas fa-ellipsis-v"></i>
-                      </button>
-                      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton">
-                        <li><a class="dropdown-item" href="employee-viewer.php?empId=<?php echo $employee['emp_id']; ?>"><i class="fas fa-eye me-2"></i> View</a></li>
-                        <li><a class="dropdown-item" href="edit-employee.php?id=<?php echo $employee['emp_id']; ?>"><i class="fas fa-edit me-2"></i> Edit</a></li>
+                      </a>
+                      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton<?php echo $employee['emp_id']; ?>">
+                        <li>
+                          <a class="dropdown-item" href="employee-viewer.php?empId=<?php echo $employee['emp_id']; ?>">
+                            <i class="fas fa-eye me-2"></i> View
+                          </a>
+                        </li>
+                        <li>
+                          <a class="dropdown-item" href="edit-employee.php?id=<?php echo $employee['emp_id']; ?>">
+                            <i class="fas fa-edit me-2"></i> Edit
+                          </a>
+                        </li>
                         <?php if (!$employee['exit_date']): ?>
-                        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#markExitModal" data-emp-id="<?php echo $employee['emp_id']; ?>"><i class="fas fa-sign-out-alt me-2"></i> Mark Exit</a></li>
+                        <li>
+                          <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#markExitModal" data-emp-id="<?php echo $employee['emp_id']; ?>">
+                            <i class="fas fa-sign-out-alt me-2"></i> Mark Exit
+                          </a>
+                        </li>
                         <?php endif; ?>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#deleteEmployeeModal" data-emp-id="<?php echo $employee['emp_id']; ?>"><i class="fas fa-trash me-2"></i> Delete</a></li>
+                        <li>
+                          <a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#deleteEmployeeModal" data-emp-id="<?php echo $employee['emp_id']; ?>">
+                            <i class="fas fa-trash me-2"></i> Delete
+                          </a>
+                        </li>
                       </ul>
                     </div>
                   </td>
@@ -239,6 +232,15 @@ require_once __DIR__ . '/includes/header.php';
 
 <!-- Page specific script -->
 <script>
+// Force refresh function to reload page with cache-busting parameter
+const forceRefresh = () => {
+  const timestamp = new Date().getTime();
+  const currentUrl = new URL(window.location.href);
+  currentUrl.searchParams.delete('_nocache');
+  currentUrl.searchParams.set('_nocache', timestamp);
+  window.location.href = currentUrl.toString();
+};
+
 document.addEventListener('DOMContentLoaded', function() {
   // Initialize DataTable
   const employeesTable = new DataTable('#employees-table', {

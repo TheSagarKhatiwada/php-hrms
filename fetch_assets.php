@@ -23,7 +23,7 @@ try {
     // Debug - log the category ID
     file_put_contents('debug_log.txt', "Fetching assets for category ID: $categoryId\n", FILE_APPEND);
     
-    // Prepare the query to fetch assets by category ID
+    // Use lowercase table name consistently - this is what your database actually uses
     $stmt = $pdo->prepare("SELECT 
                             a.AssetID,
                             a.AssetName,
@@ -41,8 +41,10 @@ try {
     $stmt->execute([':categoryId' => $categoryId]);
     $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Debug - log the number of assets found
+    // Debug - log the query and results
+    file_put_contents('debug_log.txt', "SQL Query: " . $stmt->queryString . "\n", FILE_APPEND);
     file_put_contents('debug_log.txt', "Found " . count($assets) . " assets\n", FILE_APPEND);
+    file_put_contents('debug_log.txt', "Assets data: " . json_encode($assets) . "\n", FILE_APPEND);
 
     // Return JSON response with data object format for DataTables
     header('Content-Type: application/json');

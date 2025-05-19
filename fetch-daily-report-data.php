@@ -27,10 +27,11 @@ if (!empty($empBranch)) {
 $sqlEmployees = "SELECT 
                     e.emp_id, 
                     CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS employee_name, 
-                    e.designation, 
+                    d.title AS designation, 
                     b.name AS branch
                 FROM employees e
-                LEFT JOIN branches b ON e.branch = b.id";
+                LEFT JOIN branches b ON e.branch = b.id
+                LEFT JOIN designations d ON e.designation = d.id";
 
 if (!empty($empBranch)) {
     $sqlEmployees .= " WHERE e.branch = :empBranch";

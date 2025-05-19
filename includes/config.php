@@ -14,8 +14,8 @@ if (!defined('ENVIRONMENT')) {
 $DB_CONFIG = [
     'host'    => 'localhost',
     'name'    => 'hrms',
-    'user'    => 'root',
-    'pass'    => '',
+    'user'    => 'rootUser', // Update with your actual MySQL root user
+    'pass'    => 'Sagar', // Update with your actual MySQL root password
     'charset' => 'utf8mb4',
 ];
 

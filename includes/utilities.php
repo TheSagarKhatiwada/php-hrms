@@ -3,6 +3,12 @@
  * Utility functions for the HRMS application
  */
 
+// Include notification helpers
+require_once __DIR__ . '/notification_helpers.php';
+
+// Include session_config.php for session functions
+require_once __DIR__ . '/session_config.php';
+
 /**
  * Format a date for display
  * 
@@ -71,44 +77,6 @@ function generate_uuid() {
 }
 
 /**
- * Set flash message in session
- * 
- * @param string $type Message type (success, error, warning, info)
- * @param string $content Message content
- */
-function set_flash_message($type, $content) {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
-    
-    $_SESSION['message'] = [
-        'type' => $type,
-        'content' => $content
-    ];
-}
-
-/**
- * Display flash message and clear it from session
- */
-function display_flash_message() {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
-    
-    if (isset($_SESSION['message'])) {
-        $type = $_SESSION['message']['type'];
-        $content = $_SESSION['message']['content'];
-        
-        echo '<div class="alert alert-' . $type . ' alert-dismissible">';
-        echo '<button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>';
-        echo $content;
-        echo '</div>';
-        
-        unset($_SESSION['message']);
-    }
-}
-
-/**
  * Log activity to database
  * 
  * @param PDO $pdo Database connection
@@ -174,6 +142,8 @@ function secure_file_upload($file, $destination, $allowed_types = [], $max_size 
  */
 function redirect_with_message($location, $message_type, $message) {
     set_flash_message($message_type, $message);
+    // Append session ID to location URL if using session ID in URL
+    $location = append_sid($location);
     header('Location: ' . $location);
     exit();
 }
@@ -204,5 +174,119 @@ function is_logged_in() {
  */
 function get_user_role() {
     return isset($_SESSION['user_role']) ? $_SESSION['user_role'] : null;
+}
+
+/**
+ * Check if the current user has a specific permission
+ * 
+ * @param string $permission_code The permission code to check
+ * @return bool True if user has permission, false otherwise
+ */
+function has_permission($permission_code) {
+    // Admin always has all permissions
+    if (is_admin()) {
+        return true;
+    }
+    
+    // If user is not logged in or role is not set, they have no permissions
+    if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_role_id'])) {
+        return false;
+    }
+    
+    // Check the database for permission
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        
+        $sql = "SELECT COUNT(*) 
+                FROM role_permissions rp 
+                JOIN permissions p ON rp.permission_id = p.id 
+                WHERE rp.role_id = :role_id AND p.code = :permission_code";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':role_id', $_SESSION['user_role_id'], PDO::PARAM_INT);
+        $stmt->bindParam(':permission_code', $permission_code, PDO::PARAM_STR);
+        $stmt->execute();
+        
+        return $stmt->fetchColumn() > 0;
+    } catch (PDOException $e) {
+        error_log('Permission check error: ' . $e->getMessage(), 3, 'error_log.txt');
+        return false;
+    }
+}
+
+/**
+ * Check if the current user has any of the given permissions
+ * 
+ * @param array $permission_codes Array of permission codes to check
+ * @return bool True if user has any of the permissions, false otherwise
+ */
+function has_any_permission(array $permission_codes) {
+    // Admin always has all permissions
+    if (is_admin()) {
+        return true;
+    }
+    
+    // Check each permission
+    foreach ($permission_codes as $code) {
+        if (has_permission($code)) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Check if the current user has all of the given permissions
+ * 
+ * @param array $permission_codes Array of permission codes to check
+ * @return bool True if user has all the permissions, false otherwise
+ */
+function has_all_permissions(array $permission_codes) {
+    // Admin always has all permissions
+    if (is_admin()) {
+        return true;
+    }
+    
+    // Check each permission
+    foreach ($permission_codes as $code) {
+        if (!has_permission($code)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+/**
+ * Get all permissions for the current user
+ * 
+ * @return array Array of permission codes the user has
+ */
+function get_user_permissions() {
+    // If not logged in, return empty array
+    if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_role_id'])) {
+        return [];
+    }
+    
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        
+        $sql = "SELECT p.code 
+                FROM role_permissions rp 
+                JOIN permissions p ON rp.permission_id = p.id 
+                WHERE rp.role_id = :role_id";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':role_id', $_SESSION['user_role_id'], PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    } catch (PDOException $e) {
+        error_log('Getting user permissions error: ' . $e->getMessage(), 3, 'error_log.txt');
+        return [];
+    }
 }
 ?>

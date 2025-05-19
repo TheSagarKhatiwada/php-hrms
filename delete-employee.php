@@ -13,11 +13,18 @@ if (isset($_GET['id'])) {
         $stmt = $pdo->prepare("DELETE FROM employees WHERE emp_id = :emp_id");
         $stmt->execute([':emp_id' => $emp_id]);
         
-        $_SESSION['success_message'] = "Employee deleted successfully";
+        if ($stmt->rowCount() > 0) {
+            $_SESSION['success'] = "Employee deleted successfully";
+        } else {
+            $_SESSION['error'] = "Employee not found or could not be deleted";
+        }
     } catch (PDOException $e) {
-        $_SESSION['error_message'] = "Error deleting employee: " . $e->getMessage();
+        $_SESSION['error'] = "Error deleting employee: " . $e->getMessage();
     }
+} else {
+    $_SESSION['error'] = "No employee ID provided";
 }
 
-header("Location: employees.php");
+// Redirect back to the employees page with cache-busting parameter
+header("Location: employees.php?_nocache=" . time());
 exit();

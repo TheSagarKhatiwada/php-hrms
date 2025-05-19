@@ -231,20 +231,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     </button>
   </div>
   
-  <?php if (isset($_SESSION['success'])): ?>
-    <div class="alert alert-success alert-dismissible fade show mb-4">
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
-    </div>
-  <?php endif; ?>
-  
-  <?php if (isset($_SESSION['error'])): ?>
-    <div class="alert alert-danger alert-dismissible fade show mb-4">
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
-    </div>
-  <?php endif; ?>
-  
   <!-- Maintenance Records Card -->
   <div class="card border-0 shadow-sm">
     <div class="card-body">
@@ -317,22 +303,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <span class="text-muted">-</span>
                   <?php else: ?>
                   <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="actionsMenu<?php echo $record['RecordID']; ?>" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a href="#" class="text-secondary" role="button" id="dropdownMenuButton<?php echo $record['RecordID']; ?>" data-bs-toggle="dropdown" aria-expanded="false">
                       <i class="fas fa-ellipsis-v"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="actionsMenu<?php echo $record['RecordID']; ?>">
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton<?php echo $record['RecordID']; ?>">
                       <li>
-                        <a class="dropdown-item action-button" data-action="Maintenance Not Required" data-id="<?php echo $record['RecordID']; ?>">
+                        <a class="dropdown-item action-button" href="#" data-action="Maintenance Not Required" data-id="<?php echo $record['RecordID']; ?>">
                           <i class="fas fa-times me-2"></i> Not Required
                         </a>
                       </li>
                       <li>
-                        <a class="dropdown-item action-button" data-action="Maintenance on Progress" data-id="<?php echo $record['RecordID']; ?>">
+                        <a class="dropdown-item action-button" href="#" data-action="Maintenance on Progress" data-id="<?php echo $record['RecordID']; ?>">
                           <i class="fas fa-spinner me-2"></i> On Progress
                         </a>
                       </li>
                       <li>
-                        <a class="dropdown-item action-button" data-action="Maintenance Completed" data-id="<?php echo $record['RecordID']; ?>" data-additional-field="Completion Notes">
+                        <a class="dropdown-item action-button" href="#" data-action="Maintenance Completed" data-id="<?php echo $record['RecordID']; ?>" data-additional-field="Completion Notes">
                           <i class="fas fa-check me-2"></i> Completed
                         </a>
                       </li>
@@ -530,6 +516,10 @@ document.addEventListener('DOMContentLoaded', function() {
         previous: '<i class="fas fa-chevron-left"></i>',
         next: '<i class="fas fa-chevron-right"></i>'
       }
+    },
+    // Draw callback to reinitialize click handlers after table redraw
+    drawCallback: function() {
+      initializeActionButtons();
     }
   });
   
@@ -539,35 +529,32 @@ document.addEventListener('DOMContentLoaded', function() {
     dropdownParent: $('#addMaintenanceModal .modal-body')
   });
 
-  // "Not Required" button handler
-  document.querySelectorAll('.action-button[data-action="Maintenance Not Required"]').forEach(function(button) {
-    button.addEventListener('click', function() {
-      const maintenanceId = this.dataset.id;
-      document.getElementById('notRequiredMaintenanceId').value = maintenanceId;
-      const notRequiredModal = new bootstrap.Modal(document.getElementById('notRequiredModal'));
-      notRequiredModal.show();
+  // Function to initialize action buttons using event delegation
+  function initializeActionButtons() {
+    // Use event delegation for action buttons
+    $(document).off('click', '.action-button').on('click', '.action-button', function(e) {
+      e.preventDefault();
+      const action = $(this).data('action');
+      const maintenanceId = $(this).data('id');
+      
+      if (action === 'Maintenance Not Required') {
+        document.getElementById('notRequiredMaintenanceId').value = maintenanceId;
+        const notRequiredModal = new bootstrap.Modal(document.getElementById('notRequiredModal'));
+        notRequiredModal.show();
+      } else if (action === 'Maintenance on Progress') {
+        document.getElementById('onProgressMaintenanceId').value = maintenanceId;
+        const onProgressModal = new bootstrap.Modal(document.getElementById('onProgressModal'));
+        onProgressModal.show();
+      } else if (action === 'Maintenance Completed') {
+        document.getElementById('completedMaintenanceId').value = maintenanceId;
+        const completedModal = new bootstrap.Modal(document.getElementById('completedModal'));
+        completedModal.show();
+      }
     });
-  });
-
-  // "On Progress" button handler
-  document.querySelectorAll('.action-button[data-action="Maintenance on Progress"]').forEach(function(button) {
-    button.addEventListener('click', function() {
-      const maintenanceId = this.dataset.id;
-      document.getElementById('onProgressMaintenanceId').value = maintenanceId;
-      const onProgressModal = new bootstrap.Modal(document.getElementById('onProgressModal'));
-      onProgressModal.show();
-    });
-  });
-
-  // "Completed" button handler
-  document.querySelectorAll('.action-button[data-action="Maintenance Completed"]').forEach(function(button) {
-    button.addEventListener('click', function() {
-      const maintenanceId = this.dataset.id;
-      document.getElementById('completedMaintenanceId').value = maintenanceId;
-      const completedModal = new bootstrap.Modal(document.getElementById('completedModal'));
-      completedModal.show();
-    });
-  });
+  }
+  
+  // Initialize action buttons on page load
+  initializeActionButtons();
   
   // Set today's date as default for date inputs
   document.querySelectorAll('input[type="date"]').forEach(dateInput => {

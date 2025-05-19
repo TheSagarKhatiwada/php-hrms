@@ -1,4 +1,10 @@
 <?php 
+// Prevent caching in browsers and proxies
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+header("Expires: 0");
+
 // Start output buffering to prevent "headers already sent" issues
 ob_start();
 
@@ -8,6 +14,38 @@ require_once __DIR__ . '/session_config.php';
 include __DIR__ . '/configuration.php';
 include __DIR__ . '/db_connection.php'; // Ensure DB connection is available
 include __DIR__ . '/settings.php'; // Include settings
+include __DIR__ . '/csrf_protection.php'; // Include CSRF protection functions
+
+// Define the adjustBrightness function at the beginning of the file
+if (!function_exists('adjustBrightness')) {
+    function adjustBrightness($hex, $steps) {
+        // Steps should be between -255 and 255. Negative = darker, positive = lighter
+        $steps = max(-255, min(255, $steps));
+
+        // Format the hex color string
+        $hex = str_replace('#', '', $hex);
+        if (strlen($hex) == 3) {
+            $hex = str_repeat(substr($hex, 0, 1), 2) . str_repeat(substr($hex, 1, 1), 2) . str_repeat(substr($hex, 2, 1), 2);
+        }
+
+        // Get RGB values
+        $r = hexdec(substr($hex, 0, 2));
+        $g = hexdec(substr($hex, 2, 2));
+        $b = hexdec(substr($hex, 4, 2));
+
+        // Adjust
+        $r = max(0, min(255, $r + $steps));
+        $g = max(0, min(255, $g + $steps));
+        $b = max(0, min(255, $b + $steps));
+
+        // Convert back to hex
+        $r_hex = str_pad(dechex($r), 2, '0', STR_PAD_LEFT);
+        $g_hex = str_pad(dechex($g), 2, '0', STR_PAD_LEFT);
+        $b_hex = str_pad(dechex($b), 2, '0', STR_PAD_LEFT);
+
+        return '#' . $r_hex . $g_hex . $b_hex;
+    }
+}
 
 // Get the current script's filename
 $current_file = basename($_SERVER['SCRIPT_FILENAME']);
@@ -42,6 +80,19 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   <link rel="manifest" href="<?php echo isset($home) ? $home : ''; ?>manifest.json">
   <link rel="apple-touch-icon" href="<?php echo isset($home) ? $home : ''; ?>resources/images/icon-192x192.png">
   
+  <!-- Meta tags to prevent caching of dynamic content -->
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  
+  <!-- Auto refresh for dashboard and other data-sensitive pages -->
+  <?php if (in_array(basename($_SERVER['PHP_SELF']), ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 'daily-report.php', 'employees.php'])): ?>
+  <meta http-equiv="refresh" content="300"> <!-- Refresh every 5 minutes -->
+  <?php endif; ?>
+  
+  <!-- CSRF Token for Ajax Requests -->
+  <meta name="csrf-token" content="<?php echo isset($_SESSION['csrf_token']) ? $_SESSION['csrf_token'] : generate_csrf_token(); ?>">
+  
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="<?php echo isset($home) ? $home : ''; ?>resources/images/favicon.png">
   
@@ -66,6 +117,21 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       --primary-color: <?php echo PRIMARY_COLOR; ?>;
       --primary-hover: <?php echo adjustBrightness(PRIMARY_COLOR, -10); ?>;
       --secondary-color: <?php echo SECONDARY_COLOR; ?>;
+      /* Extract RGB values from primary color for rgba usage */
+      --primary-rgb: <?php 
+        // Convert hex to RGB
+        $hex = str_replace('#', '', PRIMARY_COLOR);
+        if(strlen($hex) == 3) {
+            $r = hexdec(substr($hex, 0, 1).substr($hex, 0, 1));
+            $g = hexdec(substr($hex, 1, 1).substr($hex, 1, 1));
+            $b = hexdec(substr($hex, 2, 1).substr($hex, 2, 1));
+        } else {
+            $r = hexdec(substr($hex, 0, 2));
+            $g = hexdec(substr($hex, 2, 2));
+            $b = hexdec(substr($hex, 4, 2));
+        }
+        echo "$r, $g, $b";
+      ?>;
       --sidebar-width: 260px;
       --sidebar-collapsed-width: 4.5rem;
       --transition-speed: 0.3s;
@@ -75,38 +141,6 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       --content-padding: 0;
     }
 
-    /* Helper function to adjust color brightness */
-    <?php
-    // This is a PHP function that will be included in the style tag to adjust colors
-    function adjustBrightness($hex, $steps) {
-        // Steps should be between -255 and 255. Negative = darker, positive = lighter
-        $steps = max(-255, min(255, $steps));
-
-        // Format the hex color string
-        $hex = str_replace('#', '', $hex);
-        if (strlen($hex) == 3) {
-            $hex = str_repeat(substr($hex, 0, 1), 2) . str_repeat(substr($hex, 1, 1), 2) . str_repeat(substr($hex, 2, 1), 2);
-        }
-
-        // Get RGB values
-        $r = hexdec(substr($hex, 0, 2));
-        $g = hexdec(substr($hex, 2, 2));
-        $b = hexdec(substr($hex, 4, 2));
-
-        // Adjust
-        $r = max(0, min(255, $r + $steps));
-        $g = max(0, min(255, $g + $steps));
-        $b = max(0, min(255, $b + $steps));
-
-        // Convert back to hex
-        $r_hex = str_pad(dechex($r), 2, '0', STR_PAD_LEFT);
-        $g_hex = str_pad(dechex($g), 2, '0', STR_PAD_LEFT);
-        $b_hex = str_pad(dechex($b), 2, '0', STR_PAD_LEFT);
-
-        return '#' . $r_hex . $g_hex . $b_hex;
-    }
-    ?>
-    
     body {
       font-family: 'Poppins', sans-serif;
       min-height: 100vh;
@@ -117,6 +151,165 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       padding: 0;
       background-color: #f8f9fa;
       position: relative;
+    }
+    
+    /* Primary color elements */
+    .btn-primary {
+      background-color: var(--primary-color) !important;
+      border-color: var(--primary-color) !important;
+    }
+    
+    .btn-primary:hover,
+    .btn-primary:focus,
+    .btn-primary:active {
+      background-color: var(--primary-hover) !important;
+      border-color: var(--primary-hover) !important;
+    }
+    
+    .btn-outline-primary {
+      color: var(--primary-color) !important;
+      border-color: var(--primary-color) !important;
+    }
+    
+    .btn-outline-primary:hover,
+    .btn-outline-primary:focus,
+    .btn-outline-primary:active {
+      background-color: var(--primary-color) !important;
+      color: #fff !important;
+    }
+    
+    .text-primary {
+      color: var(--primary-color) !important;
+    }
+    
+    .bg-primary {
+      background-color: var(--primary-color) !important;
+    }
+    
+    /* All hyperlinks and active states */
+    a {
+      color: var(--primary-color);
+      text-decoration: none;
+    }
+    
+    a:hover {
+      color: var(--primary-hover);
+      text-decoration: none;
+    }
+    
+    a.active, .nav-link.active, .dropdown-item.active {
+      background-color: var(--primary-color) !important;
+      color: #fff !important;
+    }
+    
+    /* Sidebar active items */
+    .sidebar .nav-item.active > .nav-link,
+    .sidebar .nav-item > .nav-link.active,
+    .sidebar .nav-treeview > .nav-item > .nav-link.active {
+      background-color: var(--primary-color) !important;
+      color: #fff !important;
+    }
+    
+    /* Table rows and cells with bg-primary */
+    table tr.bg-primary, 
+    table td.bg-primary, 
+    table th.bg-primary {
+      background-color: var(--primary-color) !important;
+    }
+    
+    /* Forms and inputs */
+    .form-control:focus,
+    .form-select:focus {
+      border-color: var(--primary-color);
+      outline: none;
+      box-shadow: 0 0 0 0.25rem rgba(var(--primary-rgb), 0.4);
+    }
+    
+    .form-check-input:checked {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+    
+    /* Pagination */
+    .page-item.active .page-link {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+    
+    .page-link {
+      color: var(--primary-color);
+    }
+    
+    .page-link:hover {
+      color: var(--primary-hover);
+    }
+    
+    /* Nav elements */
+    .nav-pills .nav-link.active, 
+    .nav-pills .show > .nav-link {
+      background-color: var(--primary-color);
+      color: #fff !important;
+    }
+    
+    /* Style for inactive nav tabs to use primary color */
+    .nav-pills .nav-link:not(.active) {
+      color: var(--primary-color) !important;
+    }
+    
+    /* Style for nav-tabs (used in profile.php and employee-viewer.php) */
+    .nav-tabs .nav-link:not(.active) {
+      color: var(--primary-color) !important;
+    }
+    
+    .nav-tabs .nav-link.active {
+      color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+    
+    /* Style for nav-tabs (used in profile.php and employee-viewer.php) */
+    .nav-tabs .nav-link:not(.active) {
+      color: var(--primary-color) !important;
+    }
+    
+    .nav-tabs .nav-link.active {
+      color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+    
+    /* Progress and loading indicators */
+    .progress-bar {
+      background-color: var(--primary-color);
+    }
+    
+    /* All badges with bg-primary */
+    .badge.bg-primary {
+      background-color: var(--primary-color) !important;
+    }
+    
+    /* Alerts with primary color */
+    .alert-primary {
+      background-color: rgba(var(--primary-rgb), 0.15);
+      border-color: rgba(var(--primary-rgb), 0.3);
+      color: var(--primary-color);
+    }
+    
+    /* Spinner and loading animation */
+    .spinner-border.text-primary,
+    .spinner-grow.text-primary {
+      color: var(--primary-color) !important;
+    }
+    
+    /* Custom switch elements */
+    .custom-switch .custom-control-input:checked ~ .custom-control-label::before,
+    .custom-control-input:checked ~ .custom-control-label::before {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+    
+    /* List group items */
+    .list-group-item.active {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
     }
     
     .text-muted {
@@ -451,8 +644,8 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
     }
 
     body.dark-mode .pagination .page-item.active .page-link {
-      background-color: #0d6efd; /* Keep primary color for active */
-      border-color: #0d6efd;
+      background-color: var(--primary-color); /* Use primary color variable instead of fixed blue */
+      border-color: var(--primary-color);
       color: #fff;
     }
 
@@ -460,6 +653,17 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       background-color: #343a40;
       border-color: #495057;
       color: #6c757d; /* Muted color for disabled */
+    }
+    
+    /* DataTables pagination icons in dark mode */
+    body.dark-mode .dataTables_wrapper .pagination .page-link {
+      color: #dee2e6;
+    }
+    
+    body.dark-mode .dataTables_wrapper .pagination .page-item.active .page-link {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+      color: #fff;
     }
     
     /* Breadcrumb styling */
@@ -558,10 +762,21 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       /* } */
       
       .content-wrapper {
+        margin-top: 0 !important;
         margin-left: 0 !important;
         width: 100% !important;
         /* Apply padding directly here for mobile */
-        padding: 1rem; 
+        padding: 0rem; 
+      }
+
+      .container-fluid {
+        padding: 5px !important;
+      }
+
+      .main-wrapper{
+        padding-top: 0 !important;
+        margin-left: 0 !important;
+        width: 100% !important;
       }
       
       .main-header {
@@ -572,6 +787,7 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       .main-footer {
         margin-left: 0 !important;
         width: 100% !important;
+        padding: 0 !important;
       }
       
       .sidebar {
@@ -611,7 +827,9 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
     /* Form styling improvements */
     .form-control:focus, 
     .form-select:focus {
-      box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+      outline: none;
+      box-shadow: 0 0 0 0.25rem rgba(var(--primary-rgb), 0.4);
+      border-color: var(--primary-color);
     }
     
     /* Card hover effects */
@@ -663,11 +881,19 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
 </head>
 <body class="<?php echo isset($_COOKIE['dark-mode']) && $_COOKIE['dark-mode'] === 'true' ? 'dark-mode' : ''; ?>">
   <!-- Loading Overlay -->
-  <div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-overlay" id="loadingOverlay" style="display: none;">
     <div class="spinner-border text-primary" role="status">
       <span class="visually-hidden">Loading...</span>
     </div>
   </div>
+  
+  <!-- Add immediate script to handle loading -->
+  <script>
+  // Immediately set the loading overlay to display for a brief moment
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+  });
+  </script>
 
   <!-- App Container Wrapper -->
   <div class="app-container">

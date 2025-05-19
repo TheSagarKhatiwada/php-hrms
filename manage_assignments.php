@@ -1,6 +1,9 @@
 <?php
 ob_start(); // Start output buffering
 $page = 'Asset Assignments';
+
+// Include notification_helpers.php before header to enable notify functions
+require_once __DIR__ . '/includes/notification_helpers.php';
 require_once __DIR__ . '/includes/header.php';
 include 'includes/db_connection.php';
 
@@ -62,6 +65,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $stmt = $pdo->prepare("UPDATE FixedAssets SET Status = 'Assigned' WHERE AssetID = :assetId");
                 $stmt->execute([':assetId' => $assetId]);
                 
+                // Get asset name for notification
+                $stmt = $pdo->prepare("SELECT AssetName FROM FixedAssets WHERE AssetID = :assetId");
+                $stmt->execute([':assetId' => $assetId]);
+                $asset = $stmt->fetch();
+                $assetName = $asset ? $asset['AssetName'] : "Asset #$assetId";
+                
+                // Send notification to the employee about the asset assignment
+                notify_asset($employeeId, 'assigned', $assetName);
+                
+                // If admins/managers should be notified of all asset assignments
+                notify_system(
+                    'Asset Assigned', 
+                    "$assetName has been assigned to employee ID: $employeeId", 
+                    'info'
+                );
+                
                 $_SESSION['success'] = "Asset assigned successfully!";
                 header('Location: manage_assignments.php');
                 exit();
@@ -95,8 +114,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $returnNotes = "Need Maintenance (" . $returnNotes . ")";
                 }
 
-                
-
                 // Update assignment record
                 $stmt = $pdo->prepare("UPDATE AssetAssignments SET ReturnDate = :returnDate, ReturnNotes = :returnNotes 
                                      WHERE AssignmentID = :assignmentId");
@@ -123,17 +140,59 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Update the return notes
                 $returnNotes = "Returned from $assignedUserName with note: " . $returnNotes;
                 
-                // Insert into AssetMaintenance table if maintenance is needed
-                if ($needsMaintenance) {
-                    $stmt = $pdo->prepare("INSERT INTO AssetMaintenance (AssetID, MaintenanceDate, Description) 
-                                         VALUES (:assetId, :maintenanceDate, :notes)");
-                    $stmt->execute([
-                        ':assetId' => $assetId,
-                        ':maintenanceDate' => $returnDate,
-                        ':notes' => $returnNotes
-                    ]);
+                // Get the employee ID and asset name for notification
+                $stmt = $pdo->prepare("SELECT aa.EmployeeID, fa.AssetName 
+                                      FROM AssetAssignments aa 
+                                      JOIN fixedassets fa ON aa.AssetID = fa.AssetID 
+                                      WHERE aa.AssignmentID = :assignmentId");
+                $stmt->execute([':assignmentId' => $assignmentId]);
+                $assetInfo = $stmt->fetch();
+                
+                if ($assetInfo) {
+                    $employeeId = $assetInfo['EmployeeID'];
+                    $assetName = $assetInfo['AssetName'];
+                    
+                    // Insert into AssetMaintenance table if maintenance is needed
+                    if ($needsMaintenance) {
+                        $stmt = $pdo->prepare("INSERT INTO AssetMaintenance (AssetID, MaintenanceDate, MaintenanceType, Description, Cost, MaintenancePerformBy, MaintenanceStatus) 
+                                             VALUES (:assetId, :maintenanceDate, :maintenanceType, :notes, :cost, :performedBy, 'Scheduled')");
+                        $stmt->execute([
+                            ':assetId' => $assetId,
+                            ':maintenanceDate' => $returnDate,
+                            ':maintenanceType' => 'Corrective',
+                            ':notes' => $returnNotes,
+                            ':cost' => 0.00, // Default zero cost for returned items
+                            ':performedBy' => 'Returned by ' . $assignedUserName
+                        ]);
+                        
+                        // Send maintenance notification
+                        notify_system(
+                            'Asset Needs Maintenance', 
+                            "$assetName has been returned and needs maintenance", 
+                            'warning',
+                            false // Changed to false to store notification in DB without redirecting
+                        );
+                    }
+                    
+                    // Send notification to the employee about the asset return
+                    notify_asset($employeeId, 'returned', $assetName);
+                    
+                    // Notify system/admins about the asset return
+                    notify_system(
+                        'Asset Returned', 
+                        "$assetName has been returned by Employee #$employeeId", 
+                        'info',
+                        false // Set to false to prevent immediate notification redirect
+                    );
                 }
+                
                 $_SESSION['success'] = "Asset returned successfully!";
+                
+                // Make sure all output is flushed before redirect
+                ob_end_clean();
+                
+                // Explicitly set the Content-Type header to help with redirection
+                header('Content-Type: text/html; charset=utf-8');
                 header('Location: manage_assignments.php');
                 exit();
             } catch (PDOException $e) {
@@ -179,11 +238,12 @@ try {
         ac.CategoryShortCode,
         e.First_Name,
         e.Last_Name,
-        e.Designation
+        d.title AS Designation
     FROM AssetAssignments aa
     LEFT JOIN fixedassets fa ON aa.AssetID = fa.AssetID
     LEFT JOIN assetcategories ac ON fa.CategoryID = ac.CategoryID
     LEFT JOIN employees e ON aa.EmployeeID = e.ID
+    LEFT JOIN designations d ON e.Designation = d.id
     ORDER BY aa.AssignmentDate DESC");
     $assignments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
@@ -210,32 +270,14 @@ try {
     <div>
       <h1 class="fs-2 fw-bold mb-1">Asset Assignments</h1>
     </div>
-    <button class="btn btn-primary" id="add-assignment-btn">
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAssignmentModal">
       <i class="fas fa-plus me-2"></i> New Assignment
     </button>
   </div>
-  
+
   <!-- Assignments Table Card -->
   <div class="card border-0 shadow-sm">
     <div class="card-body">
-      <?php if (isset($_SESSION['success'])): ?>
-        <script>
-          $(document).ready(function() {
-            showSuccessToast('<?php echo $_SESSION['success']; ?>');
-          });
-        </script>
-        <?php unset($_SESSION['success']); ?>
-      <?php endif; ?>
-      
-      <?php if (isset($_SESSION['error'])): ?>
-        <script>
-          $(document).ready(function() {
-            showErrorToast('<?php echo $_SESSION['error']; ?>');
-          });
-        </script>
-        <?php unset($_SESSION['error']); ?>
-      <?php endif; ?>
-      
       <div class="table-responsive">
         <table id="assignmentsTable" class="table table-hover">
           <thead>
@@ -284,7 +326,7 @@ try {
                 <td class="align-middle"><?php echo $assignment['ReturnNotes'] ? $assignment['ReturnNotes'] : '-'; ?></td>
                 <td class="text-center align-middle">
                   <?php if (empty($assignment['ReturnDate'])): ?>
-                    <button type="button" class="btn btn-sm btn-outline-warning return-asset-btn" data-assignment-id="<?php echo $assignment['AssignmentID']; ?>" data-asset-name="<?php echo htmlspecialchars($assignment['AssetName']); ?>" data-asset-serial="<?php echo htmlspecialchars($assignment['AssetSerial']); ?>">
+                    <button type="button" class="btn btn-sm btn-outline-warning return-asset-btn" data-bs-toggle="modal" data-bs-target="#returnAssetModal" data-assignment-id="<?php echo $assignment['AssignmentID']; ?>" data-asset-name="<?php echo htmlspecialchars($assignment['AssetName']); ?>" data-asset-serial="<?php echo htmlspecialchars($assignment['AssetSerial']); ?>">
                       <i class="fas fa-undo-alt me-1"></i> Return
                     </button>
                   <?php else: ?>
@@ -337,10 +379,12 @@ try {
                 <option value="">Select Employee</option>
                 <?php
                 // Fetch all employees to whom assignment goes
-                $stmt = $pdo->query("SELECT ID, CONCAT(First_Name, ' ', Last_Name, ' (', Designation, ')') AS EmployeeName 
-                                     FROM employees");
+                $stmt = $pdo->query("SELECT id, emp_id, CONCAT(first_name, ' ', middle_name, ' ', last_name, ' (', designation, ')') AS EmployeeName 
+                                     FROM employees 
+                                     WHERE exit_date IS NULL
+                                     ORDER BY first_name");
                 while ($employee = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                    echo "<option value='{$employee['ID']}'>{$employee['EmployeeName']}</option>";
+                    echo "<option value='{$employee['id']}'>{$employee['EmployeeName']}</option>";
                 }
                 ?>
               </select>

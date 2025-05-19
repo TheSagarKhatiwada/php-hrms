@@ -50,6 +50,10 @@ try {
     
     // Absent today (total employees - present)
     $absentToday = $totalEmployees - $presentToday;
+    // If no employees and absent is negative, set to 0
+    if ($absentToday < 0) {
+        $absentToday = 0;
+    }
     
     // Get upcoming birthdays (within the next 30 days)
     try {
@@ -57,15 +61,16 @@ try {
         
         // Query for employees with birthdays in the next 30 days
         $stmt = $pdo->prepare("
-            SELECT emp_id, first_name, middle_name, last_name, designation, user_image, dob, 
-                   DAYOFMONTH(dob) as birth_day, 
-                   MONTH(dob) as birth_month,
+            SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, d.title as designation_name, e.user_image, e.dob, 
+                   DAYOFMONTH(e.dob) as birth_day, 
+                   MONTH(e.dob) as birth_month,
                    YEAR(CURDATE()) as current_year
-            FROM employees 
-            WHERE (MONTH(dob) = ? AND DAYOFMONTH(dob) >= ?) 
-               OR (MONTH(dob) = ? AND DAYOFMONTH(dob) <= ?)
-               AND exit_date IS NULL
-            ORDER BY MONTH(dob), DAYOFMONTH(dob)
+            FROM employees e
+            LEFT JOIN designations d ON e.designation = d.id
+            WHERE (MONTH(e.dob) = ? AND DAYOFMONTH(e.dob) >= ?) 
+               OR (MONTH(e.dob) = ? AND DAYOFMONTH(e.dob) <= ?)
+               AND e.exit_date IS NULL
+            ORDER BY MONTH(e.dob), DAYOFMONTH(e.dob)
             LIMIT 5
         ");
         
@@ -83,18 +88,19 @@ try {
         
         // Query for employees with work anniversaries in the current month
         $stmt = $pdo->prepare("
-            SELECT emp_id, first_name, middle_name, last_name, designation, user_image, 
-                   join_date, 
-                   DAYOFMONTH(join_date) as join_day, 
-                   MONTH(join_date) as join_month,
-                   YEAR(join_date) as join_year,
-                   YEAR(CURDATE())-YEAR(join_date) as years_completed
-            FROM employees 
-            WHERE MONTH(join_date) = ? 
-               AND DAYOFMONTH(join_date) >= ?
-               AND YEAR(join_date) < ?
-               AND exit_date IS NULL
-            ORDER BY MONTH(join_date), DAYOFMONTH(join_date)
+            SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, d.title as designation_name, e.user_image, 
+                   e.join_date, 
+                   DAYOFMONTH(e.join_date) as join_day, 
+                   MONTH(e.join_date) as join_month,
+                   YEAR(e.join_date) as join_year,
+                   YEAR(CURDATE())-YEAR(e.join_date) as years_completed
+            FROM employees e
+            LEFT JOIN designations d ON e.designation = d.id
+            WHERE MONTH(e.join_date) = ? 
+               AND DAYOFMONTH(e.join_date) >= ?
+               AND YEAR(e.join_date) < ?
+               AND e.exit_date IS NULL
+            ORDER BY MONTH(e.join_date), DAYOFMONTH(e.join_date)
             LIMIT 5
         ");
         
@@ -109,12 +115,14 @@ try {
     
     // Get recent attendance records
     $stmt = $pdo->query("
-        SELECT a.*, e.first_name, e.last_name, e.middle_name, e.user_image, e.designation, b.name as branch_name 
+        SELECT a.*, e.first_name, e.last_name, e.middle_name, e.user_image, 
+               d.title as designation_name, b.name as branch_name 
         FROM attendance_logs a
         JOIN employees e ON a.emp_Id = e.emp_id
         LEFT JOIN branches b ON e.branch = b.id
+        LEFT JOIN designations d ON e.designation = d.id
         ORDER BY a.date DESC, a.time DESC
-        LIMIT 15
+        LIMIT 20
     ");
     $recentAttendance = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -168,8 +176,10 @@ require_once __DIR__ . '/includes/header.php';
             // Display appropriate welcome message
             if ($isFirstLogin) {
                 echo "<h1 class='mb-1'>Welcome, {$firstName}!</h1>";
+                echo "<p class='text-muted'>Let's start managing your workforce</p>";
             } else {
                 echo "<h1 class='mb-1'>Welcome back, {$firstName}!</h1>";
+                echo "<p class='text-muted'>Here's your organization at a glance</p>";
             }
           ?>
         </div>
@@ -189,23 +199,23 @@ require_once __DIR__ . '/includes/header.php';
     </div>
       
     <!-- Date Time Card -->
-    <div class="card mb-4 bg-primary text-white shadow-sm rounded-3">
+    <div class="card mb-4 text-white shadow rounded-3 datetime-card" style="background: linear-gradient(135deg, var(--primary-color) 0%, #4e73df 100%);">
         <div class="card-body py-4">
             <div class="row align-items-center">
                 <div class="col-md-6">
                     <h2 class="fs-3 mb-0"><?php echo date('l, F j, Y'); ?></h2>
-                    <h3 class="opacity-85" id="live-time">Loading time...</h3>
+                    <h4 class="opacity-85" id="live-time">Loading time...</h4>
                 </div>
                 <div class="col-md-6">
                     <div class="row align-items-center justify-content-end text-end">
                         <div class="col-auto">
                             <div class="d-flex flex-column">
                                 <div class="d-flex align-items-center mb-2">
-                                    <div class="bg-success rounded-circle me-2" style="width: 8px; height: 8px; outline: 1px solid #fff;"></div>
+                                    <div class="connection-dot online me-1"></div>
                                     <span class="small">System Online</span>
                                 </div>
                                 <div class="d-flex align-items-center">
-                                    <div class="bg-success rounded-circle me-2" style="width: 8px; height: 8px; outline: 1px solid #fff;"></div>
+                                    <div class="connection-dot online me-1"></div>
                                     <span class="small">Database Connected</span>
                                 </div>
                             </div>
@@ -219,19 +229,19 @@ require_once __DIR__ . '/includes/header.php';
     <!-- Stats Cards -->
     <div class="row g-4 mb-4">
         <!-- Total Employees -->
-        <div class="col-md-6 col-lg-4 col-xl-3">
-            <div class="card h-100 border-0 shadow-sm rounded-3">
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <div class="bg-primary bg-opacity-10 p-3 rounded-3">
-                            <i class="fas fa-users text-primary fs-4"></i>
+                    <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
+                    <i class="fas fa-users text-success fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Total Employees</h6>
                             <h2 class="mb-0 fw-bold"><?php echo $totalEmployees; ?></h2>
                         </div>
                     </div>
-                    <div class="d-flex align-items-center text-success">
+                    <div class="d-flex align-items-center text-green">
                         <i class="fas fa-arrow-up me-1 small"></i>
                         <span class="small">Active Workforce</span>
                     </div>
@@ -240,31 +250,32 @@ require_once __DIR__ . '/includes/header.php';
         </div>
         
         <!-- Total Branches -->
-        <div class="col-md-6 col-lg-4 col-xl-3">
-            <div class="card h-100 border-0 shadow-sm rounded-3">
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <div class="bg-info bg-opacity-10 p-3 rounded-3">
-                            <i class="fas fa-building text-info fs-4"></i>
+                        <div class="bg-info bg-opacity-10 p-3 rounded-3 stat-icon">
+                            <i class="fas fa-code-branch text-info fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Total Branches</h6>
                             <h2 class="mb-0 fw-bold"><?php echo $totalBranches; ?></h2>
                         </div>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <span class="small text-muted">Company Network</span>
+                    <div class="d-flex align-items-center text-info">
+                        <i class="fas fa-network-wired me-1 small"></i>
+                        <span class="small">Company Network</span>
                     </div>
                 </div>
             </div>
         </div>
         
         <!-- Present Today -->
-        <div class="col-md-6 col-lg-4 col-xl-3">
-            <div class="card h-100 border-0 shadow-sm rounded-3">
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <div class="bg-success bg-opacity-10 p-3 rounded-3">
+                        <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
                             <i class="fas fa-user-check text-success fs-4"></i>
                         </div>
                         <div class="ms-3">
@@ -283,11 +294,11 @@ require_once __DIR__ . '/includes/header.php';
         </div>
         
         <!-- Absent Today -->
-        <div class="col-md-6 col-lg-4 col-xl-3">
-            <div class="card h-100 border-0 shadow-sm rounded-3">
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <div class="bg-danger bg-opacity-10 p-3 rounded-3">
+                        <div class="bg-danger bg-opacity-10 p-3 rounded-3 stat-icon">
                             <i class="fas fa-user-times text-danger fs-4"></i>
                         </div>
                         <div class="ms-3">
@@ -307,15 +318,15 @@ require_once __DIR__ . '/includes/header.php';
     </div>
     
     <!-- Upcoming Celebrations Card -->
-    <div class="card border-0 shadow-sm rounded-3 mb-4">
+    <div class="card border-0 shadow-sm rounded-3 mb-4 celebration-card">
         <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
             <h5 class="card-title mb-0">Upcoming Celebrations</h5>
             <div class="nav nav-pills" id="celebrations-tab" role="tablist">
                 <button class="nav-link active" id="birthdays-tab" data-bs-toggle="pill" data-bs-target="#birthdays" type="button" role="tab" aria-controls="birthdays" aria-selected="true">
-                    <i class="fas fa-birthday-cake me-1"></i> Birthdays
+                    <i class="fas fa-birthday-cake me-1 celebration-icon"></i> Birthdays
                 </button>
                 <button class="nav-link" id="anniversaries-tab" data-bs-toggle="pill" data-bs-target="#anniversaries" type="button" role="tab" aria-controls="anniversaries" aria-selected="false">
-                    <i class="fas fa-glass-cheers me-1"></i> Work Anniversaries
+                    <i class="fas fa-glass-cheers me-1 celebration-icon"></i> Work Anniversaries
                 </button>
             </div>
         </div>
@@ -353,7 +364,7 @@ require_once __DIR__ . '/includes/header.php';
                                     $employeeImage = $employee['user_image'] ?: 'resources/images/default-user.png';
                                 ?>
                                 <div class="col-md-6">
-                                    <div class="d-flex align-items-center p-2 rounded border">
+                                    <div class="d-flex align-items-center p-3 rounded border employee-badge">
                                         <div class="position-relative">
                                             <img src="<?php echo $employeeImage; ?>" class="rounded-circle" alt="<?php echo $employee['first_name']; ?>" width="50" height="50" style="object-fit: cover;">
                                             <div class="position-absolute top-0 end-0 bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 20px; height: 20px; font-size: 10px; transform: translate(25%, -25%);">
@@ -363,7 +374,7 @@ require_once __DIR__ . '/includes/header.php';
                                         <div class="ms-3">
                                             <h6 class="mb-0"><?php echo $employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']; ?></h6>
                                             <div class="d-flex align-items-center">
-                                                <span class="text-muted small me-2"><?php echo $employee['designation']; ?></span>
+                                                <span class="text-muted small me-2"><?php echo htmlspecialchars($employee['designation_name'] ?? 'N/A'); ?></span>
                                                 <span class="badge bg-primary rounded-pill"><?php echo $birthDate; ?></span>
                                             </div>
                                             <div class="small text-success mt-1">
@@ -416,7 +427,7 @@ require_once __DIR__ . '/includes/header.php';
                                     $employeeImage = $employee['user_image'] ?: 'resources/images/default-user.png';
                                 ?>
                                 <div class="col-md-6">
-                                    <div class="d-flex align-items-center p-2 rounded border">
+                                    <div class="d-flex align-items-center p-3 rounded border employee-badge">
                                         <div class="position-relative">
                                             <img src="<?php echo $employeeImage; ?>" class="rounded-circle" alt="<?php echo $employee['first_name']; ?>" width="50" height="50" style="object-fit: cover;">
                                             <div class="position-absolute top-0 end-0 bg-info text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 20px; height: 20px; font-size: 10px; transform: translate(25%, -25%);">
@@ -426,7 +437,7 @@ require_once __DIR__ . '/includes/header.php';
                                         <div class="ms-3">
                                             <h6 class="mb-0"><?php echo $employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']; ?></h6>
                                             <div class="d-flex align-items-center">
-                                                <span class="text-muted small me-2"><?php echo $employee['designation']; ?></span>
+                                                <span class="text-muted small me-2"><?php echo htmlspecialchars($employee['designation_name'] ?? 'N/A'); ?></span>
                                                 <span class="badge bg-info rounded-pill"><?php echo $joinDate; ?></span>
                                             </div>
                                             <div class="small text-success mt-1">
@@ -484,9 +495,21 @@ require_once __DIR__ . '/includes/header.php';
                                         // Get employee image or default
                                         $employeeImage = $record['user_image'] ?: 'resources/images/default-user.png';
                                         
-                                        // Determine method badge color
-                                        $methodClass = $record['method'] == 1 ? 'bg-warning' : 'bg-success';
-                                        $methodText = $record['method'] == 1 ? 'Manual' : 'Auto';
+                                        // Determine method badge color and text based on method value
+                                        $methodText = '<span class="badge bg-secondary">Unknown</span>'; // Default
+                                        if (isset($record['method'])) {
+                                            switch ($record['method']) {
+                                                case 0:
+                                                    $methodText = '<span class="badge bg-primary">Auto</span>';
+                                                    break;
+                                                case 1:
+                                                    $methodText = '<span class="badge bg-warning" style="color: #000;">Manual</span>';
+                                                    break;
+                                                case 2:
+                                                    $methodText = '<span class="badge bg-info">Web</span>';
+                                                    break;
+                                            }
+                                        }
                                         
                                         echo "<tr>
                                                 <td>
@@ -494,14 +517,14 @@ require_once __DIR__ . '/includes/header.php';
                                                         <img src='{$employeeImage}' class='rounded-circle me-2' style='width: 32px; height: 32px; object-fit: cover;'>
                                                         <div>
                                                             <div class='fw-medium'>{$record['first_name']} {$record['last_name']}</div>
-                                                            <small class='text-muted'>{$record['designation']}</small>
+                                                            <small class='text-muted'>{$record['designation_name']}</small>
                                                         </div>
                                                     </div>
                                                 </td>
                                                 <td>{$record['branch_name']}</td>
                                                 <td>{$date}</td>
                                                 <td>{$time}</td>
-                                                <td><span class='badge {$methodClass} rounded-pill'>{$methodText}</span></td>
+                                                <td>{$methodText}</td>
                                             </tr>";
                                     }
                                 }
@@ -521,7 +544,9 @@ require_once __DIR__ . '/includes/header.php';
                     <h5 class="card-title mb-0">Attendance Overview</h5>
                 </div>
                 <div class="card-body">
-                    <canvas id="attendanceChart" height="250"></canvas>
+                    <div class="chart-container">
+                        <canvas id="attendanceChart" height="250"></canvas>
+                    </div>
                 </div>
             </div>
             
@@ -533,25 +558,25 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-6">
-                            <a href="add-employee.php" class="btn btn-primary w-100 d-flex flex-column align-items-center p-3 h-100">
+                            <a href="add-employee.php" class="btn btn-primary w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
                                 <i class="fas fa-user-plus fs-4 mb-2"></i>
                                 <span>Add Employee</span>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="record_manual_attendance.php" class="btn btn-success w-100 d-flex flex-column align-items-center p-3 h-100">
+                            <a href="record_manual_attendance.php" class="btn btn-success w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
                                 <i class="fas fa-clipboard-check fs-4 mb-2"></i>
                                 <span>Record Attendance</span>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="manage_assets.php" class="btn btn-info w-100 d-flex flex-column align-items-center p-3 text-white h-100">
+                            <a href="manage_assets.php" class="btn btn-indigo w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-white" style="background-color: #6610f2;">
                                 <i class="fas fa-boxes fs-4 mb-2"></i>
                                 <span>Manage Assets</span>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="monthly-report.php" class="btn btn-warning w-100 d-flex flex-column align-items-center p-3 h-100">
+                            <a href="monthly-report.php" class="btn btn-warning w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-dark">
                                 <i class="fas fa-chart-bar fs-4 mb-2"></i>
                                 <span>Reports</span>
                             </a>
@@ -569,24 +594,47 @@ require_once __DIR__ . '/includes/header.php';
 <!-- Charts.js Script -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  // Show loading overlay when page starts loading
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  if (loadingOverlay) {
+    loadingOverlay.style.display = 'flex';
+  }
+  
   // Pass PHP timezone information to JavaScript
   const serverTimezoneOffset = "<?php echo $timezoneOffset; ?>"; // Format: +HH:MM or -HH:MM
   
   // Initialize DataTable with Bootstrap 5 styling
   if ($.fn.DataTable) {
-    $('#attendanceTable').DataTable({
-      responsive: true,
-      lengthChange: false,
-      pageLength: 5,
-      searching: false,
-      info: false,
-      language: {
-        paginate: {
-          previous: '<i class="fas fa-chevron-left"></i>',
-          next: '<i class="fas fa-chevron-right"></i>'
+    // Only initialize DataTable if we have data
+    if (!$('#attendanceTable tbody tr td[colspan="5"]').length) {
+      $('#attendanceTable').DataTable({
+        responsive: true,
+        lengthChange: true,
+        pageLength: 7,
+        lengthMenu: [[7, 1, 20], [7, 15, 20]],
+        order: [[2, 'desc'], [3, 'desc']],
+        columnDefs: [
+          { orderable: false, targets: [0, 1, 4] } // Disable sorting on specific columns
+        ],
+        searching: true,
+        info: true,
+        pagingType: 'full_numbers',
+
+        language: {
+          paginate: {
+            previous: '<i class="fas fa-chevron-left"></i>',
+            next: '<i class="fas fa-chevron-right"></i>',
+            first: false,
+            last: false
+          },
+          search : '',
+          searchPlaceholder: "Search...",
+          emptyTable: "No attendance records found"
         }
-      }
-    });
+      });
+    } else {
+      console.log('No attendance data to display in DataTable');
+    }
   }
   
   // Live clock update with timezone support
@@ -653,7 +701,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const chartCanvas = document.getElementById('attendanceChart');
   if (chartCanvas) {
     try {
-      // Initialize Charts with Bootstrap 5 colors
+      // Initialize Charts with Bootstrap 5 colors and animations
       const ctx = chartCanvas.getContext('2d');
       const attendanceChart = new Chart(ctx, {
         type: 'doughnut',
@@ -701,10 +749,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 size: 13
               }
             }
+          },
+          animation: {
+            animateScale: true,
+            animateRotate: true,
+            duration: 1000,
+            easing: 'easeOutQuart'
           }
         }
       });
-      console.log('Attendance chart initialized successfully');
     } catch (error) {
       console.error('Error initializing attendance chart:', error);
     }
@@ -713,12 +766,13 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Hide loading overlay when page is fully loaded
-  const loadingOverlay = document.getElementById('loadingOverlay');
-  if (loadingOverlay) {
-    loadingOverlay.style.opacity = '0';
-    setTimeout(() => {
-      loadingOverlay.style.display = 'none';
-    }, 300);
-  }
+  window.addEventListener('load', function() {
+    if (loadingOverlay) {
+      loadingOverlay.style.opacity = '0';
+      setTimeout(() => {
+        loadingOverlay.style.display = 'none';
+      }, 300);
+    }
+  });
 });
 </script>

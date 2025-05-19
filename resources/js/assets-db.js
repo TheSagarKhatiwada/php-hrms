@@ -23,13 +23,6 @@ async function openDB() {
             if (!db.objectStoreNames.contains('categories')) {
                 const categoriesStore = db.createObjectStore('categories', { keyPath: 'CategoryID' });
             }
-            
-            // Create object store for offline changes
-            if (!db.objectStoreNames.contains('offlineChanges')) {
-                const changesStore = db.createObjectStore('offlineChanges', { keyPath: 'id', autoIncrement: true });
-                changesStore.createIndex('type', 'type', { unique: false });
-                changesStore.createIndex('status', 'status', { unique: false });
-            }
         };
     });
 }
@@ -112,56 +105,15 @@ async function getAllCategories() {
     });
 }
 
-// Queue an offline change
-async function queueOfflineChange(change) {
+// Save or update a category
+async function saveCategory(category) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['offlineChanges'], 'readwrite');
-        const store = transaction.objectStore('offlineChanges');
-        const request = store.add({
-            ...change,
-            status: 'pending',
-            timestamp: new Date().toISOString()
-        });
+        const transaction = db.transaction(['categories'], 'readwrite');
+        const store = transaction.objectStore('categories');
+        const request = store.put(category);
         
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
-
-// Get all pending changes
-async function getPendingChanges() {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['offlineChanges'], 'readonly');
-        const store = transaction.objectStore('offlineChanges');
-        const index = store.index('status');
-        const request = index.getAll('pending');
-        
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
-
-// Mark a change as synced
-async function markChangeAsSynced(id) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['offlineChanges'], 'readwrite');
-        const store = transaction.objectStore('offlineChanges');
-        const request = store.get(id);
-        
-        request.onsuccess = () => {
-            const change = request.result;
-            if (change) {
-                change.status = 'synced';
-                const updateRequest = store.put(change);
-                updateRequest.onsuccess = () => resolve();
-                updateRequest.onerror = () => reject(updateRequest.error);
-            } else {
-                resolve();
-            }
-        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -196,10 +148,16 @@ async function initializeDB(assets, categories) {
     await Promise.all([addAssets, addCategories]);
 }
 
-// Check if online
-function isOnline() {
-    return navigator.onLine;
-}
+// Export the functions
+return {
+    openDB,
+    saveAsset,
+    getAllAssets,
+    getAssetById,
+    saveCategory,
+    getAllCategories,
+    initializeDB
+};
 
 // Export the functions
 window.assetsDB = {
