@@ -247,7 +247,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 
 
-<form id="jsonForm" action="monthly-report.php" method="post">
+<form id="jsonForm" action="periodic-report.php" method="post">
     <input type="hidden" name="jsonData" value='<?php echo htmlspecialchars($dataJson, ENT_QUOTES, "UTF-8"); ?>'>
     <input type="hidden" name="startdate" value="<?php echo $startDate; ?>">
     <input type="hidden" name="enddate" value="<?php echo $endDate; ?>">

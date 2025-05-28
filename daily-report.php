@@ -159,6 +159,10 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
                     <button type="button" id="print-table-btn" class="btn btn-success btn-md px-4">
                       <i class="fas fa-print mr-1"></i> Print
                     </button>
+                    <?php else: ?>
+                    <button type="button" id="print-table-btn" class="btn btn-secondary btn-md px-4" title="Generate report first to enable printing">
+                      <i class="fas fa-print mr-1"></i> Print
+                    </button>
                     <?php endif; ?>
                   </div>
                 </div>
@@ -417,9 +421,27 @@ if (window.history.replaceState) {
     window.history.replaceState(null, null, window.location.href);
 }
 
-// Add functionality to the print button
-document.getElementById('print-table-btn').addEventListener('click', function() {
-    window.print();
+// Add functionality to the print button - ensure DOM is ready
+$(document).ready(function() {
+    // Check if print button exists and attach event
+    const printBtn = $('#print-table-btn');
+    if (printBtn.length > 0) {
+        console.log('Daily report print button found, attaching event'); // Debug log
+        printBtn.on('click', function(e) {
+            e.preventDefault();
+            console.log('Daily report print button clicked - initiating print'); // Debug log
+            window.print();
+        });
+    } else {
+        console.log('Daily report print button not found in DOM'); // Debug log
+    }
+    
+    // Also handle click using event delegation for dynamic content
+    $(document).on('click', '#print-table-btn', function(e) {
+        e.preventDefault();
+        console.log('Daily report print button clicked via delegation'); // Debug log
+        window.print();
+    });
 });
 
 //auto submit the filers
@@ -435,6 +457,8 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 </script>
+<!-- AdminLTE JavaScript -->
+<script src="<?php echo $home;?>dist/js/adminlte.js"></script>
 <!-- AdminLTE for demo purposes -->
 <script src="<?php echo $home;?>dist/js/demo.js"></script>
 

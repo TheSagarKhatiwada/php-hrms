@@ -333,7 +333,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // For non-AJAX requests, store the data in session and redirect
     $_SESSION['monthly_report_data'] = $processedData;
     
-    // Redirect back to the monthly report page with the date range and branch    $redirectUrl = 'monthly-report.php?hasData=1';
+    // Redirect back to the periodic report page with the date range and branch    $redirectUrl = 'periodic-report.php?hasData=1';
     
     if (!empty($_POST['reportDateRange'])) {
         $redirectUrl .= '&dateRange=' . urlencode($_POST['reportDateRange']);

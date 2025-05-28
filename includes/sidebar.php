@@ -73,7 +73,7 @@ require_once __DIR__ . '/utilities.php';
           </a>
         </li>
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'monthly-report.php'); ?>" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
+          <a href="<?php echo append_sid($home . 'periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
             <i class="nav-icon fas fa-calendar"></i>
             <span>Periodic Report</span>
           </a>
@@ -232,7 +232,7 @@ require_once __DIR__ . '/utilities.php';
           </a>
         </li>
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'monthly-report.php'); ?>" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
+          <a href="<?php echo append_sid($home . 'periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
             <i class="nav-icon fas fa-calendar"></i>
             <span>Periodic Report</span>
           </a>

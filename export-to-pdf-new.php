@@ -18,7 +18,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     // Include the file to get the processed data
     ob_start();
-    include 'fetch-monthly-report-data-new.php';
+    include 'fetch-periodic-report-data-new.php';
     $jsonOutput = ob_get_clean();
     
     // Parse the JSON response
@@ -112,6 +112,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 }
 
 // If not a POST request, redirect back to the report page
-header('Location: monthly-report.php');
+header('Location: periodic-report.php');
 exit;
 ?>

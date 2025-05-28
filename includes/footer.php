@@ -643,41 +643,14 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const sidebar = document.getElementById('main-sidebar');
-  const toggleButton = document.getElementById('sidebar-toggle'); // Desktop toggle button
   const mobileToggleButton = document.getElementById('mobile-sidebar-toggle');
   const sidebarCloseButton = document.getElementById('sidebar-close');
 
   console.log('Sidebar elements:', { 
     sidebar: sidebar, 
-    toggleButton: toggleButton,
     mobileToggleButton: mobileToggleButton, 
     sidebarCloseButton: sidebarCloseButton 
   });
-
-  // Function to apply collapsed/expanded state for desktop view
-  const applySidebarState = (isCollapsed) => {
-    if (isCollapsed) {
-      document.body.classList.add('sidebar-collapse');
-      if (sidebar) sidebar.classList.add('collapsed');
-      localStorage.setItem('sidebarState', 'collapsed');
-      if (toggleButton) toggleButton.setAttribute('aria-expanded', 'false');
-    } else {
-      document.body.classList.remove('sidebar-collapse');
-      if (sidebar) sidebar.classList.remove('collapsed');
-      localStorage.setItem('sidebarState', 'expanded');
-      if (toggleButton) toggleButton.setAttribute('aria-expanded', 'true');
-    }
-    // Trigger a resize event slightly after transition to help libraries redraw
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 350); 
-  };
-
-  // Desktop Toggle Button (Collapse/Expand)
-  if (toggleButton && sidebar) {
-    toggleButton.addEventListener('click', function(e) {
-      e.preventDefault();
-      applySidebarState(!document.body.classList.contains('sidebar-collapse'));
-    });
-  }
 
   // Mobile Toggle Button (Show/Hide)
   if (mobileToggleButton && sidebar) {
@@ -711,14 +684,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // Apply initial state from localStorage on desktop
-  if (window.innerWidth > 768) {
-    const savedState = localStorage.getItem('sidebarState');
-    applySidebarState(savedState === 'collapsed');
-  } else {
-    // Ensure mobile starts hidden and layout is not collapsed
+  // Ensure mobile starts hidden on page load
+  if (window.innerWidth <= 768) {
     if (sidebar) sidebar.classList.remove('show');
-    applySidebarState(false); 
   }
 });
 </script>
@@ -930,7 +898,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (timeSinceActivity > inactivityThreshold) {
         // Only reload data-sensitive pages
         const dataSensitivePages = ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 
-                                   'daily-report.php', 'monthly-report.php', 'employees.php',
+                                   'daily-report.php', 'periodic-report.php', 'employees.php',
                                    'assets.php', 'manage_assets.php'];
         
         const currentPage = window.location.pathname.split('/').pop();
