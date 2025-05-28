@@ -23,7 +23,7 @@ $csrf_token = generate_csrf_token();
 // Process form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate CSRF token
-    if (!validate_csrf_token($_POST['csrf_token'] ?? '')) {
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
         redirect_with_message('branches.php', 'error', 'Invalid security token. Please try again.');
     }
 
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['name'] ?? '');
         
         if (empty($name)) {
-            set_flash_message('error', 'Branch name is required.');
+            $_SESSION['error'] = 'Branch name is required.';
         } else {
             try {
                 $stmt = $pdo->prepare("INSERT INTO branches (name) VALUES (:name)");
@@ -43,12 +43,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 
                 log_activity($pdo, 'branch_created', "Created new branch: $name");
-                set_flash_message('success', 'Branch created successfully.');
+                $_SESSION['success'] = 'Branch created successfully.';
                 header('Location: branches.php');
                 exit();
             } catch (PDOException $e) {
                 error_log('Error creating branch: ' . $e->getMessage(), 3, 'error_log.txt');
-                set_flash_message('error', 'Error creating branch. Please try again.');
+                $_SESSION['error'] = 'Error creating branch. Please try again.';
             }
         }
     }
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['name'] ?? '');
         
         if (empty($name) || $branch_id <= 0) {
-            set_flash_message('error', 'Invalid branch data.');
+            $_SESSION['error'] = 'Invalid branch data.';
         } else {
             try {
                 $stmt = $pdo->prepare("UPDATE branches SET name = :name, updated_at = NOW() WHERE id = :id");
@@ -68,12 +68,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 
                 log_activity($pdo, 'branch_updated', "Updated branch ID: $branch_id");
-                set_flash_message('success', 'Branch updated successfully.');
+                $_SESSION['success'] = 'Branch updated successfully.';
                 header('Location: branches.php');
                 exit();
             } catch (PDOException $e) {
                 error_log('Error updating branch: ' . $e->getMessage(), 3, 'error_log.txt');
-                set_flash_message('error', 'Error updating branch. Please try again.');
+                $_SESSION['error'] = 'Error updating branch. Please try again.';
             }
         }
     }
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $count = $stmt->fetchColumn();
             
             if ($count > 0) {
-                set_flash_message('error', 'This branch cannot be deleted because it is assigned to employees.');
+                $_SESSION['error'] = 'This branch cannot be deleted because it is assigned to employees.';
             } else {
                 // Delete the branch
                 $stmt = $pdo->prepare("DELETE FROM branches WHERE id = :id");
@@ -98,14 +98,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 
                 log_activity($pdo, 'branch_deleted', "Deleted branch ID: $branch_id");
-                set_flash_message('success', 'Branch deleted successfully.');
+                $_SESSION['success'] = 'Branch deleted successfully.';
             }
             
             header('Location: branches.php');
             exit();
         } catch (PDOException $e) {
             error_log('Error deleting branch: ' . $e->getMessage(), 3, 'error_log.txt');
-            set_flash_message('error', 'Error deleting branch. Please try again.');
+            $_SESSION['error'] = 'Error deleting branch. Please try again.';
         }
     }
 }
@@ -117,7 +117,7 @@ try {
 } catch (PDOException $e) {
     error_log('Error fetching branches: ' . $e->getMessage(), 3, 'error_log.txt');
     $branches = [];
-    set_flash_message('error', 'Error loading branches. Please try again.');
+    $_SESSION['error'] = 'Error loading branches. Please try again.';
 }
 
 // Include the header (which includes topbar, starts main-wrapper and content-wrapper)
@@ -136,17 +136,6 @@ require_once __DIR__ . '/includes/header.php';
         </button>
     </div>
 
-    <?php if (isset($_SESSION['success']) || isset($_SESSION['error'])): ?>
-        <div class="alert alert-<?php echo isset($_SESSION['success']) ? 'success' : 'danger'; ?> alert-dismissible fade show" role="alert">
-            <?php 
-                echo isset($_SESSION['success']) ? $_SESSION['success'] : $_SESSION['error']; 
-                unset($_SESSION['success']);
-                unset($_SESSION['error']);
-            ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
-    
     <!-- Branches Table Card -->
     <div class="card border-0 shadow-sm">
         <div class="card-body">

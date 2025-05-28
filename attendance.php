@@ -9,12 +9,13 @@ include 'includes/utilities.php';
 
 // Fetching attendance data
 try {
-    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, a.date, a.time, a.method, a.id, b.name , d.title AS designation, a.manual_reason
+    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, b.name , d.title AS designation
                            FROM attendance_logs a 
                            INNER JOIN employees e ON a.emp_Id = e.emp_id 
                            INNER JOIN branches b ON e.branch = b.id 
                            LEFT JOIN designations d ON e.designation = d.id
                            WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                           AND method <> '0'
                            ORDER BY a.date DESC, a.time DESC 
                            LIMIT 200");
     $stmt->execute();
@@ -441,6 +442,22 @@ document.addEventListener('DOMContentLoaded', function() {
       const id = button.getAttribute('data-id');
       document.getElementById('confirmDeleteBtn').href = 'delete-attendance.php?id=' + id;
     });
+  }
+  
+  // Check for edit parameter in URL and auto-open edit modal
+  const urlParams = new URLSearchParams(window.location.search);
+  const editId = urlParams.get('edit');
+  if (editId) {
+    // Find the edit button for this attendance record and trigger it
+    const editButton = document.querySelector(`[data-id="${editId}"].edit-attendance`);
+    if (editButton) {
+      // Simulate a click on the edit button to open the modal with data
+      editButton.click();
+      
+      // Clean up the URL by removing the edit parameter
+      const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+      window.history.replaceState(null, null, newUrl);
+    }
   }
 });
 </script>

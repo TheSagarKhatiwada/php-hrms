@@ -27,7 +27,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             
             try {
                 // Get category details
-                $stmt = $pdo->prepare("SELECT CategoryName, CategoryShortCode FROM AssetCategories WHERE CategoryID = :categoryId");
+                $stmt = $pdo->prepare("SELECT CategoryName, CategoryShortCode FROM assetcategories WHERE CategoryID = :categoryId");
                 $stmt->execute([':categoryId' => $categoryId]);
                 $category = $stmt->fetch(PDO::FETCH_ASSOC);
                 
@@ -102,7 +102,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // If no serial number exists, generate one
                 if (empty($currentAsset['AssetSerial'])) {
                     // Get category details
-                    $stmt = $pdo->prepare("SELECT CategoryShortCode FROM AssetCategories WHERE CategoryID = :categoryId");
+                    $stmt = $pdo->prepare("SELECT CategoryShortCode FROM assetcategories WHERE CategoryID = :categoryId");
                     $stmt->execute([':categoryId' => $categoryId]);
                     $category = $stmt->fetch(PDO::FETCH_ASSOC);
                     
@@ -213,12 +213,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 try {
     $stmt = $pdo->query("SELECT a.*, c.CategoryName 
                         FROM fixedassets a 
-                        LEFT JOIN AssetCategories c ON a.CategoryID = c.CategoryID 
+                        LEFT JOIN assetcategories c ON a.CategoryID = c.CategoryID 
                         ORDER BY a.AssetName");
     $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Fetch categories for dropdown
-    $stmt = $pdo->query("SELECT CategoryID, CategoryName FROM AssetCategories ORDER BY CategoryName");
+    $stmt = $pdo->query("SELECT CategoryID, CategoryName FROM assetcategories ORDER BY CategoryName");
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $_SESSION['error'] = "Error fetching data: " . $e->getMessage();

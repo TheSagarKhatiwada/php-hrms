@@ -12,11 +12,9 @@ try {
     require_once 'includes/settings.php';
     require_once 'includes/notification_helpers.php';
 } catch (Exception $e) {
-    // If any required file is missing, return error
-    echo json_encode([
-        'success' => false,
-        'message' => 'System error: Failed to load required dependencies'
-    ]);
+    // If any required file is missing, set error and redirect
+    $_SESSION['error'] = 'System error: Failed to load required dependencies';
+    header('Location: attendance.php');
     exit();
 }
 
@@ -32,114 +30,82 @@ function notify_employee_attendance($emp_id, $action, $details) {
 try {
     $pdo->query("SELECT 1");
 } catch (PDOException $e) {
-    // If database connection fails, return error
-    echo json_encode([
-        'success' => false,
-        'message' => 'Database connection error. Please try again or contact support.'
-    ]);
+    // If database connection fails, set error and redirect
+    $_SESSION['error'] = 'Database connection error. Please try again or contact support.';
+    header('Location: attendance.php');
     exit();
 }
 
 // Process the request
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Handle clock-out action
-    if (isset($_POST['action']) && $_POST['action'] === 'clock_out') {
-        // Check for employee ID
-        if (!isset($_POST['emp_id']) || empty($_POST['emp_id'])) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'Missing employee ID'
-            ]);
+    // Handle edit attendance form submission
+    if (isset($_POST['attendanceId']) && !empty($_POST['attendanceId'])) {
+        // Get form data
+        $attendanceId = $_POST['attendanceId'];
+        $attendanceDate = $_POST['attendanceDate'];
+        $attendanceTime = $_POST['attendanceTime'];
+        $reason = $_POST['reason'];
+        $remarks = isset($_POST['remarks']) ? trim($_POST['remarks']) : '';
+        
+        // Validate required fields
+        if (empty($attendanceDate) || empty($attendanceTime) || empty($reason)) {
+            $_SESSION['error'] = 'All required fields must be filled.';
+            header('Location: attendance.php');
             exit();
         }
         
-        $emp_id = $_POST['emp_id'];
-        
-        // Get timezone from settings
-        $timezone = get_setting('timezone', 'UTC');
-        date_default_timezone_set($timezone);
-        
-        // Get current date and time
-        $current_time = date('H:i:s');
-        $today = date('Y-m-d');
+        // Store reason and remarks with spaced separator
+        $manualReason = $reason;
+        if (!empty($remarks)) {
+            $manualReason .= ' || ' . $remarks;
+        }
         
         try {
-            // Check if employee has a clock-in record for today
-            $stmt = $pdo->prepare("SELECT id, time FROM attendance_logs WHERE emp_Id = ? AND date = ? ORDER BY time ASC LIMIT 1");
-            $stmt->execute([$emp_id, $today]);
-            $clockIn = $stmt->fetch(PDO::FETCH_ASSOC);
+            // Update the attendance record
+            $stmt = $pdo->prepare("UPDATE attendance_logs SET date = ?, time = ?, manual_reason = ? WHERE id = ?");
+            $result = $stmt->execute([$attendanceDate, $attendanceTime, $manualReason, $attendanceId]);
             
-            if (!$clockIn) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'No clock-in record found for today. Please contact your administrator.'
-                ]);
-                exit();
-            }
-            
-            // Insert a new record for clock-out instead of updating the existing one
-            $stmt = $pdo->prepare("INSERT INTO attendance_logs (emp_Id, date, time, method, mach_sn, mach_id, manual_reason) VALUES (?, ?, ?, '2', 0, 0, '')");
-            
-            try {
-                $result = $stmt->execute([$emp_id, $today, $current_time]);
-                
-                if ($result) {
-                    // Notify the employee, but don't let notification errors affect the clock-out
-                    try {
-                        if (function_exists('notify_employee_attendance')) {
-                            notify_employee_attendance($emp_id, 'checked_out', $current_time);
+            if ($result && $stmt->rowCount() > 0) {
+                // Try to send notification but don't let it break the update process
+                try {
+                    if (function_exists('notify_employee_attendance')) {
+                        // Get employee ID for notification
+                        $empStmt = $pdo->prepare("SELECT emp_Id FROM attendance_logs WHERE id = ?");
+                        $empStmt->execute([$attendanceId]);
+                        $empData = $empStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($empData) {
+                            notify_employee_attendance($empData['emp_Id'], 'attendance_updated', $attendanceDate . ' ' . $attendanceTime);
                         }
-                    } catch (Exception $e) {
-                        // Just log the error, don't prevent successful clock out
-                        error_log("Error sending checkout notification: " . $e->getMessage());
                     }
-                    
-                    // Check if the message includes "Clock out recorded successfully"
-                    echo json_encode([
-                        'success' => true,
-                        'message' => 'Clock out recorded successfully. Have a nice day!'
-                    ]);
-                    exit();
-                } else {
-                    $errorInfo = $stmt->errorInfo();
-                    error_log("SQL Error in clock out: " . json_encode($errorInfo));
-                    echo json_encode([
-                        'success' => false,
-                        'message' => 'Error updating attendance record: ' . ($errorInfo[2] ?? 'Unknown error')
-                    ]);
-                    exit();
+                } catch (Exception $e) {
+                    // Just log the error, don't prevent successful update
+                    error_log("Error sending update notification: " . $e->getMessage());
                 }
-            } catch (PDOException $e) {
-                $errorMessage = $e->getMessage();
-                error_log("Database error in clock out: " . $errorMessage);
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Database error. Please try again or contact support.',
-                    'debug_info' => $errorMessage
-                ]);
+                
+                $_SESSION['success'] = 'Attendance record updated successfully.';
+                header('Location: attendance.php');
+                exit();
+            } else {
+                $_SESSION['error'] = 'No changes were made or attendance record not found.';
+                header('Location: attendance.php');
                 exit();
             }
         } catch (PDOException $e) {
             $errorMessage = $e->getMessage();
-            echo json_encode([
-                'success' => false,
-                'message' => 'Database error. Please try again or contact support.'
-            ]);
+            error_log("Database error in attendance update: " . $errorMessage);
+            $_SESSION['error'] = 'Database error. Please try again or contact support.';
+            header('Location: attendance.php');
             exit();
         }
     } else {
-        echo json_encode([
-            'success' => false,
-            'message' => 'Invalid action specified'
-        ]);
+        $_SESSION['error'] = 'Invalid attendance record specified.';
+        header('Location: attendance.php');
         exit();
     }
 } else {
-    // If not a POST request, return error
-    echo json_encode([
-        'success' => false,
-        'message' => 'Invalid request method'
-    ]);
+    // If not a POST request, redirect back to attendance page
+    $_SESSION['error'] = 'Invalid request method.';
+    header('Location: attendance.php');
     exit();
 }
 ?>

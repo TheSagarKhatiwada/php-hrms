@@ -23,6 +23,7 @@ $today = date('Y-m-d');
 
 // Get current user data
 $userId = $_SESSION['user_id'];
+
 try {
     // Get user data with designation title
     $stmt = $pdo->prepare("
@@ -53,8 +54,8 @@ try {
     $recentAttendance = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
 } catch (PDOException $e) {
-    error_log("Database error: " . $e->getMessage());
-    $_SESSION['error'] = "Error retrieving user data";
+    error_log("Database error: " . $e->getMessage() ."\n");
+    $_SESSION['error'] = "Error retrieving user data" . $e->getMessage();
     $userData = [];
     $todayAttendance = [];
     $recentAttendance = [];
@@ -577,7 +578,7 @@ try {
                             <tbody>
                                 <?php if(empty($recentAttendance)): ?>
                                     <tr>
-                                        <td colspan="4" class="text-center">No attendance records found for the last 7 days</td>
+                                        <td colspan="5" class="text-center">No attendance records found for the last 7 days</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach($recentAttendance as $record): ?>

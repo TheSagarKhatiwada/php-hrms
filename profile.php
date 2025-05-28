@@ -42,6 +42,25 @@ if (!$user_data) {
     exit;
 }
 
+// Calculate employment duration
+$current_date = new DateTime();
+$join_date = new DateTime($user_data['join_date']);
+$employment_interval = $join_date->diff($current_date);
+$years = $employment_interval->y;
+$months = $employment_interval->m;
+$employmentDuration = "";
+if ($years > 0) {
+    $employmentDuration = $years . " year" . ($years > 1 ? "s" : "");
+    if ($months > 0) {
+        $employmentDuration .= ", " . $months . " month" . ($months > 1 ? "s" : "");
+    }
+} else {
+    $employmentDuration = $months . " month" . ($months > 1 ? "s" : "");
+    if ($employment_interval->d > 0) {
+        $employmentDuration .= ", " . $employment_interval->d . " day" . ($employment_interval->d > 1 ? "s" : "");
+    }
+}
+
 // Fetch assigned assets for the user
 $assigned_assets_stmt = $pdo->prepare("SELECT 
                                         fa.AssetName, 
@@ -82,9 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password'])) {
             $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
             $stmt = $pdo->prepare("UPDATE employees SET password = :password WHERE id = :id");
             $stmt->execute(['password' => $hashed_password, 'id' => $user_id]);
-            echo json_encode(['status' => 'success', 'message' => 'Password reset successfully.']);
+            $_SESSION['success'] = 'Password reset successfully.';
         } else {
-            echo json_encode(['status' => 'error', 'message' => 'Passwords do not match.']);
+            $_SESSION['error'] = 'Passwords do not match.';
         }
     } else {
         // Normal password change - verify current password
@@ -93,17 +112,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password'])) {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$user || !password_verify($current_password, $user['password'])) {
-            echo json_encode(['status' => 'error', 'message' => 'Current password is incorrect.']);
+            $_SESSION['error'] = 'Current password is incorrect.';
         } else if ($new_password !== $confirm_password) {
-            echo json_encode(['status' => 'error', 'message' => 'New passwords do not match.']);
+            $_SESSION['error'] = 'New passwords do not match.';
         } else {
             $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
             $stmt = $pdo->prepare("UPDATE employees SET password = :password WHERE id = :id");
             $stmt->execute(['password' => $hashed_password, 'id' => $user_id]);
-            echo json_encode(['status' => 'success', 'message' => 'Password updated successfully.']);
+            $_SESSION['success'] = 'Password updated successfully.';
         }
     }
-    exit; // Stop further execution to avoid HTML output mixed with JSON
+    header('Location: profile.php');
+    exit;
 }
 
 // Handle forgot password request
@@ -111,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
     $email = $_POST['email_reset'] ?? '';
     
     // Verify the email exists in the database
-    $stmt = $pdo->prepare("SELECT id, first_name, last_name FROM employees WHERE email = :email");
+    $stmt = $pdo->prepare("SELECT id, first_name, middle_name, last_name FROM employees WHERE email = :email");
     $stmt->execute(['email' => $email]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -140,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
             <title>Password Reset</title>
         </head>
         <body>
-            <p>Dear {$user['first_name']} {$user['last_name']},</p>
+            <p>Dear {$user['first_name']} {$user['middle_name']} {$user['last_name']},</p>
             <p>We received a request to reset your password. Click the link below to set a new password:</p>
             <p><a href='{$resetLink}'>Reset Password</a></p>
             <p>This link will expire in 1 hour.</p>
@@ -159,16 +179,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
         $emailSent = mail($to, $subject, $message, $headers);
         
         if ($emailSent) {
-            echo json_encode(['status' => 'success', 'message' => 'Password reset link has been sent to your email address.']);
+            $_SESSION['success'] = 'Password reset link has been sent to your email address.';
         } else {
-            echo json_encode(['status' => 'error', 'message' => 'Failed to send the password reset email. Please try again or contact your administrator.']);
+            $_SESSION['error'] = 'Failed to send the password reset email. Please try again or contact your administrator.';
         }
     } else {
         // For security, we still show success even if the email doesn't exist
-        echo json_encode(['status' => 'success', 'message' => 'If your email is registered, you will receive a password reset link shortly.']);
+        $_SESSION['success'] = 'If your email is registered, you will receive a password reset link shortly.';
     }
     
-    exit; // Stop further execution to avoid HTML output mixed with JSON
+    header('Location: profile.php');
+    exit;
 }
 ?>
 
@@ -319,6 +340,37 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
 
 <!-- Main content -->
 <div class="container-fluid p-4">
+    <!-- Session Messages -->
+    <?php if (isset($_SESSION['success'])): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <?php 
+                echo $_SESSION['success']; 
+                unset($_SESSION['success']);
+            ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+    
+    <?php if (isset($_SESSION['error'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?php 
+                echo $_SESSION['error']; 
+                unset($_SESSION['error']);
+            ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+    
+    <?php if (isset($_SESSION['warning'])): ?>
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <?php 
+                echo $_SESSION['warning']; 
+                unset($_SESSION['warning']);
+            ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+
     <!-- Page header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -460,28 +512,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                                 <p class="mb-0"><?php echo htmlspecialchars($user_data['designation_title'] ?? 'Not Assigned'); ?></p> <!-- Changed to designation_title -->
                                             </div>
                                             <div class="profile-info-item">
-                                                <strong>Role:</strong>
-                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['role_name'] ?? 'Not Assigned'); ?></p>
-                                            </div>
-                                            <div class="profile-info-item">
-                                                <strong>Status:</strong>
-                                                <p class="mb-0">
-                                                    <?php if (empty($user_data['exit_date'])): ?>
-                                                        <span class="badge bg-success">Active</span>
-                                                    <?php else: ?>
-                                                        <span class="badge bg-danger">Exit on <?php echo htmlspecialchars($user_data['exit_date']); ?></span>
-                                                    <?php endif; ?>
-                                                </p>
-                                            </div>
-                                            <div class="profile-info-item">
                                                 <strong>Joined Date:</strong>
                                                 <p class="mb-0"><?php echo htmlspecialchars($user_data['join_date']); ?></p>
+                                            </div>
+                                            <div class="profile-info-item">
+                                                <strong>Employment Duration:</strong>
+                                                <p class="mb-0">
+                                                <span class="special-badge employment-badge">
+                                                    <i class="fas fa-clock me-1"></i> <?php echo $employmentDuration; ?>
+                                                </span>
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-
                             <div class="timeline timeline-inverse mt-4">
                                 <div class="time-label">
                                     <span class="bg-danger">Employment Timeline</span>
@@ -777,13 +822,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
         
         // Password form submission
         $('#passwordResetForm').on('submit', function(e) {
-            e.preventDefault();
-            
+            // Client-side validation
             const currentPassword = $('#current_password_modal').val();
             const newPassword = $('#new_password_modal').val();
             const confirmPassword = $('#confirm_password_modal').val();
             
             if (!currentPassword) {
+                e.preventDefault();
                 Swal.fire({
                     title: 'Error!',
                     text: 'Please enter your current password',
@@ -794,6 +839,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
             }
             
             if (newPassword !== confirmPassword) {
+                e.preventDefault();
                 Swal.fire({
                     title: 'Error!',
                     text: 'Passwords do not match',
@@ -804,6 +850,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
             }
             
             if (newPassword.length < 8) {
+                e.preventDefault();
                 Swal.fire({
                     title: 'Error!',
                     text: 'Password must be at least 8 characters long',
@@ -815,47 +862,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
             
             // Show loading overlay
             $("#loadingOverlay").fadeIn();
-            
-            // Ajax submission to avoid page reload
-            $.ajax({
-                type: 'POST',
-                url: 'profile.php',
-                data: $(this).serialize(),
-                dataType: 'json',
-                success: function(response) {
-                    $("#loadingOverlay").fadeOut();
-                    
-                    if (response.status === 'success') {
-                        Swal.fire({
-                            title: 'Success!',
-                            text: response.message || 'Password updated successfully',
-                            icon: 'success',
-                            confirmButtonText: 'Great!'
-                        });
-                        
-                        // Hide modal using Bootstrap 5 method
-                        passwordModal.hide();
-                        $('#passwordResetForm')[0].reset();
-                    } else {
-                        Swal.fire({
-                            title: 'Error!',
-                            text: response.message || 'Failed to update password',
-                            icon: 'error',
-                            confirmButtonText: 'Try Again'
-                        });
-                    }
-                },
-                error: function() {
-                    $("#loadingOverlay").fadeOut();
-                    
-                    Swal.fire({
-                        title: 'Error!',
-                        text: 'Failed to update password',
-                        icon: 'error',
-                        confirmButtonText: 'Try Again'
-                    });
-                }
-            });
+            // Form will submit normally and page will reload
         });
         
         // Initialize tabs with Bootstrap 5
@@ -918,51 +925,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
 
         // Forgot password form submission
         $('#forgotPasswordForm').on('submit', function(e) {
-            e.preventDefault();
-            
             // Show loading overlay
             $("#loadingOverlay").fadeIn();
-            
-            // Ajax submission to avoid page reload
-            $.ajax({
-                type: 'POST',
-                url: 'profile.php',
-                data: $(this).serialize(),
-                dataType: 'json',
-                success: function(response) {
-                    $("#loadingOverlay").fadeOut();
-                    
-                    if (response.status === 'success') {
-                        Swal.fire({
-                            title: 'Success!',
-                            text: response.message || 'Password reset link has been sent to your email',
-                            icon: 'success',
-                            confirmButtonText: 'Great!'
-                        });
-                        
-                        // Hide modal using Bootstrap 5 method
-                        passwordModal.hide();
-                        $('#forgotPasswordForm')[0].reset();
-                    } else {
-                        Swal.fire({
-                            title: 'Error!',
-                            text: response.message || 'Failed to send reset link',
-                            icon: 'error',
-                            confirmButtonText: 'Try Again'
-                        });
-                    }
-                },
-                error: function() {
-                    $("#loadingOverlay").fadeOut();
-                    
-                    Swal.fire({
-                        title: 'Error!',
-                        text: 'Failed to send reset link',
-                        icon: 'error',
-                        confirmButtonText: 'Try Again'
-                    });
-                }
-            });
+            // Form will submit normally and page will reload
         });
     });
 </script>

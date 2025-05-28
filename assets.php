@@ -172,7 +172,7 @@ include 'includes/db_connection.php';
                   <!-- Replace the old info boxes with the new grid layout -->
                   <div class="assets-grid">
                     <?php
-                    $stmt = $pdo->query("SELECT COUNT(*) FROM FixedAssets");
+                    $stmt = $pdo->query("SELECT COUNT(*) FROM fixedassets");
                     $totalAssets = $stmt->fetchColumn();
                     ?>
                     <div class="asset-card">
@@ -189,7 +189,7 @@ include 'includes/db_connection.php';
                     </div>
                     
                     <?php
-                    $stmt = $pdo->query("SELECT COUNT(*) FROM AssetCategories");
+                    $stmt = $pdo->query("SELECT COUNT(*) FROM assetcategories");
                     $totalCategories = $stmt->fetchColumn();
                     ?>
                     <div class="asset-card">
@@ -206,7 +206,7 @@ include 'includes/db_connection.php';
                     </div>
                     
                     <?php
-                    $stmt = $pdo->query("SELECT COUNT(*) FROM AssetAssignments WHERE ReturnDate IS NULL");
+                    $stmt = $pdo->query("SELECT COUNT(*) FROM assetassignments WHERE ReturnDate IS NULL");
                     $activeAssignments = $stmt->fetchColumn();
                     ?>
                     <div class="asset-card">
@@ -223,7 +223,7 @@ include 'includes/db_connection.php';
                     </div>
                     
                     <?php
-                    $stmt = $pdo->query("SELECT COUNT(*) FROM AssetMaintenance WHERE MaintenanceStatus = 'In Progress' OR MaintenanceStatus = 'Scheduled'");
+                    $stmt = $pdo->query("SELECT COUNT(*) FROM assetmaintenance WHERE MaintenanceStatus = 'In Progress' OR MaintenanceStatus = 'Scheduled'");
                     $totalMaintenance = $stmt->fetchColumn();
                     ?>
                     <div class="asset-card">

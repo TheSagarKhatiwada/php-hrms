@@ -26,21 +26,6 @@ include 'includes/header.php';
     </div>
   </div>
   
-  <!-- Alert messages -->
-  <?php if (isset($_SESSION['success'])): ?>
-    <div class="alert alert-success alert-dismissible fade show">
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
-    </div>
-  <?php endif; ?>
-  
-  <?php if (isset($_SESSION['error'])): ?>
-    <div class="alert alert-danger alert-dismissible fade show">
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
-    </div>
-  <?php endif; ?>
-  
   <!-- Assets Table Card -->
   <div class="card border-0 shadow-sm">
     <div class="card-body">

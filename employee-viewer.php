@@ -50,8 +50,8 @@ if ($empId) {
                                         fa.AssetSerial, 
                                         aa.AssignmentDate,
                                         fa.Status AS AssetStatus
-                                    FROM AssetAssignments aa
-                                    JOIN FixedAssets fa ON aa.AssetID = fa.AssetID
+                                    FROM assetassignments aa
+                                    JOIN fixedassets fa ON aa.AssetID = fa.AssetID
                                     WHERE aa.EmployeeID = :employee_id AND aa.ReturnDate IS NULL
                                     ORDER BY aa.AssignmentDate DESC");
     // Use $employee['id'] which is the primary key for the employees table and likely the foreign key in AssetAssignments

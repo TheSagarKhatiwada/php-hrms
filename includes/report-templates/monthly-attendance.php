@@ -1,6 +1,6 @@
 <?php
 /**
- * Monthly Attendance Report Template
+ * Periodic Attendance Report Template
  * Reusable component for consistent display between web and exports
  */
 
@@ -20,7 +20,7 @@ function secondsToTime($seconds) {
 }
 
 /**
- * Renders an employee's monthly attendance table
+ * Renders an employee's periodic attendance table
  * 
  * @param array $employee Employee data with pre-calculated summaries
  * @param string $dateRange Formatted date range string
@@ -28,7 +28,7 @@ function secondsToTime($seconds) {
  * @return string HTML content of the table
  */
 function renderMonthlyAttendanceTable($employee, $dateRange, $forPDF = false) {
-    $tableClasses = $forPDF ? 'report-table' : 'table table-sm table-bordered table-striped monthly-report-table display nowrap';
+    $tableClasses = $forPDF ? 'report-table' : 'table table-sm table-bordered table-striped periodic-report-table display nowrap';
     $tableStyles = 'width:100%';
     
     ob_start();
@@ -39,7 +39,7 @@ function renderMonthlyAttendanceTable($employee, $dateRange, $forPDF = false) {
                 <th class="text-center <?= $forPDF ? '' : 'fs-5' ?>" colspan="16">Prime Express Courier & Cargo Pvt Ltd</th>
             </tr>
             <tr>
-                <th class="text-center <?= $forPDF ? '' : 'fs-6' ?>" colspan="16">Monthly Attendance Report</th>
+                <th class="text-center <?= $forPDF ? '' : 'fs-6' ?>" colspan="16">Periodic Attendance Report</th>
             </tr>
             <tr>
                 <th class="text-center <?= $forPDF ? '' : 'small' ?>" colspan="2">Emp. ID: <?= htmlspecialchars($employee['id']) ?></th>

@@ -19,8 +19,8 @@ $(document).ready(function() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('l', 'mm', 'a4');
             
-            // Get all monthly report tables
-            $('.monthly-report-table').each(function(index) {
+            // Get all periodic report tables
+            $('.periodic-report-table').each(function(index) {
                 if (index > 0) {
                     doc.addPage();
                 }
@@ -87,7 +87,7 @@ $(document).ready(function() {
             });
             
             // Save the PDF
-            doc.save('monthly_report_' + moment().format('YYYY-MM-DD') + '.pdf');
+            doc.save('periodic_report_' + moment().format('YYYY-MM-DD') + '.pdf');
         } catch (error) {
             console.error('Error generating PDF:', error);
             alert('Error generating PDF. Please check console for details.');

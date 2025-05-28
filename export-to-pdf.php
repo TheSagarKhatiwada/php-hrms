@@ -231,7 +231,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <th style="text-align: center; font-size: 12px;" colspan="10"><strong>Prime Express Courier & Cargo Pvt Ltd</strong></th>
                     </tr>
                     <tr>
-                        <th style="text-align: center;" colspan="10"><strong>Monthly Attendance Report</strong></th>
+                        <th style="text-align: center;" colspan="10"><strong>Periodic Attendance Report</strong></th>
                     </tr>
                     <tr>
                         <th style="text-align: center; width: 8%;"><strong>Emp. ID: ' . htmlspecialchars($empid) . '</strong></th>

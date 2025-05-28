@@ -186,12 +186,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // Send email if login access is granted and was not previously granted
         if ($loginAccess == '1' && $employee['login_access'] != '1') {
+            // Include the mail helper file
+            require_once 'includes/mail_helper.php';
+            
             $to = $empEmail;
             $subject = "Login Access Granted";
             $message = "Dear $empFirstName $empLastName,\n\nYour login access has been granted. You can now log in to the system using the following credentials:\n\nLogin ID: $empEmail\nPassword: $randomPassword\n\nPlease change your password after logging in for the first time.\n\nBest regards,\nHRMS Team";
-            $headers = "From: no-reply@yourdomain.com";
-
-            if (mail($to, $subject, $message, $headers)) {
+            
+            if (send_email($to, $subject, $message, 'HRMS System')) {
                 $_SESSION['success'] .= "\nLogin credentials have been sent to the employee's email.";
             } else {
                 $_SESSION['error'] = "Failed to send login credentials email.";

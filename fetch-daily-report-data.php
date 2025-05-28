@@ -27,20 +27,28 @@ if (!empty($empBranch)) {
 $sqlEmployees = "SELECT 
                     e.emp_id, 
                     CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS employee_name, 
-                    d.title AS designation, 
-                    b.name AS branch
+                    b.name AS branch,
+                    e.exit_date
                 FROM employees e
-                LEFT JOIN branches b ON e.branch = b.id
-                LEFT JOIN designations d ON e.designation = d.id";
+                LEFT JOIN branches b ON e.branch = b.id";
 
 if (!empty($empBranch)) {
     $sqlEmployees .= " WHERE e.branch = :empBranch";
+}
+
+// Add condition to include exited employees who were active on the report date
+if (strpos($sqlEmployees, "WHERE") !== false) {
+    $sqlEmployees .= " AND (e.exit_date IS NULL OR e.exit_date >= :reportdate)";
+} else {
+    $sqlEmployees .= " WHERE (e.exit_date IS NULL OR e.exit_date >= :reportdate)";
 }
 
 $stmtEmployees = $pdo->prepare($sqlEmployees);
 if (!empty($empBranch)) {
     $stmtEmployees->bindParam(':empBranch', $empBranch);
 }
+// Bind report date for filtering exited employees
+$stmtEmployees->bindParam(':reportdate', $reportdate);
 $stmtEmployees->execute();
 $employees = $stmtEmployees->fetchAll(PDO::FETCH_ASSOC);
 
@@ -49,8 +57,9 @@ $sqlAttendance = "SELECT
                     a.emp_Id,
                     MIN(a.time) AS in_time,
                     MAX(a.time) AS out_time,
-                    GROUP_CONCAT(a.method SEPARATOR ', ') AS methods_used,
-                    GROUP_CONCAT(a.manual_reason SEPARATOR '; ') AS manual_reasons
+                    GROUP_CONCAT(a.method ORDER BY a.time ASC SEPARATOR ', ') AS methods_used,
+                    GROUP_CONCAT(a.manual_reason ORDER BY a.time ASC SEPARATOR '; ') AS manual_reasons,
+                    COUNT(a.id) AS punch_count
                 FROM attendance_logs a
                 WHERE a.date = :reportdate
                 GROUP BY a.emp_Id";
@@ -85,13 +94,17 @@ $formatted_working_hours = sprintf('%02d:%02d', $working_hours->h, $working_hour
 foreach ($employees as $employee) {
     $empid = $employee['emp_id'];
     $employeeName = $employee['employee_name'];
-    $designation = $employee['designation'];
     $employeeBranch = $employee['branch'];
 
+    // Check if the employee was exited on or before this report date
+    $isExited = false;
+    if (!empty($employee['exit_date']) && $reportdate > $employee['exit_date']) {
+        $isExited = true;
+    }
+    
     $row = [
         'emp_id' => $empid,
         'employee_name' => $employeeName,
-        'designation' => $designation,
         'branch' => $employeeBranch,
         'report_date' => $reportdate,
         'scheduled_in' => $scheduled_in->format('H:i'),
@@ -105,13 +118,13 @@ foreach ($employees as $employee) {
         'early_out' => '',
         'early_in' => '',
         'late_out' => '',
-        'marked_as' => 'Absent',
+        'marked_as' => $isExited ? 'Exited' : 'Absent',
         'methods' => '',
-        'remarks' => ''
+        'remarks' => $isExited ? 'Employee exited on ' . $employee['exit_date'] : ''
     ];
 
 
-    if (isset($attendanceMap[$empid])) {
+    if (isset($attendanceMap[$empid]) && !$isExited) {
         $attendance = $attendanceMap[$empid];
 
         // Convert times to DateTime objects
@@ -159,9 +172,22 @@ foreach ($employees as $employee) {
         // Determine attendance status
         $row['marked_as'] = 'Present';
 
-        // Include methods used and manual reasons
-        $row['methods'] = $attendance['methods_used'] ?? '';
-        $row['remarks'] = $attendance['manual_reasons'] ?? '';
+        // Include only in time and out time methods/reasons
+        $methodsArray = explode(', ', $attendance['methods_used'] ?? '');
+        $reasonsArray = explode('; ', $attendance['manual_reasons'] ?? '');
+        $punchCount = $attendance['punch_count'] ?? 1;
+                                
+        // First record is always check-in
+        $inMethod = $methodsArray[0] ?? '';
+        $inReason = $reasonsArray[0] ?? '';
+        
+        // Last record is always check-out (if there's more than one record)
+        $outMethod = ($punchCount > 1) ? end($methodsArray) : '';
+        $outReason = ($punchCount > 1) ? end($reasonsArray) : '';
+        
+        // Only show in time and out time data
+        $row['methods'] = "In: " . $inMethod . ($outMethod ? ", Out: " . $outMethod : "");
+        $row['remarks'] = $inReason . ($outReason ? " | " . $outReason : "");
     }
 
     $data[] = $row;

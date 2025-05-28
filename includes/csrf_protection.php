@@ -64,4 +64,11 @@ if (!function_exists('verify_csrf_post')) {
         }
     }
 }
+
+// Alias for verify_csrf_token for backward compatibility
+if (!function_exists('validate_csrf_token')) {
+    function validate_csrf_token($token) {
+        return verify_csrf_token($token);
+    }
+}
 ?>

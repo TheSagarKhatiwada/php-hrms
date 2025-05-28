@@ -60,14 +60,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         $stmt = $pdo->prepare("SELECT time FROM attendance_logs WHERE emp_Id = ? AND date = ? ORDER BY time DESC LIMIT 1");
         $stmt->execute([$emp_id, $today]);
         $lastRecord = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        // Determine if this is check-in or check-out based on whether we have an even or odd number of records
+          // Determine if this is check-in or check-out
+        // First record of the day is check-in, all subsequent records are check-out
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM attendance_logs WHERE emp_Id = ? AND date = ?");
         $stmt->execute([$emp_id, $today]);
         $count = $stmt->fetchColumn();
         
-        // If count is even (or zero), it's a clock-in; if odd, it's a clock-out
-        $isCheckIn = ($count % 2 == 0);
+        // If count is zero, it's the first record (check-in); otherwise it's a check-out
+        $isCheckIn = ($count == 0);
         $actionType = $isCheckIn ? 'check-in' : 'check-out';
         
         // Insert attendance record

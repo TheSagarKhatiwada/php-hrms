@@ -1,5 +1,5 @@
 <?php
-$page = 'monthly-report';
+$page = 'monthly-report'; // Keeping the page identifier the same for consistency
 // Include utilities for role check functions
 require_once 'includes/session_config.php';
 require_once 'includes/utilities.php';
@@ -49,8 +49,8 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
         }
         
         /* Show only the tables and logo */
-        .monthly-report-table, 
-        .monthly-report-table *,
+        .periodic-report-table, 
+        .periodic-report-table *,
         .print-logo,
         .print-logo * {
             visibility: visible !important;
@@ -68,7 +68,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
         }
         
         /* Position the table properly for printing all cards */
-        .monthly-report-table {
+        .periodic-report-table {
             margin: 0 !important;
             border-collapse: collapse !important;
             font-size: 9pt !important;
@@ -93,25 +93,25 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
         }
         
         /* Last table should not have page break after */
-        .card:last-child .monthly-report-table {
+        .card:last-child .periodic-report-table {
             page-break-after: avoid !important;
         }
-        .monthly-report-table thead { display: table-header-group !important; }
-        .monthly-report-table tbody { display: table-row-group !important; }
-        .monthly-report-table tfoot { display: table-footer-group !important; }
-        .monthly-report-table tr { display: table-row !important; }
-        .monthly-report-table th, 
-        .monthly-report-table td {
+        .periodic-report-table thead { display: table-header-group !important; }
+        .periodic-report-table tbody { display: table-row-group !important; }
+        .periodic-report-table tfoot { display: table-footer-group !important; }
+        .periodic-report-table tr { display: table-row !important; }
+        .periodic-report-table th, 
+        .periodic-report-table td {
             display: table-cell !important;
             padding: 1px !important;
-            border: 0.5px solid #000 !important;
+            border: 0.5px solid #ddd !important;
             font-size: 9pt !important;
             white-space: nowrap !important;
             color: #000 !important;
         }
         
         /* Make sure the table rows are as compact as possible */
-        .monthly-report-table tr {
+        .periodic-report-table tr {
             height: auto !important;
             line-height: 1 !important;
         }
@@ -162,7 +162,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
             <div class="container-fluid">
                 <div class="card">
                     <div class="card-header" style="padding: 10px;">
-                        <form action="fetch-monthly-report-data.php" method="POST" id="monthly-report-form" class="mt-3">
+                        <form action="fetch-monthly-report-data.php" method="POST" id="periodic-report-form" class="mt-3">
                             <input type="hidden" id="hiddenReportDateRange" value="<?php echo isset($_POST['reportDateRange']) ? $_POST['reportDateRange'] : ''; ?>">
                             <div class="row">
                                 <div class="col-md-3">
@@ -255,7 +255,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
                                         <div class="card-body">
                                             <!-- Hidden button container for DataTables buttons -->
                                             <div class="btn-group" style="display: none;"></div>
-                                            <table class="table table-sm table-bordered table-striped monthly-report-table">
+                                            <table class="table table-sm table-bordered table-striped periodic-report-table">
                                                 <thead>
                                                     <tr>
                                                         <th class="text-center" colspan="16">Periodic Attendance Report: <?php echo $employeeData[0]['date_range'] ?? ''; ?></th>
@@ -395,7 +395,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
 <!-- Page Specific Scripts -->
 <script>
 $(function () {
-    $(".monthly-report-table").each(function () {
+    $(".periodic-report-table").each(function () {
         $(this).DataTable({
             "responsive": true,
             "lengthChange": false,

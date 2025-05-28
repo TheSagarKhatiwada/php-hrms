@@ -63,33 +63,26 @@ require_once __DIR__ . '/utilities.php';
           </a>
         </li>
         
-        <li class="nav-header">REPORTS & ANALYTICS</li>
+        <li class="nav-header">REPORTS</li>
         
-        <!-- Reports Dropdown -->
+        <!-- Individual Reports Items -->
         <li class="nav-item">
-          <a href="#reportsSubmenu" data-bs-toggle="collapse" 
-             class="nav-link <?php if($page == 'daily-report' || $page == 'monthly-report'){echo 'active';}?> 
-                    <?php if(!($page == 'daily-report' || $page == 'monthly-report')){echo 'collapsed';}?>">
-            <i class="nav-icon fas fa-chart-bar"></i>
-            <span>Reports</span>
-            <i class="nav-arrow fas fa-chevron-right"></i>
+          <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
+            <i class="nav-icon fas fa-file-alt"></i>
+            <span>Daily Report</span>
           </a>
-          <div class="collapse <?php if($page == 'daily-report' || $page == 'monthly-report'){echo 'show';}?>" id="reportsSubmenu">
-            <ul class="nav nav-sub flex-column">
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-file-alt"></i>
-                  <span>Daily Report</span>
-                </a>
-              </li>
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'monthly-report.php'); ?>" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-calendar"></i>
-                  <span>Monthly Report</span>
-                </a>
-              </li>
-            </ul>
-          </div>
+        </li>
+        <li class="nav-item">
+          <a href="<?php echo append_sid($home . 'monthly-report.php'); ?>" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
+            <i class="nav-icon fas fa-calendar"></i>
+            <span>Periodic Report</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="<?php echo append_sid($home . 'periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
+            <i class="nav-icon fas fa-clock"></i>
+            <span>Periodic Entry Time Report</span>
+          </a>
         </li>
         
         <li class="nav-header">ASSET MANAGEMENT</li>
@@ -229,33 +222,26 @@ require_once __DIR__ . '/utilities.php';
           </a>
         </li>
         
-        <li class="nav-header">REPORTS & ANALYTICS</li>
+        <li class="nav-header">REPORTS</li>
         
-        <!-- Manager Reports Dropdown -->
+        <!-- Individual Manager Reports -->
         <li class="nav-item">
-          <a href="#reportsSubmenu" data-bs-toggle="collapse" 
-             class="nav-link <?php if($page == 'daily-report' || $page == 'monthly-report'){echo 'active';}?>
-                    <?php if(!($page == 'daily-report' || $page == 'monthly-report')){echo 'collapsed';}?>">
-            <i class="nav-icon fas fa-chart-bar"></i>
-            <span>Reports</span>
-            <i class="nav-arrow fas fa-chevron-right"></i>
+          <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
+            <i class="nav-icon fas fa-file-alt"></i>
+            <span>Daily Report</span>
           </a>
-          <div class="collapse <?php if($page == 'daily-report' || $page == 'monthly-report'){echo 'show';}?>" id="reportsSubmenu">
-            <ul class="nav nav-sub flex-column">
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-file-alt"></i>
-                  <span>Daily Report</span>
-                </a>
-              </li>
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'monthly-report.php'); ?>" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-calendar"></i>
-                  <span>Monthly Report</span>
-                </a>
-              </li>
-            </ul>
-          </div>
+        </li>
+        <li class="nav-item">
+          <a href="<?php echo append_sid($home . 'monthly-report.php'); ?>" class="nav-link <?php if($page == 'monthly-report'){echo 'active';}?>">
+            <i class="nav-icon fas fa-calendar"></i>
+            <span>Periodic Report</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="<?php echo append_sid($home . 'periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
+            <i class="nav-icon fas fa-clock"></i>
+            <span>Periodic Entry Time Report</span>
+          </a>
         </li>
         
         <!-- File Converter Tools for Managers -->

@@ -13,9 +13,9 @@ require_once 'includes/utilities.php';
 include("includes/db_connection.php");
 require_once 'includes/report-templates/monthly-attendance.php';
 
-// Check if user has permission to access monthly reports
+// Check if user has permission to access periodic reports
 if (!has_permission('view_monthly_report') && !is_admin()) {
-    $_SESSION['error'] = "You don't have permission to access Monthly Reports.";
+    $_SESSION['error'] = "You don't have permission to access Periodic Reports.";
     header('Location: index.php');
     exit();
 }
@@ -71,36 +71,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($branchRow) {
             $branchName = $branchRow['name'];
         }
-    }
-
-    // Fetch employees
+    }    // Fetch employees
     $sqlEmployees = "SELECT 
                         e.emp_id, 
                         CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS employee_name, 
                         e.designation, 
-                        b.name AS branch
+                        b.name AS branch,
+                        e.exit_date
                     FROM employees e
                     LEFT JOIN branches b ON e.branch = b.id";
 
     if (!empty($empBranch)) {
         $sqlEmployees .= " WHERE e.branch = :empBranch";
     }
-
-    $stmtEmployees = $pdo->prepare($sqlEmployees);
+    
+    // Add condition to include exited employees who were active during the report period
+    if (!empty($sqlEmployees)) {
+        $sqlEmployees .= " AND (e.exit_date IS NULL OR e.exit_date >= :startDate)";
+    } else {
+        $sqlEmployees .= " WHERE (e.exit_date IS NULL OR e.exit_date >= :startDate)";
+    }    $stmtEmployees = $pdo->prepare($sqlEmployees);
     if (!empty($empBranch)) {
         $stmtEmployees->bindParam(':empBranch', $empBranch, PDO::PARAM_INT);
     }
+    // Bind the start date to filter exited employees
+    $stmtEmployees->bindParam(':startDate', $startDate);
+    
     $stmtEmployees->execute();
-    $employees = $stmtEmployees->fetchAll(PDO::FETCH_ASSOC);
-
-    // Fetch attendance data within the selected date range
+    $employees = $stmtEmployees->fetchAll(PDO::FETCH_ASSOC);    // Fetch attendance data within the selected date range
     $sqlAttendance = "SELECT
                         a.emp_Id,
                         a.date,
                         MIN(a.time) AS in_time,
                         MAX(a.time) AS out_time,
-                        GROUP_CONCAT(a.method SEPARATOR ', ') AS methods_used,
-                        GROUP_CONCAT(a.manual_reason SEPARATOR '; ') AS manual_reasons
+                        GROUP_CONCAT(a.method ORDER BY a.time ASC SEPARATOR ', ') AS methods_used,
+                        GROUP_CONCAT(a.manual_reason ORDER BY a.time ASC SEPARATOR '; ') AS manual_reasons,
+                        COUNT(a.id) AS punch_count
                     FROM attendance_logs a
                     WHERE a.date BETWEEN :startDate AND :endDate
                     GROUP BY a.emp_Id, a.date";
@@ -151,13 +157,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $employeeName = $employee['employee_name'];
         $designation = $employee['designation'];
         $employeeBranch = $employee['branch'];
-        
-        // Initialize employee structure with summary
+          // Initialize employee structure with summary
         $employeeData = [
             'id' => $empid,
             'name' => $employeeName,
             'designation' => $designation,
             'branch' => $employeeBranch,
+            'exit_date' => $employee['exit_date'] ?? null,
             'daily_records' => [],
             'summary' => [
                 'present' => 0,
@@ -183,11 +189,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             new DateTime($startDate),
             new DateInterval('P1D'),
             (new DateTime($endDate))->modify('+1 day') // Ensure it includes the last day
-        );
-
-        foreach ($period as $dateObj) {
+        );        foreach ($period as $dateObj) {
             $date = $dateObj->format('Y-m-d');
             $dayOfWeek = date('N', strtotime($date));
+            
+            // Check if the date is after employee exit date
+            $isExited = false;
+            if (!empty($employee['exit_date']) && $date > $employee['exit_date']) {
+                $isExited = true;
+            }
             
             $record = [
                 'date' => $date,
@@ -202,18 +212,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'early_out' => '',
                 'early_in' => '',
                 'late_out' => '',
-                'marked_as' => ($dayOfWeek >= 6) ? 'Weekend' : 'Absent', // 6,7 for Saturday and Sunday
+                'marked_as' => $isExited ? 'Exited' : (($dayOfWeek >= 6) ? 'Weekend' : 'Absent'), // 6,7 for Saturday and Sunday
                 'methods' => '',
-                'remarks' => ''
+                'remarks' => $isExited ? 'Employee exited on ' . $employee['exit_date'] : ''
             ];
 
             // Add scheduled time to total (except weekends)
             if ($dayOfWeek < 6) {
                 $employeeData['summary']['total_scheduled_seconds'] += timeToSeconds($formatted_working_hours);
-            }
-
-            // If attendance record exists for this day
-            if (isset($attendanceMap[$empid][$date])) {
+            }            // If attendance record exists for this day and the employee wasn't exited yet
+            if (isset($attendanceMap[$empid][$date]) && !$isExited) {
                 $attendance = $attendanceMap[$empid][$date];
                 $in_time = new DateTime($attendance['in_time']);
                 $out_time = new DateTime($attendance['out_time']);
@@ -267,22 +275,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if ($out_time > $scheduled_out) {
                     $late_out = $scheduled_out->diff($out_time);
                     $record['late_out'] = sprintf('%02d:%02d', $late_out->h, $late_out->i);
-                }
-
-                // Determine attendance status
-                $record['marked_as'] = 'Present';
-
-                // Include methods used and manual reasons
-                $record['methods'] = $attendance['methods_used'] ?? '';
-                $record['remarks'] = $attendance['manual_reasons'] ?? '';
+                }                // Determine attendance status
+                $record['marked_as'] = 'Present';                // Include only in time and out time methods/reasons
+                $methodsArray = explode(', ', $attendance['methods_used'] ?? '');
+                $reasonsArray = explode('; ', $attendance['manual_reasons'] ?? '');
+                $punchCount = $attendance['punch_count'] ?? 1;
+                                
+                // First record is always check-in
+                $inMethod = $methodsArray[0] ?? '';
+                $inReason = $reasonsArray[0] ?? '';
+                
+                // Last record is always check-out (if there's more than one record)
+                $outMethod = ($punchCount > 1) ? end($methodsArray) : '';
+                $outReason = ($punchCount > 1) ? end($reasonsArray) : '';
+                
+                // Only show in time and out time data
+                $record['methods'] = "In: " . $inMethod . ($outMethod ? ", Out: " . $outMethod : "");
+                $record['remarks'] = $inReason . ($outReason ? " | " . $outReason : "");
                 
                 // Check for manual entries
-                if (strpos($record['methods'], '1') !== false) {
+                if (strpos($inMethod, '1') !== false || strpos($outMethod, '1') !== false) {
                     $employeeData['summary']['manual']++;
                 }
-            }
-
-            // Update summary based on marked_as
+            }            // Update summary based on marked_as
             switch ($record['marked_as']) {
                 case 'Present': $employeeData['summary']['present']++; break;
                 case 'Absent': $employeeData['summary']['absent']++; break;
@@ -291,6 +306,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 case 'Paid Leave': $employeeData['summary']['paid_leave']++; break;
                 case 'Unpaid Leave': $employeeData['summary']['unpaid_leave']++; break;
                 case 'Missed': $employeeData['summary']['missed']++; break;
+                case 'Exited': $employeeData['summary']['misc']++; break; // Count exited days as misc
                 default: $employeeData['summary']['misc']++; break;
             }
 
@@ -317,8 +333,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // For non-AJAX requests, store the data in session and redirect
     $_SESSION['monthly_report_data'] = $processedData;
     
-    // Redirect back to the monthly report page with the date range and branch
-    $redirectUrl = 'monthly-report.php?hasData=1';
+    // Redirect back to the monthly report page with the date range and branch    $redirectUrl = 'monthly-report.php?hasData=1';
     
     if (!empty($_POST['reportDateRange'])) {
         $redirectUrl .= '&dateRange=' . urlencode($_POST['reportDateRange']);

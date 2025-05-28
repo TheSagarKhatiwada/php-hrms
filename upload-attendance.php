@@ -2,8 +2,6 @@
 // Include session configuration before starting any session
 require_once 'includes/session_config.php';
 
-set_time_limit(300); // Increase max execution time to 5 minutes
-
 session_start(); // Start the session to store messages
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {

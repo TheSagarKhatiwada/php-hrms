@@ -120,8 +120,8 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                   </td>
                   <td>
-                    <div><i class="fas fa-envelope me-1 text-muted small"></i> <?php echo htmlspecialchars($employee['email']); ?></div>
-                    <div><i class="fas fa-phone me-1 text-muted small"></i> <?php echo htmlspecialchars($employee['phone']); ?></div>
+                    <div><i class="fas fa-envelope me-1 text-muted small"></i> <?php echo htmlspecialchars($employee['office_email'] ? $employee['office_email'] : 'N/A'); ?></div>
+                    <div><i class="fas fa-phone me-1 text-muted small"></i> <?php echo htmlspecialchars($employee['office_phone'] ? $employee['office_phone'] : 'N/A'); ?></div>
                   </td>
                   <td><?php echo htmlspecialchars($employee['name']); ?></td>
                   <td class="text-center align-middle"><?php echo date('M d, Y', strtotime($employee['join_date'])); ?></td>

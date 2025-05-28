@@ -21,7 +21,7 @@ $csrf_token = generate_csrf_token();
 // Process form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate CSRF token
-    if (!validate_csrf_token($_POST['csrf_token'] ?? '')) {
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
         redirect_with_message('roles.php', 'error', 'Invalid security token. Please try again.');
     }
 
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? '');
         
         if (empty($name)) {
-            set_flash_message('error', 'Role name is required.');
+            $_SESSION['error'] = 'Role name is required.';
         } else {
             try {
                 $stmt = $pdo->prepare("INSERT INTO roles (name, description) VALUES (:name, :description)");
@@ -43,12 +43,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 
                 log_activity($pdo, 'role_created', "Created new role: $name");
-                set_flash_message('success', 'Role created successfully.');
+                $_SESSION['success'] = 'Role created successfully.';
                 header('Location: roles.php');
                 exit();
             } catch (PDOException $e) {
                 error_log('Error creating role: ' . $e->getMessage(), 3, 'error_log.txt');
-                set_flash_message('error', 'Error creating role. Please try again.');
+                $_SESSION['error'] = 'Error creating role. Please try again.';
             }
         }
     }
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? '');
         
         if (empty($name) || $role_id <= 0) {
-            set_flash_message('error', 'Invalid role data.');
+            $_SESSION['error'] = 'Invalid role data.';
         } else {
             try {
                 $stmt = $pdo->prepare("UPDATE roles SET name = :name, description = :description WHERE id = :id");
@@ -70,12 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 
                 log_activity($pdo, 'role_updated', "Updated role ID: $role_id");
-                set_flash_message('success', 'Role updated successfully.');
+                $_SESSION['success'] = 'Role updated successfully.';
                 header('Location: roles.php');
                 exit();
             } catch (PDOException $e) {
                 error_log('Error updating role: ' . $e->getMessage(), 3, 'error_log.txt');
-                set_flash_message('error', 'Error updating role. Please try again.');
+                $_SESSION['error'] = 'Error updating role. Please try again.';
             }
         }
     }
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $count = $stmt->fetchColumn();
             
             if ($count > 0) {
-                set_flash_message('error', 'This role cannot be deleted because it is assigned to employees.');
+                $_SESSION['error'] = 'This role cannot be deleted because it is assigned to employees.';
             } else {
                 // Delete role_permissions first (to maintain referential integrity)
                 $stmt = $pdo->prepare("DELETE FROM role_permissions WHERE role_id = :role_id");
@@ -105,14 +105,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 
                 log_activity($pdo, 'role_deleted', "Deleted role ID: $role_id");
-                set_flash_message('success', 'Role deleted successfully.');
+                $_SESSION['success'] = 'Role deleted successfully.';
             }
             
             header('Location: roles.php');
             exit();
         } catch (PDOException $e) {
             error_log('Error deleting role: ' . $e->getMessage(), 3, 'error_log.txt');
-            set_flash_message('error', 'Error deleting role. Please try again.');
+            $_SESSION['error'] = 'Error deleting role. Please try again.';
         }
     }
 }
@@ -124,7 +124,7 @@ try {
 } catch (PDOException $e) {
     error_log('Error fetching roles: ' . $e->getMessage(), 3, 'error_log.txt');
     $roles = [];
-    set_flash_message('error', 'Error loading roles. Please try again.');
+    $_SESSION['error'] = 'Error loading roles. Please try again.';
 }
 
 // Include the header (which includes topbar, starts main-wrapper and content-wrapper)
@@ -142,17 +142,6 @@ require_once __DIR__ . '/includes/header.php';
             <i class="fas fa-plus me-2"></i> Add New Role
         </button>
     </div>
-
-    <?php if (isset($_SESSION['success']) || isset($_SESSION['error'])): ?>
-        <div class="alert alert-<?php echo isset($_SESSION['success']) ? 'success' : 'danger'; ?> alert-dismissible fade show" role="alert">
-            <?php 
-                echo isset($_SESSION['success']) ? $_SESSION['success'] : $_SESSION['error']; 
-                unset($_SESSION['success']);
-                unset($_SESSION['error']);
-            ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
     
     <!-- Roles Table Card -->
     <div class="card border-0 shadow-sm">

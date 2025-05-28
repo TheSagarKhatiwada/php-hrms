@@ -328,7 +328,7 @@ try {
                 </thead>
                 <tbody id="categoryAssetsList">
                     <!-- Assets will be loaded here via JavaScript -->
-                                    </tbody>
+                </tbody>
               </table>
             </div>
           </div>

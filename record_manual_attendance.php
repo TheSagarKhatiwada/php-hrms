@@ -34,10 +34,6 @@ if (file_exists('includes/utilities.php')) {
 
 // Handle AJAX clock in request
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'clock_in') {
-    header('Content-Type: application/json');
-    // Disable output buffering to prevent issues with JSON responses
-    if (ob_get_level()) ob_end_clean();
-    
     // Use a flag to track if data was saved successfully
     $dataSaved = false;
     
@@ -63,7 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($result) {
-            echo json_encode(['success' => false, 'message' => 'You have already clocked in today']);
+            $_SESSION['error'] = 'You have already clocked in today';
+            header("Location: attendance.php");
             exit();
         }
         
@@ -89,33 +86,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
                     error_log("Error sending notification: " . $e->getMessage());
                 }
                 
-                // Safely encode the JSON response
+                // Set success message in session
                 $formattedTime = date('h:i A', strtotime($current_time));
-                echo json_encode(['success' => true, 'message' => 'Clock in recorded successfully at ' . $formattedTime, 'data_saved' => true]);
+                $_SESSION['success'] = 'Clock in recorded successfully at ' . $formattedTime;
             } else {
                 $errorInfo = $stmt->errorInfo();
                 error_log("SQL Error in clock in: " . json_encode($errorInfo));
-                echo json_encode(['success' => false, 'message' => 'Failed to record clock in. SQL error: ' . $errorInfo[2]]);
+                $_SESSION['error'] = 'Failed to record clock in. SQL error: ' . $errorInfo[2];
             }
+            header("Location: attendance.php");
             exit();
         } catch (PDOException $e) {
             $errorMessage = $e->getMessage();
             error_log("Database error in clock in process: " . $errorMessage);
             // If data was saved, still return partial success
             if ($dataSaved) {
-                echo json_encode([
-                    'success' => true, 
-                    'message' => 'Your attendance was recorded, but there was an issue with notifications.',
-                    'data_saved' => true,
-                    'warning' => 'Database warning after saving: ' . $errorMessage
-                ]);
+                $_SESSION['success'] = 'Your attendance was recorded, but there was an issue with notifications.';
+                $_SESSION['warning'] = 'Database warning after saving: ' . $errorMessage;
             } else {
-                echo json_encode([
-                    'success' => false, 
-                    'message' => 'Database error occurred: ' . $errorMessage,
-                    'debug_info' => 'Check server logs for more details'
-                ]);
+                $_SESSION['error'] = 'Database error occurred: ' . $errorMessage;
             }
+            header("Location: attendance.php");
             exit();
         }
     } catch (PDOException $e) {
@@ -123,38 +114,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         error_log("Database error in clock in process: " . $errorMessage);
         // If data was saved, still return partial success
         if ($dataSaved) {
-            echo json_encode([
-                'success' => true, 
-                'message' => 'Your attendance was recorded, but there was an issue with notifications.',
-                'data_saved' => true,
-                'warning' => 'Database error after saving: ' . $errorMessage
-            ]);
+            $_SESSION['success'] = 'Your attendance was recorded, but there was an issue with notifications.';
+            $_SESSION['warning'] = 'Database error after saving: ' . $errorMessage;
         } else {
-            echo json_encode([
-                'success' => false, 
-                'message' => 'Database error occurred: ' . $errorMessage,
-                'debug_info' => 'Check server logs for more details'
-            ]);
+            $_SESSION['error'] = 'Database error occurred: ' . $errorMessage;
         }
+        header("Location: attendance.php");
         exit();
     } catch (Exception $e) {
         $errorMessage = $e->getMessage();
         error_log("General error in clock in process: " . $errorMessage);
         // If data was saved, still return partial success
         if ($dataSaved) {
-            echo json_encode([
-                'success' => true, 
-                'message' => 'Your attendance was recorded, but there was an issue with the process.',
-                'data_saved' => true,
-                'warning' => 'System error after saving: ' . $errorMessage
-            ]);
+            $_SESSION['success'] = 'Your attendance was recorded, but there was an issue with the process.';
+            $_SESSION['warning'] = 'System error after saving: ' . $errorMessage;
         } else {
-            echo json_encode([
-                'success' => false, 
-                'message' => 'An error occurred: ' . $errorMessage,
-                'debug_info' => 'Check server logs for more details'
-            ]);
+            $_SESSION['error'] = 'An error occurred: ' . $errorMessage;
         }
+        header("Location: attendance.php");
         exit();
     }
 }
@@ -180,8 +157,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['action'])) {
 
     try {
         // SQL query to insert data into the table
-        $sql = "INSERT INTO attendance_logs (emp_Id, date, time, method, manual_reason) 
-                VALUES (:empId, :attendanceDate, :attendanceTime, 1, :manualReason)";
+        $sql = "INSERT INTO attendance_logs (emp_Id, date, time, method, manual_reason, mach_sn, mach_id) 
+                VALUES (:empId, :attendanceDate, :attendanceTime, '1', :manualReason, 0, 0)";
         
         // Prepare statement
         $stmt = $pdo->prepare($sql);

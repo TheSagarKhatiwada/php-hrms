@@ -1,11 +1,10 @@
 /**
- * Monthly Report DataTables Configuration
- * Enhances and standardizes the DataTables setup for monthly attendance reports
+ * Periodic Report DataTables Configuration
+ * Enhances and standardizes the DataTables setup for periodic attendance reports
  */
 
-const initMonthlyReportTables = () => {
-    // Initialize DataTables for each report table
-    $(".monthly-report-table").each(function() {
+const initMonthlyReportTables = () => {    // Initialize DataTables for each report table
+    $(".periodic-report-table").each(function() {
         // Extract employee information for title personalization
         const tableId = $(this).attr('id');
         const employeeId = tableId ? tableId.split('-')[1] : '';
@@ -34,11 +33,10 @@ const initMonthlyReportTables = () => {
                         columns: ':visible'
                     }
                 },
-                {
-                    extend: 'excelHtml5',
+                {                    extend: 'excelHtml5',
                     text: '<i class="fas fa-file-excel"></i> Excel',
                     className: 'btn-sm btn-outline-success',
-                    title: 'Monthly Attendance - ' + employeeName,
+                    title: 'Periodic Attendance - ' + employeeName,
                     exportOptions: {
                         columns: ':visible'
                     }
@@ -47,7 +45,7 @@ const initMonthlyReportTables = () => {
                     extend: 'pdfHtml5',
                     text: '<i class="fas fa-file-pdf"></i> PDF',
                     className: 'btn-sm btn-outline-danger',
-                    title: 'Monthly Attendance - ' + employeeName,
+                    title: 'Periodic Attendance - ' + employeeName,
                     orientation: 'landscape',
                     pageSize: 'A4',
                     exportOptions: {
@@ -75,7 +73,7 @@ const initMonthlyReportTables = () => {
                     extend: 'print',
                     text: '<i class="fas fa-print"></i> Print',
                     className: 'btn-sm btn-outline-primary',
-                    title: 'Monthly Attendance - ' + employeeName,
+                    title: 'Periodic Attendance - ' + employeeName,
                     exportOptions: {
                         columns: ':visible'
                     },
@@ -160,10 +158,8 @@ const initDateRangePicker = () => {
     // Handle cancel button (clear input)
     dateRangeInput.on('cancel.daterangepicker', function(ev, picker) {
         $(this).val('');
-    });
-
-    // Form reset handler
-    $('#monthly-report-form').on('reset', function() {
+    });    // Form reset handler
+    $('#periodic-report-form').on('reset', function() {
         setTimeout(function() {
             dateRangeInput.val('');
         }, 10);

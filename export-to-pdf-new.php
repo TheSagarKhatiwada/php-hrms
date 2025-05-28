@@ -33,14 +33,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Create new PDF document
     $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
     
-    // Set document information
-    $pdf->SetCreator('PHP-HRMS');
+    // Set document information    $pdf->SetCreator('PHP-HRMS');
     $pdf->SetAuthor('Prime Express Courier & Cargo');
-    $pdf->SetTitle('Monthly Attendance Report');
+    $pdf->SetTitle('Periodic Attendance Report');
     $pdf->SetSubject('Employee Attendance');
     
     // Set default header and footer data
-    $pdf->setHeaderData('', 0, 'Monthly Attendance Report', 'Generated: ' . date('Y-m-d H:i:s'));
+    $pdf->setHeaderData('', 0, 'Periodic Attendance Report', 'Generated: ' . date('Y-m-d H:i:s'));
     
     // Set header and footer fonts
     $pdf->setHeaderFont(Array('helvetica', '', 10));
@@ -107,13 +106,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Output the HTML content
         $pdf->writeHTML($html, true, false, true, false, '');
     }
-    
-    // Close and output PDF document
-    $pdf->Output('monthly_attendance_report.pdf', 'I');
+      // Close and output PDF document
+    $pdf->Output('periodic_attendance_report.pdf', 'I');
     exit;
 }
 
 // If not a POST request, redirect back to the report page
-header('Location: monthly-report-new.php');
+header('Location: monthly-report.php');
 exit;
 ?>

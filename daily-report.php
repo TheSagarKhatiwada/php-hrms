@@ -69,7 +69,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
         #daily-report-table td {
             display: table-cell !important;
             padding: 1px !important;
-            border: 0.5px solid #000 !important;
+            border: 0.5px solid #ddd !important;
             font-size: 8pt !important;
             white-space: nowrap !important;
             color: #000 !important;
@@ -179,12 +179,39 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
                   <th class="align-items-center text-center" style="font-size: 1.8rem;" colspan="18">Prime Express Courier & Cargo Pvt. Ltd.</th>
                 </tr> -->
                 <tr>
-                  <th class="align-items-center text-center" colspan="18">Daily Attendance Report: <?php if (isset($_POST['reportdate'])) { echo $_POST['reportdate']; } ?></th>
+                  <?php
+                    // Count the number of <th> in the next row to set dynamic colspan
+                    $colspan = 0;
+                    $headerRow = [
+                      ['rowspan' => 2], // SN
+                      ['rowspan' => 2], // Employee Name
+                      ['rowspan' => 2], // Branch
+                      ['colspan' => 3], // Planned Time
+                      ['colspan' => 3], // Worked Time
+                      ['rowspan' => 2], // Overtime
+                      ['rowspan' => 2], // Late In
+                      ['rowspan' => 2], // Early Out
+                      ['rowspan' => 2], // Early In
+                      ['rowspan' => 2], // Late Out
+                      ['rowspan' => 2], // Marked As
+                      ['rowspan' => 2], // Methods
+                      ['rowspan' => 2], // Remarks
+                    ];
+                    foreach ($headerRow as $col) {
+                      if (isset($col['colspan'])) {
+                        $colspan += $col['colspan'];
+                      } else {
+                        $colspan += 1;
+                      }
+                    }
+                  ?>
+                  <th class="align-items-center text-center" colspan="<?php echo $colspan; ?>">
+                    Daily Attendance Report: <?php if (isset($_POST['reportdate'])) { echo $_POST['reportdate']; } ?>
+                  </th>
                 </tr>
                 <tr>
                   <th class="align-items-center text-center" rowspan="2">SN</th>
                   <th class="align-items-center text-center" rowspan="2">Employee Name</th>
-                  <th class="align-items-center text-center" rowspan="2">Designation</th>
                   <th class="align-items-center text-center" rowspan="2">Branch</th>
                   <th class="align-items-center text-center" colspan="3">Planned Time</th>
                   <th class="align-items-center text-center" colspan="3">Worked Time</th>
@@ -218,7 +245,6 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
                 <tr>
                     <td class="align-items-center text-center"><?php echo $index + 1; ?></td>
                     <td class="align-items-center text-left"><b><?php echo $row['emp_id'] . " - " .$row['employee_name'] ?></b></td>
-                    <td class="align-items-center text-left"><?php echo $row['designation'] ?></td>
                     <td class="align-items-center text-center"><?php echo $row['branch'] ?></td>
                     <td class="align-items-center text-center"><?php echo $row['scheduled_in'] ?></td>
                     <td class="align-items-center text-center"><?php echo $row['scheduled_out'] ?></td>
@@ -248,17 +274,16 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
 
                     </td>
                     <td class="align-items-center text-center"><?php echo $row['remarks'] ?></td>
+                </tr>
                     <?php 
                   }
                 } else {
-                    echo "<td class='align-items-center text-center' colspan='18'>There is no employees for Selected Branch.</td></tr>";
+                    echo "<tr><td class='align-items-center text-center' colspan='17'>There is no employees for Selected Branch.</td></tr>";
                 }
             } else {
-                echo "<tr>
-                  <td class='align-items-center text-center' colspan='18'>No data fetched. Submit above to view report.</td>";
+                echo "<tr><td class='align-items-center text-center' colspan='17'>No data fetched. Submit above to view report.</td></tr>";
             }
                 ?>
-                  </tr>
           <?php
             if (isset($jsonData)){
               $totalEmployees = count($jsonData);
@@ -280,11 +305,13 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
             }
           ?>
             <tfoot>
-              <th class="align-items-center text-right" colspan="2">Daily Summary: </th>
-              <th class="align-items-center text-center" colspan="2">Total Employees: <?php if (isset($jsonData)){ echo $totalEmployees;}else{echo 0;}?></th>
-              <th class="align-items-center text-center" colspan="5">Total Present: <?php echo $presentCount;?></th>
-              <th class="align-items-center text-center" colspan="4">Total Absent: <?php echo $absentCount;?></th>
-              <th class="align-items-center text-center" colspan="5">Total on Leave: 0</th>
+              <tr>
+                <th class="align-items-center text-right" colspan="2">Daily Summary: </th>
+                <th class="align-items-center text-center" colspan="2">Total Employees: <?php if (isset($jsonData)){ echo $totalEmployees;}else{echo 0;}?></th>
+                <th class="align-items-center text-center" colspan="4">Total Present: <?php echo $presentCount;?></th>
+                <th class="align-items-center text-center" colspan="4">Total Absent: <?php echo $absentCount;?></th>
+                <th class="align-items-center text-center" colspan="5">Total on Leave: <?php echo $leaveCount;?></th>
+              </tr>
             </tfoot>
             </table>
           </div>
@@ -315,11 +342,16 @@ include 'includes/footer.php';
     var table = $("#daily-report-table").DataTable({
         "responsive": true,
         "lengthChange": false,
-        "autoWidth": true,
+        "autoWidth": false, // Changed to false to avoid width calculations
         "paging": false,
         "searching": true,
         "ordering": false,
         "info": false,
+        "columnDefs": [
+            { "orderable": false, "targets": '_all' } // Disable ordering on all columns
+        ],
+        "dom": 't',  // Only show the table, no other controls
+        "fixedHeader": false, // Disable fixed header which can cause issues with complex headers
         "buttons": [
             'colvis', // Add column visibility button
             {
@@ -332,7 +364,6 @@ include 'includes/footer.php';
                     header: true  // Include the headers in the print
                 },
                 autoPrint: true,
-                title: 'HRMS | Reports', // Custom title for print dialog
                 title: 'Daily Attendance Report of <?php echo  $_POST['reportdate'] ?? '' ?>',
                 messageTop: '', // Subtitle text for the printed page
                 customize: function (win) {
@@ -357,7 +388,7 @@ include 'includes/footer.php';
                     head.appendChild(style);
                 }
             }
-        ], // Buttons: copy, csv, excel, pdf, print, colvis
+        ] // Buttons: copy, csv, excel, pdf, print, colvis
         "language": {
             "paginate": {
                 "first": '<i class="fas fa-angle-double-left"></i>',
