@@ -12,14 +12,14 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
-// Get employee ID for current user (user_id is already the emp_id primary key)
+// Get employee ID for current user (user_id is already the primary key ID)
 $currentEmployeeId = null;
 try {
-    $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE emp_id = ?");
+    $stmt = $pdo->prepare("SELECT id FROM employees WHERE id = ?");
     $stmt->execute([$user_id]);
     $result = $stmt->fetch();
     if ($result) {
-        $currentEmployeeId = $result['emp_id']; // Use the emp_id primary key
+        $currentEmployeeId = $result['id']; // Use the primary key ID
     }
 } catch (PDOException $e) {
     error_log("Error fetching employee ID: " . $e->getMessage());

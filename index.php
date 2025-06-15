@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($user && password_verify($password, $user['password'])) {
         // Password is correct
         // Set session variables
-        $_SESSION['user_id'] = $user['emp_id']; // Use emp_id instead of id
+        $_SESSION['user_id'] = $user['id'];
         $_SESSION['designation'] = $user['designation'];
         $_SESSION['fullName'] = $user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name'];
         $_SESSION['userImage'] = $user['user_image'];

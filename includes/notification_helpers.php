@@ -77,10 +77,31 @@ if (!function_exists('notify_user')) {
      */
     function notify_system($title, $message, $type = 'info', $notifyAdmins = true) {
         global $pdo;
-          // Log the notification
+        
+        // Log the notification
         error_log("[System Notification] $type: $title - $message");
-          // Since we removed the users table and notifications table dependency,
-        // we'll just log notifications for now
+          // If we should notify admins
+        if ($notifyAdmins) {
+            try {
+                // Get all admin user IDs - Using user_id from employees table to match users table
+                $stmt = $pdo->prepare("SELECT user_id FROM employees WHERE role_id = 1 AND user_id IS NOT NULL");
+                $stmt->execute();
+                $adminIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                
+                if (!empty($adminIds)) {
+                    $notificationService = new NotificationService($pdo);
+                    $notificationService->sendNotificationToMany($adminIds, $title, $message, $type, 'system-settings.php');
+                } else {
+                    error_log('No admin users found with valid user_id for notifications');
+                }
+                
+                return true;
+            } catch (PDOException $e) {
+                error_log('Error sending bulk notifications: ' . $e->getMessage());
+                return false;
+            }
+        }
+        
         return true;
     }
     
@@ -91,9 +112,73 @@ if (!function_exists('notify_user')) {
      * @param string $action Attendance action (checked_in, checked_out, etc.)
      * @param string $dateTime Date and time of attendance
      * @return bool Success status
-     */    function notify_attendance($userId, $action, $dateTime) {        // Since we removed the users table and notifications, just log attendance events
-        error_log("[Attendance Notification] $action for employee $userId at $dateTime");
-        return true;
+     */
+    function notify_attendance($userId, $action, $dateTime) {
+        global $pdo;
+        
+        try {            // First get the user_id from emp_id for notifications table foreign key
+            $stmt = $pdo->prepare("SELECT user_id, CONCAT(first_name, ' ', last_name) as name FROM employees WHERE emp_id = ?");
+            $stmt->execute([$userId]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$user) {
+                error_log("Could not find employee with emp_id: $userId");
+                return false; // Employee not found, can't send notification
+            }
+            
+            if (!$user['user_id']) {
+                error_log("Employee with emp_id: $userId has no user_id - cannot send notification");
+                return true; // Return true to avoid breaking attendance process
+            }
+            
+            $internalUserId = $user['user_id']; // This is the user_id needed for the notifications table
+            $userName = $user['name'];
+            
+            // Format title and message based on action
+            $title = "Attendance " . ucfirst(str_replace('_', ' ', $action));
+            $message = "";
+            $type = "info";
+            $link = "attendance.php";
+            
+            switch ($action) {
+                case 'checked_in':
+                case 'clocked in':
+                    $message = "You checked in at $dateTime";
+                    $type = "success";
+                    break;
+                case 'checked_out':
+                    $message = "You checked out at $dateTime";
+                    $type = "info";
+                    break;
+                case 'manual_record':
+                    $message = "Your attendance was manually recorded for $dateTime";
+                    $type = "warning";
+                    break;
+                default:
+                    $message = "Attendance $action recorded at $dateTime";
+            }
+            
+            // First check if notifications table exists to avoid errors
+            $stmt = $pdo->prepare("SHOW TABLES LIKE 'notifications'");
+            $stmt->execute();
+            if ($stmt->rowCount() == 0) {
+                error_log("Notifications table doesn't exist - notification skipped");
+                return true; // Return true to avoid breaking the check-in process
+            }
+            
+            // Try to send notification, but don't let it break the attendance process
+            try {
+                // Send notification using the internal user ID
+                $notificationService = new NotificationService($pdo);
+                return $notificationService->sendNotification($internalUserId, $title, $message, $type, $link);
+            } catch (Exception $e) {
+                error_log("Error sending notification in notify_attendance: " . $e->getMessage());
+                return true; // Return true so attendance process completes successfully
+            }
+        } catch (Exception $e) {
+            error_log("Error in notify_attendance: " . $e->getMessage());
+            return true; // Return true anyway so attendance process isn't broken
+        }
     }
     
     /**
@@ -105,9 +190,13 @@ if (!function_exists('notify_user')) {
      * @return bool Success status
      */
     function notify_asset($userId, $action, $assetName) {
-        // Since we removed the users table and notifications, just log asset events
-        error_log("[Asset Notification] $action for asset '$assetName' - user $userId");
-        return true;
+        global $pdo;
+        
+        // Format title and message based on action
+        $title = "Asset " . ucfirst(str_replace('_', ' ', $action));
+        $message = "";
+        $type = "info";
+        $link = "assets.php";
         
         switch ($action) {
             case 'assigned':

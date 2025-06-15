@@ -30,8 +30,8 @@ $stmt = $pdo->prepare("SELECT e.first_name,
                                       INNER JOIN branches b ON e.branch = b.id 
                                       LEFT JOIN roles r ON e.role_id = r.id 
                                       LEFT JOIN designations d ON e.designation = d.id 
-                                      WHERE e.emp_id = :emp_id");
-$stmt->execute(['emp_id' => $user_id]);
+                                      WHERE e.id = :id");
+$stmt->execute(['id' => $user_id]);
 $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$user_data) {

@@ -27,12 +27,13 @@ $today = date('Y-m-d');
 // Get current user data
 $userId = $_SESSION['user_id'];
 
-try {    // Get user data with designation title
+try {
+    // Get user data with designation title
     $stmt = $pdo->prepare("
         SELECT e.*, d.title as designation_title 
         FROM employees e
         LEFT JOIN designations d ON e.designation = d.id
-        WHERE e.emp_id = ?
+        WHERE e.id = ?
     ");
     $stmt->execute([$userId]);
     $userData = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -483,12 +484,13 @@ try {    // Get user data with designation title
                                 <div class="col-sm-6">
                                     <div class="border-start border-info ps-3 py-1">
                                         <small class="text-muted d-block">Department</small>
-                                        <span class="fw-medium">                                            <?php 
+                                        <span class="fw-medium">
+                                            <?php 
                                                 try {
                                                     $stmt = $pdo->prepare("SELECT departments.dept_name FROM departments 
-                                                                        JOIN employees ON departments.id = employees.department_id 
-                                                                        WHERE employees.emp_id = ?");
-                                                    $stmt->execute([$userData['emp_id']]);
+                                                                        JOIN employees ON departments.id = employees.department 
+                                                                        WHERE employees.id = ?");
+                                                    $stmt->execute([$userId]);
                                                     $dept = $stmt->fetchColumn();
                                                     echo htmlspecialchars($dept ?? 'Not assigned');
                                                 } catch (PDOException $e) {

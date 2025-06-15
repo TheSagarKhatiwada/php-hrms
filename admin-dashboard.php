@@ -118,7 +118,7 @@ try {
         SELECT a.*, e.first_name, e.last_name, e.middle_name, e.user_image, 
                d.title as designation_name, b.name as branch_name 
         FROM attendance_logs a
-        JOIN employees e ON a.emp_Id = e.id
+        JOIN employees e ON a.emp_Id = e.emp_id
         LEFT JOIN branches b ON e.branch = b.id
         LEFT JOIN designations d ON e.designation = d.id
         ORDER BY a.date DESC, a.time DESC
@@ -151,7 +151,7 @@ require_once __DIR__ . '/includes/header.php';
             if (isset($_SESSION['user_id'])) {
                 try {
                     // Get user's first name
-                    $userStmt = $pdo->prepare("SELECT first_name, last_login FROM employees WHERE emp_id = ?");
+                    $userStmt = $pdo->prepare("SELECT first_name, last_login FROM employees WHERE id = ?");
                     $userStmt->execute([$_SESSION['user_id']]);
                     if ($userData = $userStmt->fetch(PDO::FETCH_ASSOC)) {
                         $firstName = $userData['first_name'];
@@ -163,7 +163,7 @@ require_once __DIR__ . '/includes/header.php';
                         
                         // Update last_login timestamp
                         if (!isset($_SESSION['login_recorded'])) {
-                            $updateStmt = $pdo->prepare("UPDATE employees SET last_login = NOW() WHERE emp_id = ?");
+                            $updateStmt = $pdo->prepare("UPDATE employees SET last_login = NOW() WHERE id = ?");
                             $updateStmt->execute([$_SESSION['user_id']]);
                             $_SESSION['login_recorded'] = true;
                         }

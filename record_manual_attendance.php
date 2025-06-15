@@ -35,8 +35,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
     $dataSaved = false;
     
     try {
-        // Get the employee ID from POST (now using emp_id directly)
-        $emp_id = $_POST['emp_id'];
+        // Get the employee ID from POST and convert to internal ID
+        $emp_id_string = $_POST['emp_id'];
+        
+        // Get the internal employee ID (integer) from the emp_id string
+        $stmt = $pdo->prepare("SELECT id FROM employees WHERE emp_id = ?");
+        $stmt->execute([$emp_id_string]);
+        $employee = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$employee) {
+            $_SESSION['error'] = 'Employee not found';
+            header("Location: attendance.php");
+            exit();
+        }
+        
+        $emp_internal_id = $employee['id']; // This is the integer ID for attendance_logs
         
         // Get timezone from settings
         $timezone = get_setting('timezone', 'UTC');
@@ -52,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         
         // Check if employee already clocked in today
         $stmt = $pdo->prepare("SELECT id FROM attendance_logs WHERE emp_Id = ? AND date = ? LIMIT 1");
-        $stmt->execute([$emp_id, $today]);
+        $stmt->execute([$emp_internal_id, $today]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($result) {
@@ -66,17 +79,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         $stmt = $pdo->prepare($sql);
         
         try {
-            if ($stmt->execute([$emp_id, $today, $current_time])) {
+            if ($stmt->execute([$emp_internal_id, $today, $current_time])) {
                 // Mark that data was successfully saved
                 $dataSaved = true;
                 
                 // Log successful clock in
-                error_log("Employee $emp_id successfully clocked in at $current_time on $today");
+                error_log("Employee $emp_id_string successfully clocked in at $current_time on $today");
                 
                 // Try to send notification but don't let it break the clock-in process
                 try {
                     if (function_exists('notify_attendance')) {
-                        notify_attendance($emp_id, 'clocked in', $today . ' ' . $current_time);
+                        notify_attendance($emp_id_string, 'clocked in', $today . ' ' . $current_time);
                     }
                 } catch (Exception $e) {
                     // Just log the error but don't let it affect the success response
@@ -140,7 +153,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['action'])) {
     date_default_timezone_set($timezone);
     
     // Get form data
-    $empId = $_POST['empId']; // Now using emp_id directly as string
+    $empId_string = $_POST['empId'];
+    
+    // Convert string emp_id to integer employee ID for database operations
+    $stmt = $pdo->prepare("SELECT id FROM employees WHERE emp_id = ?");
+    $stmt->execute([$empId_string]);
+    $employee = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$employee) {
+        $_SESSION['error'] = 'Employee not found';
+        header("Location: attendance.php");
+        exit();
+    }
+    
+    $empId = $employee['id']; // Integer ID for database operations
     $attendanceDate = $_POST['attendanceDate'];
     $attendanceTime = $_POST['attendanceTime'];
     $reason = $_POST['reason'];

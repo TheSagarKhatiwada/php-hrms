@@ -30,7 +30,8 @@ try {
     // Active leave types
     $stmt = $pdo->query("SELECT COUNT(*) FROM leave_types WHERE is_active = 1");
     $activeLeaveTypes = $stmt->fetchColumn();
-      // Recent leave requests (last 20)
+    
+    // Recent leave requests (last 20)
     $stmt = $pdo->prepare("
         SELECT lr.*, lt.name as leave_type_name, lt.code as leave_type_code,
                e.first_name, e.last_name, e.emp_id, e.user_image,

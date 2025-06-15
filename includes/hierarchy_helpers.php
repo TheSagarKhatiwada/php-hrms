@@ -169,7 +169,7 @@ function generateHierarchyBreadcrumb($pdo, $employeeId) {
  */
 function canApproveLeave($pdo, $approverId, $requesterId) {
     // Admin and HR can approve any leave
-    $stmt = $pdo->prepare("SELECT role_id FROM employees WHERE emp_id = ?");
+    $stmt = $pdo->prepare("SELECT role_id FROM employees WHERE id = ?");
     $stmt->execute([$approverId]);
     $approverRole = $stmt->fetchColumn();
     
@@ -287,7 +287,7 @@ function getBoardMembers($pdo) {
  * @return bool True if employee is board member
  */
 function isBoardMember($pdo, $employeeId) {
-    $stmt = $pdo->prepare("SELECT board_position_id FROM employees WHERE emp_id = ? AND exit_date IS NULL");
+    $stmt = $pdo->prepare("SELECT board_position_id FROM employees WHERE id = ? AND exit_date IS NULL");
     $stmt->execute([$employeeId]);
     $result = $stmt->fetchColumn();
     return !empty($result);
@@ -448,45 +448,5 @@ function getCompleteOrganizationalStructure($pdo) {
     $structure['employees'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     return $structure;
-}
-
-/**
- * Check if an employee can supervise another employee using emp_id (prevent circular hierarchy)
- * @param PDO $pdo Database connection
- * @param string $supervisorEmpId Potential supervisor emp_id
- * @param string $employeeEmpId Employee emp_id
- * @return bool True if valid, false if would create circular hierarchy
- */
-function canSuperviseByEmpId($pdo, $supervisorEmpId, $employeeEmpId) {
-    if ($supervisorEmpId == $employeeEmpId) {
-        return false; // Can't supervise self
-    }
-    
-    // Check if the proposed supervisor is in the subordinate chain of the employee
-    $subordinates = getSubordinatesByEmpId($pdo, $employeeEmpId);
-    return !in_array($supervisorEmpId, $subordinates);
-}
-
-/**
- * Get all subordinates of a given employee using emp_id (recursive)
- * @param PDO $pdo Database connection
- * @param string $employeeEmpId Employee emp_id
- * @return array List of subordinate emp_ids
- */
-function getSubordinatesByEmpId($pdo, $employeeEmpId) {
-    $subordinates = [];
-    
-    // Get direct subordinates
-    $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE supervisor_id = ? AND exit_date IS NULL");
-    $stmt->execute([$employeeEmpId]);
-    $directSubordinates = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    
-    foreach ($directSubordinates as $subordinateEmpId) {
-        $subordinates[] = $subordinateEmpId;
-        // Recursively get subordinates of subordinates
-        $subordinates = array_merge($subordinates, getSubordinatesByEmpId($pdo, $subordinateEmpId));
-    }
-    
-    return $subordinates;
 }
 ?>

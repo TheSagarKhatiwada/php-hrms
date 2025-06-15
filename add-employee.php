@@ -75,10 +75,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
   try {
     // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
-            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
+    $sql = "INSERT INTO employees (employee_id, emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
+            VALUES (:employee_id, :empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
+        ':employee_id' => $empId, // Use the same ID for both fields
         ':empId' => $empId,
         ':machId' => $machId,
         ':empBranch' => $empBranch,
@@ -97,15 +98,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':role_id' => $role, // Changed from :role to :role_id to match the column name
         ':officeEmail' => $officeEmail,
         ':officePhone' => $officePhone,
+        ':supervisor_id' => $supervisor_id,
+        ':department_id' => $department_id
     ]);
 
-    // Check if insert was successful
-    if ($stmt->rowCount() > 0) {
-        // Employee was successfully added
-        
+    // Get the ID of the newly inserted employee
+    $newEmployeeId = $pdo->lastInsertId();
+
+    // Add detailed error logging
+    if (!$newEmployeeId) {
+        $errorInfo = $stmt->errorInfo();
+        $_SESSION['error'] = "Database error: " . $errorInfo[2];
+        error_log("Employee add error: " . print_r($errorInfo, true));
+    } else {
+        // Update attendance_logs with emp_Id from employees based on machine_id
+        $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+
         // Send welcome notification to the new employee if login access is granted
-        if ($loginAccess == '1') {
-            notify_employee($empId, 'joined');
+        if ($loginAccess == '1' && $newEmployeeId) {
+            notify_employee($newEmployeeId, 'joined');
             
             // Also notify HR team or admins about the new employee
             $fullName = $empFirstName . ' ' . ($empMiddleName ? $empMiddleName . ' ' : '') . $empLastName;
@@ -117,13 +130,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             );
             
             // Get admins/HR personnel to notify
-            $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE role_id = 1 OR role_id = 2"); // Assuming role 2 is HR
+            $stmt = $pdo->prepare("SELECT id FROM employees WHERE role = 1 OR role = 2"); // Assuming role 2 is HR
             $stmt->execute();
-            $adminEmpIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $adminIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
-            if (!empty($adminEmpIds)) {
+            if (!empty($adminIds)) {
                 notify_users(
-                    $adminEmpIds,
+                    $adminIds,
                     'New Employee Added',
                     "Employee $fullName ($empId) has been added to the system",
                     'info',
@@ -131,11 +144,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 );
             }
         }
-        
-        $_SESSION['success'] = "Employee added successfully!";
-    } else {
-        $_SESSION['error'] = "Failed to add employee. Please try again.";
     }
+
+    $_SESSION['success'] = "Employee added successfully!";
   } catch (PDOException $e) {
     $_SESSION['error'] = "Error adding employee: " . $e->getMessage();
   }

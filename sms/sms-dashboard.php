@@ -114,7 +114,7 @@ try {
         $stmt = $pdo->prepare("
             SELECT l.*, e.first_name, e.last_name 
             FROM sms_logs l 
-            LEFT JOIN employees e ON l.employee_id = e.emp_id 
+            LEFT JOIN employees e ON l.employee_id = e.id 
             ORDER BY l.created_at DESC 
             LIMIT 10
         ");

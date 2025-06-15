@@ -82,8 +82,8 @@
           // Fetch user details from the database if not already available
           if (!isset($user) && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
-            $stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = :emp_id");
-            $stmt->execute(['emp_id' => $user_id]);
+            $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = :id");
+            $stmt->execute(['id' => $user_id]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             $stmt->closeCursor();
           }

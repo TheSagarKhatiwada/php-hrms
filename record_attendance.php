@@ -37,8 +37,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
     // Use a flag to track if data was saved successfully
     $dataSaved = false;
     
-    try {        // Get the employee ID from POST (now using emp_id directly)
-        $emp_id = $_POST['emp_id'];
+    try {        // Get the employee ID from POST and convert to internal ID
+        $emp_id_string = $_POST['emp_id'];
+        
+        // Get the internal employee ID (integer) from the emp_id string
+        $stmt = $pdo->prepare("SELECT id FROM employees WHERE emp_id = ?");
+        $stmt->execute([$emp_id_string]);
+        $employee = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$employee) {
+            echo json_encode(['success' => false, 'message' => 'Employee not found']);
+            exit();
+        }
+        
+        $emp_internal_id = $employee['id']; // This is the integer ID for attendance_logs
         
         // Get timezone from settings
         $timezone = get_setting('timezone', 'UTC');
@@ -50,14 +62,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         
         // For debugging
         error_log("Using timezone: $timezone");
-        error_log("Current time in this timezone: $current_time");        // Check attendance records for today (to determine if this is check-in or check-out)
+        error_log("Current time in this timezone: $current_time");
+          // Check attendance records for today (to determine if this is check-in or check-out)
         $stmt = $pdo->prepare("SELECT time FROM attendance_logs WHERE emp_Id = ? AND date = ? ORDER BY time DESC LIMIT 1");
-        $stmt->execute([$emp_id, $today]);
+        $stmt->execute([$emp_internal_id, $today]);
         $lastRecord = $stmt->fetch(PDO::FETCH_ASSOC);
           // Determine if this is check-in or check-out
         // First record of the day is check-in, all subsequent records are check-out
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM attendance_logs WHERE emp_Id = ? AND date = ?");
-        $stmt->execute([$emp_id, $today]);
+        $stmt->execute([$emp_internal_id, $today]);
         $count = $stmt->fetchColumn();
         
         // If count is zero, it's the first record (check-in); otherwise it's a check-out
@@ -66,8 +79,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         
         // Insert attendance record
         $sql = "INSERT INTO attendance_logs (emp_Id, date, time, method, mach_sn, mach_id, manual_reason) VALUES (?, ?, ?, '2', 0, 0, ?)";
-        $stmt = $pdo->prepare($sql);        try {
-            if ($stmt->execute([$emp_id, $today, $current_time, $actionType])) {
+        $stmt = $pdo->prepare($sql);
+          try {
+            if ($stmt->execute([$emp_internal_id, $today, $current_time, $actionType])) {
                 // Mark that data was successfully saved
                 $dataSaved = true;
                 
@@ -78,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
                 try {
                     if (function_exists('notify_attendance')) {
                         $notifyAction = $isCheckIn ? 'checked_in' : 'checked_out';
-                        notify_attendance($emp_id, $notifyAction, $today . ' ' . $current_time);
+                        notify_attendance($emp_id_string, $notifyAction, $today . ' ' . $current_time);
                     }
                 } catch (Exception $e) {
                     // Just log the error but don't let it affect the success response

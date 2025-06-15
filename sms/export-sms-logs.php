@@ -46,7 +46,7 @@ $query = "
         CONCAT(e.first_name, ' ', e.last_name) as employee_name,
         e.employee_id as emp_id
     FROM sms_logs l 
-    LEFT JOIN employees e ON l.employee_id = e.emp_id 
+    LEFT JOIN employees e ON l.employee_id = e.id 
     $whereClause 
     ORDER BY l.created_at DESC
 ";

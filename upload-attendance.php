@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
         // Use a more efficient query that limits the number of rows updated per operation
         $updateEmployeeIdSql = "UPDATE attendance_logs a 
                                JOIN employees e ON a.mach_id = e.mach_id 
-                               SET a.emp_Id = e.emp_id 
+                               SET a.emp_Id = e.id 
                                WHERE a.method = 0 AND (a.emp_Id = 0 OR a.emp_Id IS NULL OR a.emp_Id = 1)
                                LIMIT 1000";
     

@@ -514,8 +514,8 @@ require_once __DIR__ . '/utilities.php';
                           FROM employees e 
                           LEFT JOIN designations d ON e.designation = d.id 
                           LEFT JOIN roles r ON e.role_id = r.id
-                          WHERE e.emp_id = :emp_id");
-  $stmt->execute(['emp_id' => $user_id]);
+                          WHERE e.id = :id");
+  $stmt->execute(['id' => $user_id]);
   $user = $stmt->fetch(PDO::FETCH_ASSOC);
   ?>
   <div class="sidebar-footer">

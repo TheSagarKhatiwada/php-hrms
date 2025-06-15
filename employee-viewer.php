@@ -58,8 +58,8 @@ if ($empId) {
                                     JOIN fixedassets fa ON aa.AssetID = fa.AssetID
                                     WHERE aa.EmployeeID = :employee_id AND aa.ReturnDate IS NULL
                                     ORDER BY aa.AssignmentDate DESC");
-    // Use $employee['emp_id'] for asset assignments
-    $assigned_assets_stmt->execute(['employee_id' => $employee['emp_id']]); 
+    // Use $employee['id'] which is the primary key for the employees table and likely the foreign key in AssetAssignments
+    $assigned_assets_stmt->execute(['employee_id' => $employee['id']]); 
     $assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Check if employee image is empty and set default image

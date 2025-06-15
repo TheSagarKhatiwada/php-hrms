@@ -44,15 +44,17 @@ $totalPages = 1;
 $smsLogs = [];
 
 try {
-    $countQuery = "SELECT COUNT(*) FROM sms_logs l LEFT JOIN employees e ON l.employee_id = e.emp_id $whereClause";
+    $countQuery = "SELECT COUNT(*) FROM sms_logs l LEFT JOIN employees e ON l.employee_id = e.id $whereClause";
     $countStmt = $pdo->prepare($countQuery);
     $countStmt->execute($params);
     $totalRecords = $countStmt->fetchColumn();
-    $totalPages = ceil($totalRecords / $limit);    // Get SMS logs
+    $totalPages = ceil($totalRecords / $limit);
+
+    // Get SMS logs
     $query = "
         SELECT l.*, e.first_name, e.last_name, e.emp_id as emp_id
         FROM sms_logs l
-        LEFT JOIN employees e ON l.employee_id = e.emp_id
+        LEFT JOIN employees e ON l.employee_id = e.id
         $whereClause
         ORDER BY l.created_at DESC
         LIMIT $limit OFFSET $offset

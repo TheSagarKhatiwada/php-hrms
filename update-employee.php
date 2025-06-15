@@ -38,8 +38,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Validate hierarchy to prevent circular references
     if ($supervisor_id) {
-        // Current employee is identified by emp_id directly
-        if (!canSuperviseByEmpId($pdo, $supervisor_id, $emp_id)) {
+        // Fetch current employee ID
+        $stmt = $pdo->prepare("SELECT id FROM employees WHERE emp_id = :emp_id");
+        $stmt->execute(['emp_id' => $emp_id]);
+        $current_employee = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($current_employee && !canSupervise($pdo, $supervisor_id, $current_employee['id'])) {
             $_SESSION['error'] = "Cannot assign supervisor: This would create a circular hierarchy.";
             header("Location: edit-employee.php?id=$emp_id&_nocache=" . time());
             exit();
@@ -132,7 +136,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ]);
 
         // Send notification to the employee about the profile update
-        notify_employee($emp_id, 'updated');
+        notify_employee($employee['id'], 'updated');
         
         // Track and notify for significant changes
         $changes = [];
@@ -162,13 +166,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $designationTitle = $designationStmt->fetchColumn() ?: 'Unknown Designation';
             
             // This is a significant change - notify HR/Management
-            $adminStmt = $pdo->prepare("SELECT emp_id FROM employees WHERE role_id = 1 OR role_id = 2"); // Changed from role to role_id
+            $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role_id = 1 OR role_id = 2"); // Changed from role to role_id
             $adminStmt->execute();
-            $adminEmpIds = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
+            $adminIds = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
             
-            if (!empty($adminEmpIds)) {
+            if (!empty($adminIds)) {
                 notify_users(
-                    $adminEmpIds,
+                    $adminIds,
                     'Employee Designation Change',
                     "Employee $empFirstName $empLastName's designation has been updated to $designationTitle",
                     'info',
@@ -226,7 +230,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         // If login access was granted, send notification
         if ($loginAccess == '1' && $employee['login_access'] != '1') {
-            notify_employee($emp_id, 'access_granted', [
+            notify_employee($employee['id'], 'access_granted', [
                 'access_type' => 'login'
             ]);
             
