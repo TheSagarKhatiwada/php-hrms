@@ -33,7 +33,7 @@ try {
         SELECT e.*, d.title as designation_title 
         FROM employees e
         LEFT JOIN designations d ON e.designation = d.id
-        WHERE e.id = ?
+        WHERE e.emp_id = ?
     ");
     $stmt->execute([$userId]);
     $userData = $stmt->fetch(PDO::FETCH_ASSOC);

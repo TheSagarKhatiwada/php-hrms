@@ -38,12 +38,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Validate hierarchy to prevent circular references
     if ($supervisor_id) {
-        // Fetch current employee ID
-        $stmt = $pdo->prepare("SELECT id FROM employees WHERE emp_id = :emp_id");
+        // Fetch current employee emp_id
+        $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE emp_id = :emp_id");
         $stmt->execute(['emp_id' => $emp_id]);
         $current_employee = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if ($current_employee && !canSupervise($pdo, $supervisor_id, $current_employee['id'])) {
+        if ($current_employee && !canSupervise($pdo, $supervisor_id, $current_employee['emp_id'])) {
             $_SESSION['error'] = "Cannot assign supervisor: This would create a circular hierarchy.";
             header("Location: edit-employee.php?id=$emp_id&_nocache=" . time());
             exit();
@@ -136,7 +136,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ]);
 
         // Send notification to the employee about the profile update
-        notify_employee($employee['id'], 'updated');
+        notify_employee($employee['emp_id'], 'updated');
         
         // Track and notify for significant changes
         $changes = [];

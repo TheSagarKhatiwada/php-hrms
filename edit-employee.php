@@ -197,15 +197,15 @@ require_once __DIR__ . '/includes/header.php';
                 <select class="form-select" id="supervisor" name="supervisor_id">
                   <option value="">-- No Supervisor --</option>
                   <?php 
-                    $supervisorQuery = "SELECT id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
+                    $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
                                        FROM employees 
-                                       WHERE id != :current_emp_id
+                                       WHERE emp_id != :current_emp_id
                                        ORDER BY first_name, last_name";
                     $stmtSupervisor = $pdo->prepare($supervisorQuery);
-                    $stmtSupervisor->execute(['current_emp_id' => $employee['id']]);
+                    $stmtSupervisor->execute(['current_emp_id' => $employee['emp_id']]);
                     while ($rowSupervisor = $stmtSupervisor->fetch()) {
-                      $selectedSupervisor = ($rowSupervisor['id'] == $employee['supervisor_id']) ? 'selected' : '';
-                      echo "<option value='{$rowSupervisor['id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
+                      $selectedSupervisor = ($rowSupervisor['emp_id'] == $employee['supervisor_id']) ? 'selected' : '';
+                      echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
                     }
                   ?>
                 </select>

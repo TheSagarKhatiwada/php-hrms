@@ -15,26 +15,25 @@ class NotificationService {
     public function __construct($db) {
         $this->db = $db;
     }
-    
-    /**
+      /**
      * Send a notification to a specific user
      * 
-     * @param int $userId User ID to send notification to
+     * @param string $empId Employee ID to send notification to
      * @param string $title Notification title
      * @param string $message Notification message
      * @param string $type Notification type (info, success, warning, danger)
      * @param string $link Optional link for the notification
      * @return int|false The ID of the created notification or false on failure
      */
-    public function sendNotification($userId, $title, $message, $type = 'info', $link = null) {
+    public function sendNotification($empId, $title, $message, $type = 'info', $link = null) {
         try {
             $stmt = $this->db->prepare(
-                "INSERT INTO notifications (user_id, title, message, type, link, created_at) 
-                 VALUES (:user_id, :title, :message, :type, :link, NOW())"
+                "INSERT INTO notifications (emp_id, title, message, type, link, created_at) 
+                 VALUES (:emp_id, :title, :message, :type, :link, NOW())"
             );
             
             $stmt->execute([
-                'user_id' => $userId,
+                'emp_id' => $empId,
                 'title' => $title,
                 'message' => $message,
                 'type' => $type,
@@ -47,29 +46,28 @@ class NotificationService {
             return false;
         }
     }
-    
-    /**
+      /**
      * Send a notification to multiple users
      * 
-     * @param array $userIds Array of user IDs to send notification to
+     * @param array $empIds Array of employee IDs to send notification to
      * @param string $title Notification title
      * @param string $message Notification message
      * @param string $type Notification type (info, success, warning, danger)
      * @param string $link Optional link for the notification
      * @return bool Success status
      */
-    public function sendNotificationToMany($userIds, $title, $message, $type = 'info', $link = null) {
+    public function sendNotificationToMany($empIds, $title, $message, $type = 'info', $link = null) {
         try {
             $this->db->beginTransaction();
             
             $stmt = $this->db->prepare(
-                "INSERT INTO notifications (user_id, title, message, type, link, created_at) 
-                 VALUES (:user_id, :title, :message, :type, :link, NOW())"
+                "INSERT INTO notifications (emp_id, title, message, type, link, created_at) 
+                 VALUES (:emp_id, :title, :message, :type, :link, NOW())"
             );
             
-            foreach ($userIds as $userId) {
+            foreach ($empIds as $empId) {
                 $stmt->execute([
-                    'user_id' => $userId,
+                    'emp_id' => $empId,
                     'title' => $title,
                     'message' => $message,
                     'type' => $type,
@@ -128,23 +126,22 @@ class NotificationService {
             return false;
         }
     }
-    
-    /**
+      /**
      * Get unread notifications for a user
      * 
-     * @param int $userId User ID
+     * @param string $empId Employee ID
      * @param int $limit Maximum number of notifications to return
      * @return array Array of notifications
      */
-    public function getUnreadNotifications($userId, $limit = 10) {
+    public function getUnreadNotifications($empId, $limit = 10) {
         try {
             $stmt = $this->db->prepare(
                 "SELECT * FROM notifications 
-                 WHERE user_id = :user_id AND is_read = 0 
+                 WHERE emp_id = :emp_id AND is_read = 0 
                  ORDER BY created_at DESC 
                  LIMIT :limit"
             );
-            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+            $stmt->bindParam(':emp_id', $empId, PDO::PARAM_STR);
             $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
             $stmt->execute();
             
@@ -154,24 +151,23 @@ class NotificationService {
             return [];
         }
     }
-    
-    /**
+      /**
      * Get all notifications for a user with pagination
      * 
-     * @param int $userId User ID
+     * @param string $empId Employee ID
      * @param int $limit Maximum number of notifications per page
      * @param int $offset Offset for pagination
      * @return array Array of notifications
      */
-    public function getAllNotifications($userId, $limit = 20, $offset = 0) {
+    public function getAllNotifications($empId, $limit = 20, $offset = 0) {
         try {
             $stmt = $this->db->prepare(
                 "SELECT * FROM notifications 
-                 WHERE user_id = :user_id 
+                 WHERE emp_id = :emp_id 
                  ORDER BY created_at DESC 
                  LIMIT :limit OFFSET :offset"
             );
-            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+            $stmt->bindParam(':emp_id', $empId, PDO::PARAM_STR);
             $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
             $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
             $stmt->execute();
@@ -185,17 +181,16 @@ class NotificationService {
     
     /**
      * Count all notifications for a user
-     * 
-     * @param int $userId User ID
+     *     * @param string $empId Employee ID
      * @return int Total number of notifications
      */
-    public function countAllNotifications($userId) {
+    public function countAllNotifications($empId) {
         try {
             $stmt = $this->db->prepare(
                 "SELECT COUNT(*) FROM notifications 
-                 WHERE user_id = :user_id"
+                 WHERE emp_id = :emp_id"
             );
-            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+            $stmt->bindParam(':emp_id', $empId, PDO::PARAM_STR);
             $stmt->execute();
             
             return $stmt->fetchColumn();
@@ -208,16 +203,15 @@ class NotificationService {
     /**
      * Count unread notifications for a user
      * 
-     * @param int $userId User ID
+     * @param string $empId Employee ID
      * @return int Number of unread notifications
      */
-    public function countUnreadNotifications($userId) {
-        try {
+    public function countUnreadNotifications($empId) {        try {
             $stmt = $this->db->prepare(
                 "SELECT COUNT(*) FROM notifications 
-                 WHERE user_id = :user_id AND is_read = 0"
+                 WHERE emp_id = :emp_id AND is_read = 0"
             );
-            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+            $stmt->bindParam(':emp_id', $empId, PDO::PARAM_STR);
             $stmt->execute();
             
             return $stmt->fetchColumn();
@@ -231,19 +225,18 @@ class NotificationService {
      * Mark a notification as read
      * 
      * @param int $notificationId Notification ID
-     * @param int $userId User ID (for security)
-     * @return bool Success status
-     */
-    public function markAsRead($notificationId, $userId) {
+     * @param string $empId Employee ID (for security)
+     * @return bool Success status     */
+    public function markAsRead($notificationId, $empId) {
         try {
             $stmt = $this->db->prepare(
                 "UPDATE notifications 
                  SET is_read = 1, read_at = NOW() 
-                 WHERE id = :id AND user_id = :user_id"
+                 WHERE id = :id AND emp_id = :emp_id"
             );
             $stmt->execute([
                 'id' => $notificationId,
-                'user_id' => $userId
+                'emp_id' => $empId
             ]);
             
             return $stmt->rowCount() > 0;

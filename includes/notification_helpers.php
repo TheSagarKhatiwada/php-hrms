@@ -79,12 +79,11 @@ if (!function_exists('notify_user')) {
         global $pdo;
         
         // Log the notification
-        error_log("[System Notification] $type: $title - $message");
-          // If we should notify admins
+        error_log("[System Notification] $type: $title - $message");        // If we should notify admins
         if ($notifyAdmins) {
             try {
-                // Get all admin user IDs - Using user_id from employees table to match users table
-                $stmt = $pdo->prepare("SELECT user_id FROM employees WHERE role_id = 1 AND user_id IS NOT NULL");
+                // Get all admin emp_ids 
+                $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE role_id = 1 AND emp_id IS NOT NULL");
                 $stmt->execute();
                 $adminIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
                 
@@ -92,7 +91,7 @@ if (!function_exists('notify_user')) {
                     $notificationService = new NotificationService($pdo);
                     $notificationService->sendNotificationToMany($adminIds, $title, $message, $type, 'system-settings.php');
                 } else {
-                    error_log('No admin users found with valid user_id for notifications');
+                    error_log('No admin users found with valid emp_id for notifications');
                 }
                 
                 return true;
@@ -115,9 +114,9 @@ if (!function_exists('notify_user')) {
      */
     function notify_attendance($userId, $action, $dateTime) {
         global $pdo;
-        
-        try {            // First get the user_id from emp_id for notifications table foreign key
-            $stmt = $pdo->prepare("SELECT user_id, CONCAT(first_name, ' ', last_name) as name FROM employees WHERE emp_id = ?");
+          try {
+            // Get employee details using emp_id
+            $stmt = $pdo->prepare("SELECT emp_id, CONCAT(first_name, ' ', last_name) as name FROM employees WHERE emp_id = ?");
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             
@@ -126,12 +125,7 @@ if (!function_exists('notify_user')) {
                 return false; // Employee not found, can't send notification
             }
             
-            if (!$user['user_id']) {
-                error_log("Employee with emp_id: $userId has no user_id - cannot send notification");
-                return true; // Return true to avoid breaking attendance process
-            }
-            
-            $internalUserId = $user['user_id']; // This is the user_id needed for the notifications table
+            $empId = $user['emp_id']; // This is the emp_id for the notifications table
             $userName = $user['name'];
             
             // Format title and message based on action

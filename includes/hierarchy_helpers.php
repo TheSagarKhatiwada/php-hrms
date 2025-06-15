@@ -14,7 +14,7 @@ function getSubordinates($pdo, $employeeId) {
     $subordinates = [];
     
     // Get direct subordinates
-    $stmt = $pdo->prepare("SELECT id FROM employees WHERE supervisor_id = ? AND exit_date IS NULL");
+    $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE supervisor_id = ? AND exit_date IS NULL");
     $stmt->execute([$employeeId]);
     $directSubordinates = $stmt->fetchAll(PDO::FETCH_COLUMN);
     

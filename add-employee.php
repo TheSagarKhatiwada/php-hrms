@@ -66,20 +66,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       $targetFile = "resources/userimg/default-image.jpg";
   }
 
-  // Generate empID based on branch value and auto-increment
-  $stmt = $pdo->prepare("SELECT COUNT(*) AS count FROM employees WHERE branch = :branch");
-  $stmt->execute([':branch' => $empBranch]);
-  $row = $stmt->fetch();
-  $count = $row['count'] + 1;
-  $empId = $empBranch . str_pad($count, 2, '0', STR_PAD_LEFT);
+  // Generate empID based on branch value and finding the next available number
+  $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE branch = ? ORDER BY emp_id DESC LIMIT 1");
+  $stmt->execute([$empBranch]);
+  $lastEmployee = $stmt->fetch();
+  
+  if ($lastEmployee) {
+      // Extract the number part and increment
+      $lastId = $lastEmployee['emp_id'];
+      $numberPart = (int)substr($lastId, strlen($empBranch));
+      $nextNumber = $numberPart + 1;
+      $empId = $empBranch . str_pad($nextNumber, 2, '0', STR_PAD_LEFT);
+  } else {
+      // First employee for this branch
+      $empId = $empBranch . '01';
+  }
 
   try {
     // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (employee_id, emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
-            VALUES (:employee_id, :empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
+    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
+            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
-        ':employee_id' => $empId, // Use the same ID for both fields
         ':empId' => $empId,
         ':machId' => $machId,
         ':empBranch' => $empBranch,
@@ -95,15 +103,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':loginAccess' => $loginAccess,
         ':userImage' => $targetFile,
         ':date_of_birth' => $dob,
-        ':role_id' => $role, // Changed from :role to :role_id to match the column name
+        ':role_id' => $role,
         ':officeEmail' => $officeEmail,
         ':officePhone' => $officePhone,
         ':supervisor_id' => $supervisor_id,
         ':department_id' => $department_id
     ]);
 
-    // Get the ID of the newly inserted employee
-    $newEmployeeId = $pdo->lastInsertId();
+    // Since employees table uses emp_id as primary key, get the inserted emp_id
+    $newEmployeeId = $empId; // Use the generated emp_id
 
     // Add detailed error logging
     if (!$newEmployeeId) {
@@ -130,7 +138,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             );
             
             // Get admins/HR personnel to notify
-            $stmt = $pdo->prepare("SELECT id FROM employees WHERE role = 1 OR role = 2"); // Assuming role 2 is HR
+            $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE role_id = 1 OR role_id = 2"); // Assuming role_id 2 is HR
             $stmt->execute();
             $adminIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
@@ -298,14 +306,14 @@ require_once __DIR__ . '/includes/header.php';
                 <select class="form-select" id="supervisor" name="supervisor_id">
                   <option value="">-- No Supervisor --</option>
                   <?php 
-                    $supervisorQuery = "SELECT id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
+                    $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
                                        FROM employees 
                                        WHERE exit_date IS NULL AND login_access = 1 
                                        ORDER BY first_name, last_name";
                     $stmtSupervisor = $pdo->query($supervisorQuery);
                     while ($rowSupervisor = $stmtSupervisor->fetch()) {
-                      $selectedSupervisor = ($rowSupervisor['id'] == $supervisor_id) ? 'selected' : '';
-                      echo "<option value='{$rowSupervisor['id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
+                      $selectedSupervisor = ($rowSupervisor['emp_id'] == $supervisor_id) ? 'selected' : '';
+                      echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
                     }
                   ?>
                 </select>
