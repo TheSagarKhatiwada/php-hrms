@@ -59,7 +59,7 @@ if ($empId) {
                                     WHERE aa.EmployeeID = :employee_id AND aa.ReturnDate IS NULL
                                     ORDER BY aa.AssignmentDate DESC");
     // Use $employee['id'] which is the primary key for the employees table and likely the foreign key in AssetAssignments
-    $assigned_assets_stmt->execute(['employee_id' => $employee['id']]); 
+    $assigned_assets_stmt->execute(['employee_id' => $employee['emp_id']]); 
     $assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Check if employee image is empty and set default image
@@ -121,9 +121,9 @@ $experience_years = $years + ($months / 12);
 $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 5 years is 100% experience
 
 // Get hierarchy information
-$hierarchyPath = getHierarchyPath($pdo, $employee['id']);
-$teamMembers = getTeamMembers($pdo, $employee['id'], false); // Direct reports only
-$allSubordinates = getSubordinates($pdo, $employee['id']); // All subordinates
+$hierarchyPath = getHierarchyPath($pdo, $employee['emp_id']);
+$teamMembers = getTeamMembers($pdo, $employee['emp_id'], false); // Direct reports only
+$allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinates
 ?>
 
 <style>
