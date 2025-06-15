@@ -183,8 +183,7 @@ if (!empty($query)) {
                                             <?php echo htmlspecialchars($asset['Status']); ?>
                                         </span>
                                     </td>
-                                    <td>
-                                        <a href="manage_assets.php" class="btn btn-sm btn-info">
+                                    <td>                                        <a href="modules/assets/manage_assets.php" class="btn btn-sm btn-info">
                                             <i class="fas fa-eye"></i> View
                                         </a>
                                     </td>

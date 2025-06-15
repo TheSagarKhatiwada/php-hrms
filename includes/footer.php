@@ -899,7 +899,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Only reload data-sensitive pages
         const dataSensitivePages = ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 
                                    'daily-report.php', 'periodic-report.php', 'employees.php',
-                                   'assets.php', 'manage_assets.php'];
+                                   'modules/assets/assets.php', 'modules/assets/manage_assets.php'];
         
         const currentPage = window.location.pathname.split('/').pop();
         if (dataSensitivePages.includes(currentPage)) {

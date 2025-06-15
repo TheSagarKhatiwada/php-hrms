@@ -1,7 +1,7 @@
 <!-- Reusable SMS Modal Component -->
 <?php
 // Initialize SMS service to get sender identities
-require_once __DIR__ . '/../sms/SparrowSMS.php';
+require_once __DIR__ . '/../modules/sms/SparrowSMS.php';
 $smsService = new SparrowSMS();
 $identities = $smsService->getSenderIdentities();
 $hasMultipleIdentities = count($identities) > 1;
@@ -248,10 +248,10 @@ function sendSMS() {
 function getSMSEndpoint() {
     const path = window.location.pathname;
     
-    if (path.includes('/sms/')) {
+    if (path.includes('/modules/sms/')) {
         return 'sms-dashboard.php';
     } else {
-        return '/php-hrms/sms/sms-dashboard.php';
+        return '/php-hrms/modules/sms/sms-dashboard.php';
     }
 }
 

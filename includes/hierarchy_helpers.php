@@ -39,10 +39,10 @@ function getHierarchyPath($pdo, $employeeId) {
     
     while ($currentEmployeeId) {
         $stmt = $pdo->prepare("
-            SELECT id, supervisor_id, CONCAT(first_name, ' ', last_name) as full_name, 
+            SELECT emp_id, supervisor_id, CONCAT(first_name, ' ', last_name) as full_name, 
                    designation, role_id
             FROM employees 
-            WHERE id = ? AND exit_date IS NULL
+            WHERE emp_id = ? AND exit_date IS NULL
         ");
         $stmt->execute([$currentEmployeeId]);
         $employee = $stmt->fetch(PDO::FETCH_ASSOC);

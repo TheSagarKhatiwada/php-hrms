@@ -570,7 +570,7 @@ require_once __DIR__ . '/includes/header.php';
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="manage_assets.php" class="btn btn-indigo w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-white" style="background-color: #6610f2;">
+                            <a href="modules/assets/manage_assets.php" class="btn btn-indigo w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-white" style="background-color: #6610f2;">
                                 <i class="fas fa-boxes fs-4 mb-2"></i>
                                 <span>Manage Assets</span>
                             </a>
@@ -588,7 +588,7 @@ require_once __DIR__ . '/includes/header.php';
                             </button>
                         </div>
                         <div class="col-6">
-                            <a href="sms/sms-dashboard.php" class="btn btn-secondary w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-white">
+                            <a href="modules/sms/sms-dashboard.php" class="btn btn-secondary w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-white">
                                 <i class="fas fa-cog fs-4 mb-2"></i>
                                 <span>SMS Dashboard</span>
                             </a>

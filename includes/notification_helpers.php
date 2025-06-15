@@ -186,11 +186,10 @@ if (!function_exists('notify_user')) {
     function notify_asset($userId, $action, $assetName) {
         global $pdo;
         
-        // Format title and message based on action
-        $title = "Asset " . ucfirst(str_replace('_', ' ', $action));
+        // Format title and message based on action        $title = "Asset " . ucfirst(str_replace('_', ' ', $action));
         $message = "";
         $type = "info";
-        $link = "assets.php";
+        $link = "modules/assets/assets.php";
         
         switch ($action) {
             case 'assigned':

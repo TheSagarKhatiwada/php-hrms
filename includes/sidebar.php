@@ -198,31 +198,31 @@ require_once __DIR__ . '/utilities.php';
           <div class="collapse <?php if($page == 'Assets Management' || $page == 'Asset Categories' || $page == 'Manage Assets' || $page == 'Asset Assignments' || $page == 'Maintenance Records'){echo 'show';}?>" id="assetSubmenu">
             <ul class="nav nav-sub flex-column">
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'assets.php'); ?>" class="nav-link <?php if($page == 'Assets Management'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/assets/assets.php'); ?>" class="nav-link <?php if($page == 'Assets Management'){echo 'active';}?>">
                   <i class="nav-icon fas fa-tachometer-alt"></i>
                   <span>Overview</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'manage_categories.php'); ?>" class="nav-link <?php if($page == 'Asset Categories'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/assets/manage_categories.php'); ?>" class="nav-link <?php if($page == 'Asset Categories'){echo 'active';}?>">
                   <i class="nav-icon fas fa-tags"></i>
                   <span>Categories</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'manage_assets.php'); ?>" class="nav-link <?php if($page == 'Manage Assets'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/assets/manage_assets.php'); ?>" class="nav-link <?php if($page == 'Manage Assets'){echo 'active';}?>">
                   <i class="nav-icon fas fa-laptop"></i>
                   <span>Fixed Assets</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'manage_assignments.php'); ?>" class="nav-link <?php if($page == 'Asset Assignments'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/assets/manage_assignments.php'); ?>" class="nav-link <?php if($page == 'Asset Assignments'){echo 'active';}?>">
                   <i class="nav-icon fas fa-people-carry"></i>
                   <span>Assignments</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'manage_maintenance.php'); ?>" class="nav-link <?php if($page == 'Maintenance Records'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/assets/manage_maintenance.php'); ?>" class="nav-link <?php if($page == 'Maintenance Records'){echo 'active';}?>">
                   <i class="nav-icon fas fa-tools"></i>
                   <span>Maintenance</span>
                 </a>
@@ -303,25 +303,25 @@ require_once __DIR__ . '/utilities.php';
           <div class="collapse <?php if($page == 'SMS Dashboard' || $page == 'SMS Configuration' || $page == 'SMS Templates' || $page == 'SMS Logs'){echo 'show';}?>" id="smsSubmenu">
             <ul class="nav nav-sub flex-column">
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'sms/sms-dashboard.php'); ?>" class="nav-link <?php if($page == 'SMS Dashboard'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/sms/sms-dashboard.php'); ?>" class="nav-link <?php if($page == 'SMS Dashboard'){echo 'active';}?>">
                   <i class="nav-icon fas fa-chart-bar"></i>
                   <span>SMS Dashboard</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'sms/sms-config.php'); ?>" class="nav-link <?php if($page == 'SMS Configuration'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/sms/sms-config.php'); ?>" class="nav-link <?php if($page == 'SMS Configuration'){echo 'active';}?>">
                   <i class="nav-icon fas fa-cog"></i>
                   <span>SMS Configuration</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'sms/sms-templates.php'); ?>" class="nav-link <?php if($page == 'SMS Templates'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/sms/sms-templates.php'); ?>" class="nav-link <?php if($page == 'SMS Templates'){echo 'active';}?>">
                   <i class="nav-icon fas fa-file-alt"></i>
                   <span>SMS Templates</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'sms/sms-logs.php'); ?>" class="nav-link <?php if($page == 'SMS Logs'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/sms/sms-logs.php'); ?>" class="nav-link <?php if($page == 'SMS Logs'){echo 'active';}?>">
                   <i class="nav-icon fas fa-history"></i>
                   <span>SMS History</span>
                 </a>
