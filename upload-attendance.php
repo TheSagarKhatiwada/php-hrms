@@ -2,7 +2,10 @@
 // Include session configuration before starting any session
 require_once 'includes/session_config.php';
 
-session_start(); // Start the session to store messages
+// Remove duplicate session_start() - it's already handled in session_config.php
+// Increase execution time and memory limit for large file processing
+set_time_limit(300); // 5 minutes
+ini_set('memory_limit', '256M');
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
     require 'includes/db_connection.php'; // Include the PDO connection
@@ -19,6 +22,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
     // Ensure it's a .txt file
     if (pathinfo($file['name'], PATHINFO_EXTENSION) !== 'txt') {
         $_SESSION['message'] = ['type' => 'error', 'content' => 'Invalid file type. Only .txt files are allowed.'];
+        header('Location: attendance.php');
+        exit();
+    }
+
+    // Check file size (limit to 10MB for performance)
+    $maxFileSize = 10 * 1024 * 1024; // 10MB
+    if ($file['size'] > $maxFileSize) {
+        $_SESSION['message'] = ['type' => 'error', 'content' => 'File size too large. Maximum allowed size is 10MB.'];
         header('Location: attendance.php');
         exit();
     }
@@ -40,6 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
     try {
         // Begin transaction for data integrity
         $pdo->beginTransaction();
+        
+        // Prepare statements outside the loop for better performance
+        $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM attendance_logs WHERE mach_sn = ?");
+        $updateStmt = $pdo->prepare("UPDATE attendance_logs SET mach_id = ?, date = ?, time = ?, updated_at = CURRENT_TIMESTAMP WHERE mach_sn = ?");
+        $insertStmt = $pdo->prepare("INSERT INTO attendance_logs (mach_sn, mach_id, emp_Id, date, time, method, manual_reason) VALUES (?, ?, 1, ?, ?, ?, ?)");
+        
+        $batchCount = 0;
+        $maxBatchSize = 100; // Process in batches to avoid timeout
 
         foreach ($fileContent as $index => $line) {
             if ($index === 0) continue; // Skip header row
@@ -95,25 +114,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
             }
 
             // Check if the record already exists
-            $checkQuery = "SELECT COUNT(*) FROM attendance_logs WHERE mach_sn = ?";
-            $stmt = $pdo->prepare($checkQuery);
-            $stmt->execute([$mach_sn]);
-            $count = $stmt->fetchColumn();
+            $checkStmt->execute([$mach_sn]);
+            $count = $checkStmt->fetchColumn();
 
             if ($count > 0) {
                 // Update existing record
-                $updateQuery = "UPDATE attendance_logs SET mach_id = ?, date = ?, time = ?, updated_at = CURRENT_TIMESTAMP WHERE mach_sn = ?";
-                $stmt = $pdo->prepare($updateQuery);
-                if ($stmt->execute([$mach_id, $date, $time, $mach_sn])) {
+                if ($updateStmt->execute([$mach_id, $date, $time, $mach_sn])) {
                     $updated++;
                 }
             } else {
                 // Insert new record - use 1 as temporary emp_Id (will be updated later)
-                $insertQuery = "INSERT INTO attendance_logs (mach_sn, mach_id, emp_Id, date, time, method, manual_reason) VALUES (?, ?, 1, ?, ?, ?, ?)";
-                $stmt = $pdo->prepare($insertQuery);
-                if ($stmt->execute([$mach_sn, $mach_id, $date, $time, 0, ''])) {
+                if ($insertStmt->execute([$mach_sn, $mach_id, $date, $time, 0, ''])) {
                     $inserted++;
                 }
+            }
+            
+            // Commit in batches to prevent timeout
+            $batchCount++;
+            if ($batchCount >= $maxBatchSize) {
+                $pdo->commit();
+                $pdo->beginTransaction();
+                $batchCount = 0;
             }
         }
 
@@ -134,20 +155,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
         ];
 
         // Update attendance_logs with emp_Id from employees based on machine_id
-        // SQL query to update attendance_log with emp_Id from employees based on machine_id, excluding manual method entries
-        $sql = "UPDATE attendance_logs a 
-                JOIN employees e ON a.mach_id = e.mach_id 
-                SET a.emp_Id = e.emp_id 
-                WHERE a.method = 0 AND (a.emp_Id = 0 OR a.emp_Id IS NULL);";
+        // Use a more efficient query that limits the number of rows updated per operation
+        $updateEmployeeIdSql = "UPDATE attendance_logs a 
+                               JOIN employees e ON a.mach_id = e.mach_id 
+                               SET a.emp_Id = e.emp_id 
+                               WHERE a.method = 0 AND (a.emp_Id = 0 OR a.emp_Id IS NULL OR a.emp_Id = 1)
+                               LIMIT 1000";
     
-        // Prepare and execute the statement
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute();
+        // Execute the update in smaller batches to prevent timeout
+        $totalUpdated = 0;
+        do {
+            $stmt = $pdo->prepare($updateEmployeeIdSql);
+            $stmt->execute();
+            $rowsUpdated = $stmt->rowCount();
+            $totalUpdated += $rowsUpdated;
+            
+            // Small delay to prevent overwhelming the database
+            if ($rowsUpdated > 0) {
+                usleep(10000); // 10ms delay
+            }
+        } while ($rowsUpdated > 0);
     
         // Append to existing success message rather than overwriting it
-        $_SESSION['message']['content'] .= ' Employee IDs updated successfully.';
+        $_SESSION['message']['content'] .= " $totalUpdated employee IDs updated successfully.";
         
-        // Commit the transaction if everything went well
+        // Final commit for any remaining transactions
         $pdo->commit();
     } catch (PDOException $e) {
         // Roll back the transaction if something failed

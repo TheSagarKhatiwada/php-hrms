@@ -19,10 +19,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Include the database connection file
-if (!defined('DB_CONNECTION_INCLUDED')) {
-    require_once 'includes/db_connection.php';
-    define('DB_CONNECTION_INCLUDED', true);
-}
+require_once 'includes/db_connection.php';
 
 // Include settings file to get timezone configuration
 require_once 'includes/settings.php';
@@ -38,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
     $dataSaved = false;
     
     try {
-        // Get the employee ID
+        // Get the employee ID from POST (now using emp_id directly)
         $emp_id = $_POST['emp_id'];
         
         // Get timezone from settings
@@ -143,7 +140,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['action'])) {
     date_default_timezone_set($timezone);
     
     // Get form data
-    $empId = $_POST['empId'];
+    $empId = $_POST['empId']; // Now using emp_id directly as string
     $attendanceDate = $_POST['attendanceDate'];
     $attendanceTime = $_POST['attendanceTime'];
     $reason = $_POST['reason'];

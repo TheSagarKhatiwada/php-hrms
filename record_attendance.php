@@ -18,10 +18,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Include the database connection file
-if (!defined('DB_CONNECTION_INCLUDED')) {
-    require_once 'includes/db_connection.php';
-    define('DB_CONNECTION_INCLUDED', true);
-}
+require_once 'includes/db_connection.php';
 
 // Include settings file to get timezone configuration
 require_once 'includes/settings.php';
@@ -40,8 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
     // Use a flag to track if data was saved successfully
     $dataSaved = false;
     
-    try {
-        // Get the employee ID
+    try {        // Get the employee ID from POST (now using emp_id directly)
         $emp_id = $_POST['emp_id'];
         
         // Get timezone from settings
@@ -54,9 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         
         // For debugging
         error_log("Using timezone: $timezone");
-        error_log("Current time in this timezone: $current_time");
-        
-        // Check attendance records for today (to determine if this is check-in or check-out)
+        error_log("Current time in this timezone: $current_time");        // Check attendance records for today (to determine if this is check-in or check-out)
         $stmt = $pdo->prepare("SELECT time FROM attendance_logs WHERE emp_Id = ? AND date = ? ORDER BY time DESC LIMIT 1");
         $stmt->execute([$emp_id, $today]);
         $lastRecord = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -68,13 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         
         // If count is zero, it's the first record (check-in); otherwise it's a check-out
         $isCheckIn = ($count == 0);
-        $actionType = $isCheckIn ? 'check-in' : 'check-out';
+        $actionType = $isCheckIn ? 'CI' : 'CO';
         
         // Insert attendance record
         $sql = "INSERT INTO attendance_logs (emp_Id, date, time, method, mach_sn, mach_id, manual_reason) VALUES (?, ?, ?, '2', 0, 0, ?)";
-        $stmt = $pdo->prepare($sql);
-        
-        try {
+        $stmt = $pdo->prepare($sql);        try {
             if ($stmt->execute([$emp_id, $today, $current_time, $actionType])) {
                 // Mark that data was successfully saved
                 $dataSaved = true;

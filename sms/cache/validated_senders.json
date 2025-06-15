@@ -1,0 +1,56 @@
+[
+    {
+        "identity": "HRMS",
+        "description": "Human Resource Management System",
+        "is_default": true,
+        "validated_at": "2025-06-06 22:25:59"
+    },
+    {
+        "identity": "COMPANY",
+        "description": "Company Name",
+        "is_default": false,
+        "validated_at": "2025-06-06 22:26:00"
+    },
+    {
+        "identity": "ALERT",
+        "description": "System Alerts",
+        "is_default": false,
+        "validated_at": "2025-06-06 22:26:00"
+    },
+    {
+        "identity": "NOTICE",
+        "description": "Important Notices",
+        "is_default": false,
+        "validated_at": "2025-06-06 22:26:01"
+    },
+    {
+        "identity": "INFO",
+        "description": "Information Messages",
+        "is_default": false,
+        "validated_at": "2025-06-06 22:26:02"
+    },
+    {
+        "identity": "URGENT",
+        "description": "Urgent Messages",
+        "is_default": false,
+        "validated_at": "2025-06-06 22:26:03"
+    },
+    {
+        "identity": "ADMIN",
+        "description": "Administrator",
+        "is_default": false,
+        "validated_at": "2025-06-06 22:26:03"
+    },
+    {
+        "identity": "SYSTEM",
+        "description": "System Messages",
+        "is_default": false,
+        "validated_at": "2025-06-06 22:26:04"
+    },
+    {
+        "identity": "PECCPL",
+        "description": "Prime Express Courier & Cargo Pvt Ltd",
+        "is_default": false,
+        "validated_at": "2025-06-06 19:32:03"
+    }
+]

@@ -94,7 +94,7 @@ require_once __DIR__ . '/includes/header.php';
             <div class="row mb-3">
               <div class="col-md-6">
                 <label for="dob" class="form-label">Date of Birth</label>
-                <input type="date" class="form-control" id="dob" name="dob" value="<?php echo htmlspecialchars($employee['dob'] ?? ''); ?>">
+                <input type="date" class="form-control" id="dob" name="dob" value="<?php echo htmlspecialchars($employee['date_of_birth'] ?? ''); ?>">
               </div>
               <div class="col-md-6">
                 <label for="gender" class="form-label">Gender <span class="text-danger">*</span></label>
@@ -184,6 +184,42 @@ require_once __DIR__ . '/includes/header.php';
                     foreach ($LoginAccess as $key => $value) {
                       $selected = ($employee['login_access'] == $key) ? 'selected' : '';
                       echo "<option value='$key' $selected>$value</option>";
+                    }
+                  ?>
+                </select>
+              </div>
+            </div>
+
+            <!-- Hierarchy Fields -->
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="supervisor" class="form-label">Direct Supervisor</label>
+                <select class="form-select" id="supervisor" name="supervisor_id">
+                  <option value="">-- No Supervisor --</option>
+                  <?php 
+                    $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
+                                       FROM employees 
+                                       WHERE emp_id != :current_emp_id
+                                       ORDER BY first_name, last_name";
+                    $stmtSupervisor = $pdo->prepare($supervisorQuery);
+                    $stmtSupervisor->execute(['current_emp_id' => $employee['emp_id']]);
+                    while ($rowSupervisor = $stmtSupervisor->fetch()) {
+                      $selectedSupervisor = ($rowSupervisor['emp_id'] == $employee['supervisor_id']) ? 'selected' : '';
+                      echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
+                    }
+                  ?>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="department" class="form-label">Department</label>
+                <select class="form-select" id="department" name="department_id">
+                  <option value="">-- Select Department --</option>
+                  <?php 
+                    $departmentQuery = "SELECT id, name FROM departments ORDER BY name";
+                    $stmtDepartment = $pdo->query($departmentQuery);
+                    while ($rowDepartment = $stmtDepartment->fetch()) {
+                      $selectedDepartment = ($rowDepartment['id'] == $employee['department_id']) ? 'selected' : '';
+                      echo "<option value='{$rowDepartment['id']}' $selectedDepartment>{$rowDepartment['name']}</option>";
                     }
                   ?>
                 </select>

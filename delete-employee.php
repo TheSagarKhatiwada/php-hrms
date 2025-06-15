@@ -1,8 +1,6 @@
 <?php
-// Include session configuration before starting any session
+// Include session configuration first to ensure session is available
 require_once 'includes/session_config.php';
-
-session_start();
 require 'includes/db_connection.php';
 
 if (isset($_GET['id'])) {

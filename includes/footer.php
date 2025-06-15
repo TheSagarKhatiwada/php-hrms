@@ -926,5 +926,45 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 </script>
+
+<!-- Sidebar Navigation Enhancement -->
+<script>
+$(document).ready(function() {
+  // Handle treeview navigation for Leave Module
+  $('.has-treeview').click(function(e) {
+    e.preventDefault();
+    var $this = $(this);
+    var $parent = $this.parent();
+    var $treeview = $parent.find('.nav-treeview');
+    
+    // Toggle the treeview
+    if ($treeview.is(':visible')) {
+      $treeview.slideUp();
+      $this.removeClass('active');
+      $this.find('.fa-angle-left').removeClass('fa-angle-down');
+    } else {
+      // Close other open treeviews
+      $('.nav-treeview:visible').slideUp();
+      $('.has-treeview.active').removeClass('active');
+      $('.has-treeview .fa-angle-left').removeClass('fa-angle-down');
+      
+      // Open this treeview
+      $treeview.slideDown();
+      $this.addClass('active');
+      $this.find('.fa-angle-left').addClass('fa-angle-down');
+    }
+  });
+  
+  // Keep treeview open if we're on a child page
+  if (window.location.href.indexOf('modules/leave/') !== -1) {
+    var $leaveTreeview = $('a[href*="modules/leave/"]').first().closest('.nav-item').find('.nav-treeview');
+    var $leaveToggle = $('a[href*="modules/leave/"]').first().closest('.nav-item').find('.has-treeview');
+    
+    $leaveTreeview.show();
+    $leaveToggle.addClass('active');
+    $leaveToggle.find('.fa-angle-left').addClass('fa-angle-down');
+  }
+});
+</script>
 </body>
 </html>

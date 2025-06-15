@@ -1,6 +1,6 @@
 <?php
-// Start the session
-session_start();
+// Include session configuration first to ensure session is available
+require_once 'includes/session_config.php';
 
 // Enable error reporting but don't display errors on screen
 error_reporting(E_ALL);

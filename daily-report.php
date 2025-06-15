@@ -264,18 +264,9 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
                     <td class="align-items-center text-center"><?php echo $row['marked_as'] ?></td>
                     <td class="align-items-center text-center">
                       <?php
-                        if (!empty($row['methods']) && (!empty($row['in_time']))) {
-                            $methods = explode(',', $row['methods']); // Convert string to an array
-                            $output = [];
-
-                            foreach ($methods as $method) {
-                                $output[] = ($method == '1') ? 'M' : 'A';
-                            }
-
-                            echo implode(' | ', $output); // Convert the array back to a string
-                        }
+                        // Display methods as already formatted from fetch script
+                        echo $row['methods'];
                       ?>
-
                     </td>
                     <td class="align-items-center text-center"><?php echo $row['remarks'] ?></td>
                 </tr>
@@ -298,23 +289,25 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
 
             if (isset($jsonData) && is_array($jsonData)) {
               foreach ($jsonData as $row) {
-                  if ($row['marked_as'] == 'Present') {
+                  // Count all present variations (Present, Present (Holiday), Present (Weekend))
+                  if (strpos($row['marked_as'], 'Present') !== false) {
                       $presentCount++;
                   } elseif ($row['marked_as'] == 'Absent') {
                       $absentCount++;
                   } elseif ($row['marked_as'] == 'Leave') {
                       $leaveCount++;
                   }
+                  // Note: Holiday, Weekend, and Exited are not counted in any of the three categories
               }
             }
           ?>
             <tfoot>
               <tr>
                 <th class="align-items-center text-right" colspan="2">Daily Summary: </th>
-                <th class="align-items-center text-center" colspan="2">Total Employees: <?php if (isset($jsonData)){ echo $totalEmployees;}else{echo 0;}?></th>
+                <th class="align-items-center text-center" colspan="3">Total Employees: <?php if (isset($jsonData)){ echo $totalEmployees;}else{echo 0;}?></th>
                 <th class="align-items-center text-center" colspan="4">Total Present: <?php echo $presentCount;?></th>
                 <th class="align-items-center text-center" colspan="4">Total Absent: <?php echo $absentCount;?></th>
-                <th class="align-items-center text-center" colspan="5">Total on Leave: <?php echo $leaveCount;?></th>
+                <th class="align-items-center text-center" colspan="4">Total on Leave: <?php echo $leaveCount;?></th>
               </tr>
             </tfoot>
             </table>
@@ -392,7 +385,7 @@ include 'includes/footer.php';
                     head.appendChild(style);
                 }
             }
-        ] // Buttons: copy, csv, excel, pdf, print, colvis
+        ], // Buttons: copy, csv, excel, pdf, print, colvis
         "language": {
             "paginate": {
                 "first": '<i class="fas fa-angle-double-left"></i>',

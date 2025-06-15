@@ -877,7 +877,7 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       text-decoration: none;
     }
   </style>
-  <?php include 'includes/pwa_install.php'; ?>
+  <?php include __DIR__ . '/pwa_install.php'; ?>
 </head>
 <body class="<?php echo isset($_COOKIE['dark-mode']) && $_COOKIE['dark-mode'] === 'true' ? 'dark-mode' : ''; ?>">
   <!-- Loading Overlay -->

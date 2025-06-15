@@ -1,12 +1,11 @@
 <?php
 /**
  * Notifications Page
- * 
- * Displays and manages all notifications for the current user
+ *  * Displays and manages all notifications for the current user
  */
 
-// Start the session
-session_start();
+// Include session configuration first to ensure session is available
+require_once 'includes/session_config.php';
 
 // Include necessary files
 require_once 'includes/db_connection.php';

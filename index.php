@@ -5,6 +5,18 @@ require_once 'includes/session_config.php';
 // Include database connection and utilities
 include 'includes/db_connection.php';
 include 'includes/configuration.php';
+
+// Ensure database is properly connected and configured
+if (!checkDatabaseHealth()) {
+    // Redirect to setup if database health check fails
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'];
+    $path = dirname($_SERVER['REQUEST_URI']);
+    $setup_url = $protocol . '://' . $host . rtrim($path, '/') . '/setup.php';
+    header("Location: " . $setup_url);
+    exit();
+}
+
 include 'includes/settings.php';
 include 'includes/utilities.php'; // Add this line to include utilities.php
 
@@ -74,12 +86,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($user && password_verify($password, $user['password'])) {
         // Password is correct
         // Set session variables
-        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user_id'] = $user['emp_id']; // Use emp_id instead of id
         $_SESSION['designation'] = $user['designation'];
         $_SESSION['fullName'] = $user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name'];
         $_SESSION['userImage'] = $user['user_image'];
         // Check which role field exists in the database and use it
         $_SESSION['user_role'] = isset($user['role']) ? $user['role'] : (isset($user['role_id']) ? $user['role_id'] : '0');
+        $_SESSION['user_role_id'] = isset($user['role_id']) ? $user['role_id'] : (isset($user['role']) ? $user['role'] : '0'); // Add this for consistency
         $_SESSION['login_access'] = $user['login_access'];
 
         // Check login access

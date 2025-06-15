@@ -6,6 +6,8 @@ include 'includes/session_config.php';
 include 'includes/db_connection.php';
 include 'includes/utilities.php';
 
+// Check if we need to open the modal in manual mode
+$openManualModal = isset($_GET['action']) && $_GET['action'] === 'manual';
 
 // Fetching attendance data
 try {
@@ -15,7 +17,6 @@ try {
                            INNER JOIN branches b ON e.branch = b.id 
                            LEFT JOIN designations d ON e.designation = d.id
                            WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                           AND method <> '0'
                            ORDER BY a.date DESC, a.time DESC 
                            LIMIT 200");
     $stmt->execute();
@@ -447,6 +448,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // Check for edit parameter in URL and auto-open edit modal
   const urlParams = new URLSearchParams(window.location.search);
   const editId = urlParams.get('edit');
+  const action = urlParams.get('action');
+  
   if (editId) {
     // Find the edit button for this attendance record and trigger it
     const editButton = document.querySelector(`[data-id="${editId}"].edit-attendance`);
@@ -458,6 +461,25 @@ document.addEventListener('DOMContentLoaded', function() {
       const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
       window.history.replaceState(null, null, newUrl);
     }
+  }
+  
+  // Check for manual parameter and auto-open add attendance modal
+  if (action === 'manual') {
+    // Clean up the URL immediately to prevent re-opening on refresh
+    const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+    window.history.replaceState(null, null, newUrl);
+    
+    // Open the add attendance modal and switch to manual tab after a short delay
+    setTimeout(() => {
+      const addAttendanceModal = new bootstrap.Modal(document.getElementById('addAttendanceModal'));
+      addAttendanceModal.show();
+      
+      // Switch to manual tab after modal is shown
+      addAttendanceModal._element.addEventListener('shown.bs.modal', function() {
+        const manualTab = new bootstrap.Tab(document.getElementById('manual-tab'));
+        manualTab.show();
+      }, { once: true });
+    }, 100);
   }
 });
 </script>

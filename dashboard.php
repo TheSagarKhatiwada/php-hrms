@@ -7,6 +7,9 @@ require_once 'includes/header.php';
 require_once 'includes/db_connection.php';
 require_once 'includes/settings.php'; // Include settings to get timezone
 
+// Ensure database is connected before proceeding
+requireDatabaseConnection();
+
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     // User not logged in, redirect to login page
@@ -24,13 +27,12 @@ $today = date('Y-m-d');
 // Get current user data
 $userId = $_SESSION['user_id'];
 
-try {
-    // Get user data with designation title
+try {    // Get user data with designation title
     $stmt = $pdo->prepare("
         SELECT e.*, d.title as designation_title 
         FROM employees e
         LEFT JOIN designations d ON e.designation = d.id
-        WHERE e.id = ?
+        WHERE e.emp_id = ?
     ");
     $stmt->execute([$userId]);
     $userData = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -42,8 +44,10 @@ try {
     
     // Get attendance for last 7 days
     $stmt = $pdo->prepare("
-        SELECT date, MIN(time) as clock_in, MAX(time) as clock_out, 
-               ANY_VALUE(method) as method
+        SELECT date, 
+           MIN(time) AS clock_in, 
+           MAX(time) AS clock_out, 
+           GROUP_CONCAT(method ORDER BY time LIMIT 1) AS method
         FROM attendance_logs 
         WHERE emp_Id = ? 
         AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)
@@ -479,13 +483,12 @@ try {
                                 <div class="col-sm-6">
                                     <div class="border-start border-info ps-3 py-1">
                                         <small class="text-muted d-block">Department</small>
-                                        <span class="fw-medium">
-                                            <?php 
+                                        <span class="fw-medium">                                            <?php 
                                                 try {
                                                     $stmt = $pdo->prepare("SELECT departments.dept_name FROM departments 
-                                                                        JOIN employees ON departments.id = employees.department 
-                                                                        WHERE employees.id = ?");
-                                                    $stmt->execute([$userId]);
+                                                                        JOIN employees ON departments.id = employees.department_id 
+                                                                        WHERE employees.emp_id = ?");
+                                                    $stmt->execute([$userData['emp_id']]);
                                                     $dept = $stmt->fetchColumn();
                                                     echo htmlspecialchars($dept ?? 'Not assigned');
                                                 } catch (PDOException $e) {
@@ -876,7 +879,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // No need to save timestamp separately - just show success message
                 Swal.fire({
                     icon: 'success',
-                    title: data.action === 'check-in' ? 'Clocked In!' : 'Clocked Out!',
+                    title: data.action === 'CI' ? 'Clocked In!' : 'Clocked Out!',
                     text: data.message || 'Your attendance has been recorded.',
                     showConfirmButton: false,
                     timer: 2000

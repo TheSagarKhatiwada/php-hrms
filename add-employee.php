@@ -29,6 +29,8 @@ $dob = $_GET['dob'] ?? '';
 $role = $_GET['role'] ?? '';
 $officeEmail = $_GET['office_email'] ?? '';
 $officePhone = $_GET['office_phone'] ?? '';
+$supervisor_id = $_GET['supervisor_id'] ?? '';
+$department_id = $_GET['department_id'] ?? '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
   // Get form data
@@ -48,6 +50,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $role = $_POST['role'];
   $officeEmail = $_POST['office_email'];
   $officePhone = $_POST['office_phone'];
+  
+  // Hierarchy fields
+  $supervisor_id = !empty($_POST['supervisor_id']) ? $_POST['supervisor_id'] : null;
+  $department_id = !empty($_POST['department_id']) ? $_POST['department_id'] : null;
 
   // Handle file upload
   if ($croppedImage) {
@@ -69,8 +75,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
   try {
     // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, join_date, designation, login_access, user_image, dob, role_id, office_email, office_phone)
-            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :empJoinDate, :designation, :loginAccess, :userImage, :dob, :role_id, :officeEmail, :officePhone)";
+    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
+            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
         ':empId' => $empId,
@@ -82,33 +88,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':gender' => $gender,
         ':empEmail' => $empEmail,
         ':empPhone' => $empPhone,
+        ':hire_date' => $empJoinDate, // Use join date as hire date
         ':empJoinDate' => $empJoinDate,
         ':designation' => $designation,
         ':loginAccess' => $loginAccess,
         ':userImage' => $targetFile,
-        ':dob' => $dob,
+        ':date_of_birth' => $dob,
         ':role_id' => $role, // Changed from :role to :role_id to match the column name
         ':officeEmail' => $officeEmail,
-        ':officePhone' => $officePhone
+        ':officePhone' => $officePhone,
     ]);
 
-    // Get the ID of the newly inserted employee
-    $newEmployeeId = $pdo->lastInsertId();
-
-    // Add detailed error logging
-    if (!$newEmployeeId) {
-        $errorInfo = $stmt->errorInfo();
-        $_SESSION['error'] = "Database error: " . $errorInfo[2];
-        error_log("Employee add error: " . print_r($errorInfo, true));
-    } else {
-        // Update attendance_logs with emp_Id from employees based on machine_id
-        $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute();
-
+    // Check if insert was successful
+    if ($stmt->rowCount() > 0) {
+        // Employee was successfully added
+        
         // Send welcome notification to the new employee if login access is granted
-        if ($loginAccess == '1' && $newEmployeeId) {
-            notify_employee($newEmployeeId, 'joined');
+        if ($loginAccess == '1') {
+            notify_employee($empId, 'joined');
             
             // Also notify HR team or admins about the new employee
             $fullName = $empFirstName . ' ' . ($empMiddleName ? $empMiddleName . ' ' : '') . $empLastName;
@@ -120,13 +117,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             );
             
             // Get admins/HR personnel to notify
-            $stmt = $pdo->prepare("SELECT id FROM employees WHERE role = 1 OR role = 2"); // Assuming role 2 is HR
+            $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE role_id = 1 OR role_id = 2"); // Assuming role 2 is HR
             $stmt->execute();
-            $adminIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $adminEmpIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
-            if (!empty($adminIds)) {
+            if (!empty($adminEmpIds)) {
                 notify_users(
-                    $adminIds,
+                    $adminEmpIds,
                     'New Employee Added',
                     "Employee $fullName ($empId) has been added to the system",
                     'info',
@@ -134,9 +131,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 );
             }
         }
+        
+        $_SESSION['success'] = "Employee added successfully!";
+    } else {
+        $_SESSION['error'] = "Failed to add employee. Please try again.";
     }
-
-    $_SESSION['success'] = "Employee added successfully!";
   } catch (PDOException $e) {
     $_SESSION['error'] = "Error adding employee: " . $e->getMessage();
   }
@@ -279,6 +278,40 @@ require_once __DIR__ . '/includes/header.php';
                     while ($rowRole = $stmtRole->fetch()) {
                       $selectedRole = ($rowRole['id'] == $role) ? 'selected' : ''; 
                       echo "<option value='{$rowRole['id']}' $selectedRole>{$rowRole['name']}</option>";
+                    }
+                  ?>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="supervisor" class="form-label">Direct Supervisor</label>
+                <select class="form-select" id="supervisor" name="supervisor_id">
+                  <option value="">-- No Supervisor --</option>
+                  <?php 
+                    $supervisorQuery = "SELECT id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
+                                       FROM employees 
+                                       WHERE exit_date IS NULL AND login_access = 1 
+                                       ORDER BY first_name, last_name";
+                    $stmtSupervisor = $pdo->query($supervisorQuery);
+                    while ($rowSupervisor = $stmtSupervisor->fetch()) {
+                      $selectedSupervisor = ($rowSupervisor['id'] == $supervisor_id) ? 'selected' : '';
+                      echo "<option value='{$rowSupervisor['id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
+                    }
+                  ?>
+                </select>
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="department" class="form-label">Department</label>
+                <select class="form-select" id="department" name="department_id">
+                  <option value="">-- Select Department --</option>
+                  <?php 
+                    $departmentQuery = "SELECT id, name FROM departments ORDER BY name";
+                    $stmtDepartment = $pdo->query($departmentQuery);
+                    while ($rowDepartment = $stmtDepartment->fetch()) {
+                      $selectedDepartment = ($rowDepartment['id'] == $department_id) ? 'selected' : '';
+                      echo "<option value='{$rowDepartment['id']}' $selectedDepartment>{$rowDepartment['name']}</option>";
                     }
                   ?>
                 </select>

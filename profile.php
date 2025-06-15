@@ -19,7 +19,7 @@ $stmt = $pdo->prepare("SELECT e.first_name,
                                       e.user_image, 
                                       e.emp_id, 
                                       e.branch, 
-                                      e.dob, 
+                                      e.date_of_birth, 
                                       e.exit_date, 
                                       b.name AS branch_name, 
                                       r.name AS role_name, 
@@ -30,8 +30,8 @@ $stmt = $pdo->prepare("SELECT e.first_name,
                                       INNER JOIN branches b ON e.branch = b.id 
                                       LEFT JOIN roles r ON e.role_id = r.id 
                                       LEFT JOIN designations d ON e.designation = d.id 
-                                      WHERE e.id = :id");
-$stmt->execute(['id' => $user_id]);
+                                      WHERE e.emp_id = :emp_id");
+$stmt->execute(['emp_id' => $user_id]);
 $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$user_data) {
@@ -159,14 +159,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
         <head>
             <title>Password Reset</title>
         </head>
-        <body>
-            <p>Dear {$user['first_name']} {$user['middle_name']} {$user['last_name']},</p>
-            <p>We received a request to reset your password. Click the link below to set a new password:</p>
-            <p><a href='{$resetLink}'>Reset Password</a></p>
-            <p>This link will expire in 1 hour.</p>
-            <p>If you did not request a password reset, please ignore this email or contact your administrator.</p>
-            <p>Regards,<br>HR Management System</p>
-        </body>
+            <body>
+                <p>Dear {$user['first_name']} {$user['middle_name']} {$user['last_name']},</p>
+                <p>We received a request to reset your password. Click the link below to set a new password:</p>
+                <p><a href='{$resetLink}'>Reset Password</a></p>
+                <p>This link will expire in 1 hour.</p>
+                <p>If you did not request a password reset, please ignore this email or contact your administrator.</p>
+                <p>Regards,<br>HR Management System</p>
+            </body>
         </html>
         ";
         

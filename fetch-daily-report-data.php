@@ -1,6 +1,7 @@
 <?php
 
 include("includes/db_connection.php");
+include("includes/utilities.php");
 
 // Fetch report date and branch filter from the request
 $reportdate = $_POST['reportdate'];
@@ -102,14 +103,21 @@ foreach ($employees as $employee) {
         $isExited = true;
     }
     
+    // Check if the report date is a holiday
+    $holiday = is_holiday($reportdate, $employee['branch_id'] ?? null);
+    $isHoliday = $holiday !== false;
+    
+    // Check if the report date is a weekend (Saturday = 6)
+    $isWeekend = (date('N', strtotime($reportdate)) == 6);
+    
     $row = [
         'emp_id' => $empid,
         'employee_name' => $employeeName,
         'branch' => $employeeBranch,
         'report_date' => $reportdate,
-        'scheduled_in' => $scheduled_in->format('H:i'),
-        'scheduled_out' => $scheduled_out->format('H:i'),
-        'working_hour' => $formatted_working_hours,
+        'scheduled_in' => ($isWeekend || $isHoliday) ? '-' : $scheduled_in->format('H:i'),
+        'scheduled_out' => ($isWeekend || $isHoliday) ? '-' : $scheduled_out->format('H:i'),
+        'working_hour' => ($isWeekend || $isHoliday) ? '-' : $formatted_working_hours,
         'in_time' => '',
         'out_time' => '',
         'worked_duration' => '',
@@ -118,12 +126,12 @@ foreach ($employees as $employee) {
         'early_out' => '',
         'early_in' => '',
         'late_out' => '',
-        'marked_as' => $isExited ? 'Exited' : 'Absent',
+        'marked_as' => $isExited ? 'Exited' : ($isHoliday ? 'Holiday' : ($isWeekend ? 'Weekend' : 'Absent')),
         'methods' => '',
-        'remarks' => $isExited ? 'Employee exited on ' . $employee['exit_date'] : ''
+        'remarks' => $isExited ? 'Employee exited on ' . $employee['exit_date'] : ($isHoliday ? $holiday['name'] : '')
     ];
 
-
+    // Check for attendance regardless of holiday/weekend status (employees can work on holidays/weekends)
     if (isset($attendanceMap[$empid]) && !$isExited) {
         $attendance = $attendanceMap[$empid];
 
@@ -146,31 +154,56 @@ foreach ($employees as $employee) {
         // Calculate overtime
         $total_minutes_worked = ($worked_duration->h * 60) + $worked_duration->i;
         $scheduled_minutes = ($working_hours->h * 60) + $working_hours->i;
-        $overtime_minutes = max(0, $total_minutes_worked - $scheduled_minutes);
+        
+        if ($isHoliday || $isWeekend) {
+            // On holidays and weekends, all worked time is considered overtime
+            $overtime_minutes = $total_minutes_worked;
+        } else {
+            // On regular days, only time beyond scheduled hours is overtime
+            $overtime_minutes = max(0, $total_minutes_worked - $scheduled_minutes);
+        }
+        
         $row['over_time'] = $overtime_minutes > 0 ? sprintf('%02d:%02d', floor($overtime_minutes / 60), $overtime_minutes % 60) : '';
 
-        // Calculate late in
-        $late_in = $scheduled_in->diff($in_time);
-        $row['late_in'] = ($in_time > $scheduled_in) ? $late_in->format('%H:%I') : '';
+        // Calculate time differences only for regular working days
+        if (!$isWeekend && !$isHoliday) {
+            // Calculate late in
+            $late_in = $scheduled_in->diff($in_time);
+            $row['late_in'] = ($in_time > $scheduled_in) ? $late_in->format('%H:%I') : '';
 
-        // Calculate early out
-        $early_out = $out_time->diff($scheduled_out);
-        if ($out_time != $in_time) {
-            $row['early_out'] = ($out_time < $scheduled_out) ? $early_out->format('%H:%I') : '';
+            // Calculate early out
+            $early_out = $out_time->diff($scheduled_out);
+            if ($out_time != $in_time) {
+                $row['early_out'] = ($out_time < $scheduled_out) ? $early_out->format('%H:%I') : '';
+            } else {
+                $row['early_out'] = '';
+            }
+
+            // Calculate early in
+            $early_in = $scheduled_in->diff($in_time);
+            $row['early_in'] = ($in_time < $scheduled_in) ? $early_in->format('%H:%I') : '';
+
+            // Calculate late out
+            $late_out = $scheduled_out->diff($out_time);
+            $row['late_out'] = ($out_time > $scheduled_out) ? $late_out->format('%H:%I') : '';
         } else {
+            // For weekends and holidays, set time differences to empty or N/A
+            $row['late_in'] = '';
             $row['early_out'] = '';
+            $row['early_in'] = '';
+            $row['late_out'] = '';
         }
 
-        // Calculate early in
-        $early_in = $scheduled_in->diff($in_time);
-        $row['early_in'] = ($in_time < $scheduled_in) ? $early_in->format('%H:%I') : '';
-
-        // Calculate late out
-        $late_out = $scheduled_out->diff($out_time);
-        $row['late_out'] = ($out_time > $scheduled_out) ? $late_out->format('%H:%I') : '';
-
-        // Determine attendance status
-        $row['marked_as'] = 'Present';
+        // Determine attendance status and remarks
+        if ($isHoliday) {
+            $row['marked_as'] = 'Present (Holiday)';
+            $row['remarks'] = $holiday['name'] . ' - Worked as OT';
+        } elseif ($isWeekend) {
+            $row['marked_as'] = 'Present (Weekend)';
+            $row['remarks'] = 'Weekend - Worked as OT';
+        } else {
+            $row['marked_as'] = 'Present';
+        }
 
         // Include only in time and out time methods/reasons
         $methodsArray = explode(', ', $attendance['methods_used'] ?? '');
@@ -185,9 +218,26 @@ foreach ($employees as $employee) {
         $outMethod = ($punchCount > 1) ? end($methodsArray) : '';
         $outReason = ($punchCount > 1) ? end($reasonsArray) : '';
         
-        // Only show in time and out time data
-        $row['methods'] = "In: " . $inMethod . ($outMethod ? ", Out: " . $outMethod : "");
+        // Convert method codes to letters: 0=A (Auto), 1=M (Manual), 2=W (Web)
+        $methodMap = ['0' => 'A', '1' => 'M', '2' => 'W'];
+        $inMethodLetter = isset($methodMap[$inMethod]) ? $methodMap[$inMethod] : $inMethod;
+        $outMethodLetter = isset($methodMap[$outMethod]) ? $methodMap[$outMethod] : $outMethod;
+        
+        // Only show in time and out time data in format "W | W"
+        $row['methods'] = $inMethodLetter . ($outMethod ? " | " . $outMethodLetter : "");
         $row['remarks'] = $inReason . ($outReason ? " | " . $outReason : "");
+    } else if ($isHoliday && !$isExited) {
+        // Employee didn't work on holiday - show dashes for time fields
+        $row['in_time'] = '-';
+        $row['out_time'] = '-';
+        $row['worked_duration'] = '-';
+        $row['over_time'] = '-';
+        $row['late_in'] = '-';
+        $row['early_out'] = '-';
+        $row['early_in'] = '-';
+        $row['late_out'] = '-';
+        $row['methods'] = '-';
+        // Keep the original holiday remarks
     }
 
     $data[] = $row;

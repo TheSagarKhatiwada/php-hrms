@@ -132,7 +132,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 ]);
                 
                 // Fetch the assigned user's name
-                $stmt = $pdo->prepare("SELECT e.First_Name, e.Middle_Name, e.Last_Name FROM employees e JOIN AssetAssignments aa ON e.ID = aa.EmployeeID WHERE aa.AssignmentID = :assignmentId");
+                $stmt = $pdo->prepare("SELECT e.First_Name, e.Middle_Name, e.Last_Name FROM employees e JOIN AssetAssignments aa ON e.emp_id = aa.EmployeeID WHERE aa.AssignmentID = :assignmentId");
                 $stmt->execute([':assignmentId' => $assignmentId]);
                 $assignedUser = $stmt->fetch();
                 $assignedUserName = $assignedUser ? $assignedUser['First_Name'] . ' ' . $assignedUser['Middle_Name'] . ' ' . $assignedUser['Last_Name'] : 'Unknown User';

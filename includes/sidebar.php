@@ -22,21 +22,32 @@ require_once __DIR__ . '/utilities.php';
   <nav class="sidebar-nav">
     <ul class="nav flex-column">
       <?php if ($user['role_id'] == 1 || (isset($user['role']) && $user['role'] == 1) || has_permission('view_admin_dashboard')): // Admin Navigation ?>
-        <li class="nav-header">MAIN NAVIGATION</li>
         
-        <?php if (is_admin() || has_permission('view_admin_dashboard')): // Show both dashboards ?>
+        <?php if (is_admin() || has_permission('view_admin_dashboard')): // Show both dashboards grouped ?>
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'admin-dashboard.php'); ?>" class="nav-link <?php if($page == 'Admin Dashboard'){echo 'active';}?>">
+          <a href="#dashboardSubmenu" data-bs-toggle="collapse" 
+             class="nav-link <?php if($page == 'Admin Dashboard' || $page == 'Dashboard'){echo 'active';}?>
+                    <?php if(!($page == 'Admin Dashboard' || $page == 'Dashboard')){echo 'collapsed';}?>">
             <i class="nav-icon fas fa-tachometer-alt"></i>
-            <span>Admin Dashboard</span>
+            <span>Dashboards</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
-        </li>
-        
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'dashboard.php'); ?>" class="nav-link <?php if($page == 'Dashboard'){echo 'active';}?>">
-            <i class="nav-icon fas fa-chart-line"></i>
-            <span>Dashboard</span>
-          </a>
+          <div class="collapse <?php if($page == 'Admin Dashboard' || $page == 'Dashboard'){echo 'show';}?>" id="dashboardSubmenu">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'admin-dashboard.php'); ?>" class="nav-link <?php if($page == 'Admin Dashboard'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tachometer-alt"></i>
+                  <span>Admin Dashboard</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'dashboard.php'); ?>" class="nav-link <?php if($page == 'Dashboard'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-chart-line"></i>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+            </ul>
+          </div>
         </li>
         <?php else: // Show only admin dashboard ?>
         <li class="nav-item">
@@ -47,90 +58,204 @@ require_once __DIR__ . '/utilities.php';
         </li>
         <?php endif; ?>
         
-        <li class="nav-header">EMPLOYEE MANAGEMENT</li>
-        
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'employees.php'); ?>" class="nav-link <?php if($page == 'employees'){echo 'active';}?>">
+          <a href="#employeeSubmenu" data-bs-toggle="collapse" 
+             class="nav-link <?php if($page == 'employees' || $page == 'attendance' || $page == 'Holiday Management'){echo 'active';}?>
+                    <?php if(!($page == 'employees' || $page == 'attendance' || $page == 'Holiday Management')){echo 'collapsed';}?>">
             <i class="nav-icon fas fa-users"></i>
-            <span>Employees</span>
+            <span>Employee Management</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
+          <div class="collapse <?php if($page == 'employees' || $page == 'attendance' || $page == 'Holiday Management'){echo 'show';}?>" id="employeeSubmenu">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'employees.php'); ?>" class="nav-link <?php if($page == 'employees'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-users"></i>
+                  <span>Employees</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'attendance.php'); ?>" class="nav-link <?php if($page == 'attendance'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-clipboard-check"></i>
+                  <span>Attendance</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'holidays.php'); ?>" class="nav-link <?php if($page == 'Holiday Management'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-calendar-day"></i>
+                  <span>Holiday Management</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </li>
+        
+        <!-- Leave Management Module -->
+        <li class="nav-item">
+          <a href="#leaveSubmenu" data-bs-toggle="collapse" 
+             class="nav-link <?php if(strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>
+                    <?php if(!(strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false)){echo 'collapsed';}?>">
+            <i class="nav-icon fas fa-calendar-alt"></i>
+            <span>Leave Management</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
+          </a>
+          <div class="collapse <?php if(strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'show';}?>" id="leaveSubmenu">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/index.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'index.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tachometer-alt"></i>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/request.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'request.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-plus"></i>
+                  <span>Apply for Leave</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/my-requests.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'my-requests.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-list"></i>
+                  <span>My Requests</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/balance.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'balance.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-chart-pie"></i>
+                  <span>My Balance</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/calendar.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'calendar.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-calendar"></i>
+                  <span>Calendar</span>
+                </a>
+              </li>
+              <?php if ($user['role_id'] == 1 || has_permission('view_all_requests')): ?>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/requests.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'requests.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tasks"></i>
+                  <span>Manage Requests</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/types.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'types.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false || basename($_SERVER['PHP_SELF']) == 'reports.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-cog"></i>
+                  <span>Leave Settings</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/accrual.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'accrual.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-coins"></i>
+                  <span>Accrual Management</span>
+                </a>
+              </li>
+              <?php endif; ?>
+            </ul>
+          </div>
         </li>
         
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'attendance.php'); ?>" class="nav-link <?php if($page == 'attendance'){echo 'active';}?>">
-            <i class="nav-icon fas fa-clipboard-check"></i>
-            <span>Attendance</span>
+          <a href="#reportsSubmenu" data-bs-toggle="collapse" 
+             class="nav-link <?php if($page == 'daily-report' || $page == 'periodic-report' || $page == 'periodic-time-report'){echo 'active';}?>
+                    <?php if(!($page == 'daily-report' || $page == 'periodic-report' || $page == 'periodic-time-report')){echo 'collapsed';}?>">
+            <i class="nav-icon fas fa-chart-bar"></i>
+            <span>Reports</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
+          <div class="collapse <?php if($page == 'daily-report' || $page == 'periodic-report' || $page == 'periodic-time-report'){echo 'show';}?>" id="reportsSubmenu">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-file-alt"></i>
+                  <span>Daily Report</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-calendar"></i>
+                  <span>Periodic Report</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-clock"></i>
+                  <span>Periodic Time Report</span>
+                </a>
+              </li>
+            </ul>
+          </div>
         </li>
         
-        <li class="nav-header">REPORTS</li>
-        
-        <!-- Individual Reports Items -->
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
-            <i class="nav-icon fas fa-file-alt"></i>
-            <span>Daily Report</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
-            <i class="nav-icon fas fa-calendar"></i>
-            <span>Periodic Report</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
-            <i class="nav-icon fas fa-clock"></i>
-            <span>Periodic Entry Time Report</span>
-          </a>
-        </li>
-        
-        <li class="nav-header">ASSET MANAGEMENT</li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'assets.php'); ?>" class="nav-link <?php if($page == 'Assets Management'){echo 'active';}?>">
+          <a href="#assetSubmenu" data-bs-toggle="collapse" 
+             class="nav-link <?php if($page == 'Assets Management' || $page == 'Asset Categories' || $page == 'Manage Assets' || $page == 'Asset Assignments' || $page == 'Maintenance Records'){echo 'active';}?>
+                    <?php if(!($page == 'Assets Management' || $page == 'Asset Categories' || $page == 'Manage Assets' || $page == 'Asset Assignments' || $page == 'Maintenance Records')){echo 'collapsed';}?>">
             <i class="nav-icon fas fa-clipboard-list"></i>
-            <span>Overview</span>
+            <span>Asset Management</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
+          <div class="collapse <?php if($page == 'Assets Management' || $page == 'Asset Categories' || $page == 'Manage Assets' || $page == 'Asset Assignments' || $page == 'Maintenance Records'){echo 'show';}?>" id="assetSubmenu">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'assets.php'); ?>" class="nav-link <?php if($page == 'Assets Management'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tachometer-alt"></i>
+                  <span>Overview</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'manage_categories.php'); ?>" class="nav-link <?php if($page == 'Asset Categories'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tags"></i>
+                  <span>Categories</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'manage_assets.php'); ?>" class="nav-link <?php if($page == 'Manage Assets'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-laptop"></i>
+                  <span>Fixed Assets</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'manage_assignments.php'); ?>" class="nav-link <?php if($page == 'Asset Assignments'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-people-carry"></i>
+                  <span>Assignments</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'manage_maintenance.php'); ?>" class="nav-link <?php if($page == 'Maintenance Records'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tools"></i>
+                  <span>Maintenance</span>
+                </a>
+              </li>
+            </ul>
+          </div>
         </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'manage_categories.php'); ?>" class="nav-link <?php if($page == 'Asset Categories'){echo 'active';}?>">
-            <i class="nav-icon fas fa-tags"></i>
-            <span>Categories</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'manage_assets.php'); ?>" class="nav-link <?php if($page == 'Manage Assets'){echo 'active';}?>">
-            <i class="nav-icon fas fa-laptop"></i>
-            <span>Fixed Assets</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'manage_assignments.php'); ?>" class="nav-link <?php if($page == 'Asset Assignments'){echo 'active';}?>">
-            <i class="nav-icon fas fa-people-carry"></i>
-            <span>Assignments</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'manage_maintenance.php'); ?>" class="nav-link <?php if($page == 'Maintenance Records'){echo 'active';}?>">
-            <i class="nav-icon fas fa-tools"></i>
-            <span>Maintenance</span>
-          </a>
-        </li>
-        <li class="nav-header">SYSTEM MANAGEMENT</li>
         <li class="nav-item">
           <a href="#organizationSubmenu" data-bs-toggle="collapse" 
-             class="nav-link <?php if($page == 'branches' || $page == 'departments' || $page == 'designations' || $page == 'System Setting'){echo 'active';}?>
-                    <?php if(!($page == 'branches' || $page == 'departments' || $page == 'designations' || $page == 'System Setting')){echo 'collapsed';}?>">
+             class="nav-link <?php if($page == 'branches' || $page == 'departments' || $page == 'designations' || $page == 'organizational-chart' || $page == 'hierarchy-setup' || $page == 'board-management' || $page == 'System Setting' || $page == 'Backup Management'){echo 'active';}?>
+                    <?php if(!($page == 'branches' || $page == 'departments' || $page == 'designations' || $page == 'organizational-chart' || $page == 'hierarchy-setup' || $page == 'board-management' || $page == 'System Setting' || $page == 'Backup Management')){echo 'collapsed';}?>">
             <i class="nav-icon fas fa-building"></i>
             <span>Company Settings</span>
             <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
-          <div class="collapse <?php if($page == 'branches' || $page == 'departments' || $page == 'designations' || $page == 'System Setting'){echo 'show';}?>" id="organizationSubmenu">
+          <div class="collapse <?php if($page == 'branches' || $page == 'departments' || $page == 'designations' || $page == 'organizational-chart' || $page == 'hierarchy-setup' || $page == 'board-management' || $page == 'System Setting' || $page == 'Backup Management'){echo 'show';}?>" id="organizationSubmenu">
             <ul class="nav nav-sub flex-column">
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'system-settings.php'); ?>" class="nav-link <?php if($page == 'System Setting'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-wrench"></i>
-                  <span>General Settings</span>
+                <a href="<?php echo append_sid($home . 'organizational-chart.php'); ?>" class="nav-link <?php if($page == 'organizational-chart'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-sitemap"></i>
+                  <span>Organizational Chart</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'hierarchy-setup.php'); ?>" class="nav-link <?php if($page == 'hierarchy-setup'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-cogs"></i>
+                  <span>Hierarchy Setup</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'board-management.php'); ?>" class="nav-link <?php if($page == 'board-management'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-crown"></i>
+                  <span>Board of Directors</span>
                 </a>
               </li>
               <li class="nav-item">
@@ -141,7 +266,7 @@ require_once __DIR__ . '/utilities.php';
               </li>
               <li class="nav-item">
                 <a href="<?php echo append_sid($home . 'departments.php'); ?>" class="nav-link <?php if($page == 'departments'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-sitemap"></i>
+                  <i class="nav-icon fas fa-building"></i>
                   <span>Departments</span>
                 </a>
               </li>
@@ -149,6 +274,56 @@ require_once __DIR__ . '/utilities.php';
                 <a href="<?php echo append_sid($home . 'designations.php'); ?>" class="nav-link <?php if($page == 'designations'){echo 'active';}?>">
                   <i class="nav-icon fas fa-id-badge"></i>
                   <span>Designations</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'system-settings.php'); ?>" class="nav-link <?php if($page == 'System Setting'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-wrench"></i>
+                  <span>General Settings</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'backup-management.php'); ?>" class="nav-link <?php if($page == 'Backup Management'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-database"></i>
+                  <span>Backup & Restore</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </li>
+        
+        <li class="nav-item">
+          <a href="#smsSubmenu" data-bs-toggle="collapse" 
+             class="nav-link <?php if($page == 'SMS Dashboard' || $page == 'SMS Configuration' || $page == 'SMS Templates' || $page == 'SMS Logs'){echo 'active';}?>
+                    <?php if(!($page == 'SMS Dashboard' || $page == 'SMS Configuration' || $page == 'SMS Templates' || $page == 'SMS Logs')){echo 'collapsed';}?>">
+            <i class="nav-icon fas fa-sms"></i>
+            <span>SMS Management</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
+          </a>
+          <div class="collapse <?php if($page == 'SMS Dashboard' || $page == 'SMS Configuration' || $page == 'SMS Templates' || $page == 'SMS Logs'){echo 'show';}?>" id="smsSubmenu">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'sms/sms-dashboard.php'); ?>" class="nav-link <?php if($page == 'SMS Dashboard'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-chart-bar"></i>
+                  <span>SMS Dashboard</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'sms/sms-config.php'); ?>" class="nav-link <?php if($page == 'SMS Configuration'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-cog"></i>
+                  <span>SMS Configuration</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'sms/sms-templates.php'); ?>" class="nav-link <?php if($page == 'SMS Templates'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-file-alt"></i>
+                  <span>SMS Templates</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'sms/sms-logs.php'); ?>" class="nav-link <?php if($page == 'SMS Logs'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-history"></i>
+                  <span>SMS History</span>
                 </a>
               </li>
             </ul>
@@ -161,22 +336,33 @@ require_once __DIR__ . '/utilities.php';
           </a>
         </li>
         
-      <?php elseif ($user['role_id'] == 0 || $user['role'] != 1): // Non-Admin Navigation ?>
-        <li class="nav-header">MAIN NAVIGATION</li>
+      <?php elseif ($user['role_id'] != 1 && $user['role_id'] != 4): // Regular Employee Navigation ?>
         
         <?php if (has_permission('view_admin_dashboard')): // Show both dashboards for users with permission ?>
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'admin-dashboard.php'); ?>" class="nav-link <?php if($page == 'Admin Dashboard'){echo 'active';}?>">
+          <a href="#dashboardSubmenuEmployee" data-bs-toggle="collapse" 
+             class="nav-link <?php if($page == 'Admin Dashboard' || $page == 'User Dashboard' || $page == 'Employee Dashboard'){echo 'active';}?>
+                    <?php if(!($page == 'Admin Dashboard' || $page == 'User Dashboard' || $page == 'Employee Dashboard')){echo 'collapsed';}?>">
             <i class="nav-icon fas fa-tachometer-alt"></i>
-            <span>Admin Dashboard</span>
+            <span>Dashboards</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
-        </li>
-        
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'dashboard.php'); ?>" class="nav-link <?php if($page == 'User Dashboard' || $page == 'Employee Dashboard'){echo 'active';}?>">
-            <i class="nav-icon fas fa-chart-line"></i>
-            <span>Dashboard</span>
-          </a>
+          <div class="collapse <?php if($page == 'Admin Dashboard' || $page == 'User Dashboard' || $page == 'Employee Dashboard'){echo 'show';}?>" id="dashboardSubmenuEmployee">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'admin-dashboard.php'); ?>" class="nav-link <?php if($page == 'Admin Dashboard'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tachometer-alt"></i>
+                  <span>Admin Dashboard</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'dashboard.php'); ?>" class="nav-link <?php if($page == 'User Dashboard' || $page == 'Employee Dashboard'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-chart-line"></i>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+            </ul>
+          </div>
         </li>
         <?php else: // Show only regular dashboard ?>
         <li class="nav-item">
@@ -187,8 +373,51 @@ require_once __DIR__ . '/utilities.php';
         </li>
         <?php endif; ?>
         
+        <li class="nav-item">
+          <a href="#leaveSubmenuEmployee" data-bs-toggle="collapse" 
+             class="nav-link <?php if(strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>
+                    <?php if(!(strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false)){echo 'collapsed';}?>">
+            <i class="nav-icon fas fa-calendar-alt"></i>
+            <span>Leave Management</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
+          </a>
+          <div class="collapse <?php if(strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'show';}?>" id="leaveSubmenuEmployee">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/index.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'index.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tachometer-alt"></i>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/request.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'request.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-plus"></i>
+                  <span>Apply for Leave</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/my-requests.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'my-requests.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-list"></i>
+                  <span>My Requests</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/balance.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'balance.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-chart-pie"></i>
+                  <span>My Balance</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/calendar.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'calendar.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-calendar"></i>
+                  <span>Calendar</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </li>
+        
         <!-- File Converter Tools for Regular Users -->
-        <li class="nav-header">TOOLS</li>
         
         <!--
         <li class="nav-item">
@@ -212,8 +441,7 @@ require_once __DIR__ . '/utilities.php';
         </li>
         -->
         
-      <?php elseif ($user['role'] == 2): // Manager Navigation ?>
-        <li class="nav-header">MAIN NAVIGATION</li>
+      <?php elseif ($user['role_id'] == 4): // Manager Navigation ?>
         
         <li class="nav-item">
           <a href="<?php echo append_sid($home . 'manager-dashboard.php'); ?>" class="nav-link <?php if($page == 'Manager Dashboard'){echo 'active';}?>">
@@ -221,8 +449,6 @@ require_once __DIR__ . '/utilities.php';
             <span>Dashboard</span>
           </a>
         </li>
-        
-        <li class="nav-header">REPORTS</li>
         
         <!-- Individual Manager Reports -->
         <li class="nav-item">
@@ -245,7 +471,6 @@ require_once __DIR__ . '/utilities.php';
         </li>
         
         <!-- File Converter Tools for Managers -->
-        <li class="nav-header">TOOLS</li>
         
         <!--
         <li class="nav-item">
@@ -285,11 +510,12 @@ require_once __DIR__ . '/utilities.php';
   }
   // Fetch user details from the database
   $user_id = $_SESSION['user_id'];
-  $stmt = $pdo->prepare("SELECT e.*, d.title AS designation_title 
-                        FROM employees e 
-                        LEFT JOIN designations d ON e.designation = d.id 
-                        WHERE e.id = :id");
-  $stmt->execute(['id' => $user_id]);
+  $stmt = $pdo->prepare("SELECT e.*, d.title AS designation_title, r.name AS role_name 
+                          FROM employees e 
+                          LEFT JOIN designations d ON e.designation = d.id 
+                          LEFT JOIN roles r ON e.role_id = r.id
+                          WHERE e.emp_id = :emp_id");
+  $stmt->execute(['emp_id' => $user_id]);
   $user = $stmt->fetch(PDO::FETCH_ASSOC);
   ?>
   <div class="sidebar-footer">
@@ -297,11 +523,21 @@ require_once __DIR__ . '/utilities.php';
       <a href="<?php echo $home;?>profile.php" class="text-decoration-none">
         <div class="d-flex align-items-center">
           <div class="sidebar-user-img me-2">
-            <img src="<?php echo htmlspecialchars($user['user_image'] ?: $home.'resources/images/default-user.png'); ?>" 
-                 class="rounded-circle border" 
-                 alt="Employee Image" 
-                 width="40" height="40"
-                 style="object-fit: cover;">
+            <img src="<?php
+  $img = $user['user_image'];
+  if (empty($img)) {
+    $img = $home . 'resources/images/default-user.png';
+  } else if (strpos($img, 'http') === 0 || strpos($img, '/') === 0) {
+    // Absolute URL or root-relative
+  } else {
+    $img = $home . ltrim($img, '/');
+  }
+  echo htmlspecialchars($img);
+?>" 
+class="rounded-circle border" 
+alt="Employee Image" 
+width="40" height="40"
+style="object-fit: cover;">
           </div>
           <div>
             <h6 class="mb-0 sidebar-user-name small">
@@ -505,7 +741,7 @@ body.dark-mode .btn-outline-secondary:hover {
   padding-left: 0;
   background-color: rgba(0, 0, 0, 0.05);
   border-radius: 4px;
-  margin: 0 0.5rem 0.5rem 0.5rem;
+  margin: 0.1rem 0.5rem 0.5rem 0.2rem;
 }
 
 body.dark-mode .nav-sub {
@@ -513,7 +749,7 @@ body.dark-mode .nav-sub {
 }
 
 .nav-sub .nav-link {
-  padding-left: 3.2rem;
+  padding-left: 2.2rem;
   font-size: 0.9rem;
 }
 

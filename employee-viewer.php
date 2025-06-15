@@ -3,6 +3,9 @@ $page = 'employee';
 include 'includes/header.php';
 include 'includes/db_connection.php';
 
+// Include hierarchy helpers
+require_once 'includes/hierarchy_helpers.php';
+
 // Handle password reset request
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password']) && isset($_POST['confirm_password']) && isset($_POST['emp_id'])) {
     $new_password = $_POST['new_password'];
@@ -30,11 +33,12 @@ $empId = $_GET['empId'] ?? '';
 
 // Fetch employee details from the database
 if ($empId) {
-    $stmt = $pdo->prepare("SELECT e.*, b.name AS branch_name, d.title AS designation_title, r.name AS role_name 
+    $stmt = $pdo->prepare("SELECT e.*, b.name AS branch_name, d.title AS designation_title, r.name AS role_name, dept.name AS department_name
                          FROM employees e 
                          INNER JOIN branches b ON e.branch = b.id 
                          LEFT JOIN designations d ON e.designation = d.id 
                          LEFT JOIN roles r ON e.role_id = r.id 
+                         LEFT JOIN departments dept ON e.department_id = dept.id
                          WHERE e.emp_id = :empId");
     $stmt->execute([':empId' => $empId]);
     $employee = $stmt->fetch();
@@ -54,8 +58,8 @@ if ($empId) {
                                     JOIN fixedassets fa ON aa.AssetID = fa.AssetID
                                     WHERE aa.EmployeeID = :employee_id AND aa.ReturnDate IS NULL
                                     ORDER BY aa.AssignmentDate DESC");
-    // Use $employee['id'] which is the primary key for the employees table and likely the foreign key in AssetAssignments
-    $assigned_assets_stmt->execute(['employee_id' => $employee['id']]); 
+    // Use $employee['emp_id'] for asset assignments
+    $assigned_assets_stmt->execute(['employee_id' => $employee['emp_id']]); 
     $assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Check if employee image is empty and set default image
@@ -74,7 +78,7 @@ if ($empId) {
 }
 
 // Calculate birthday countdown
-$dob_date = new DateTime($employee['dob']);
+$dob_date = new DateTime($employee['date_of_birth']);
 $current_date = new DateTime();
 $dob_date_this_year = (new DateTime())->setDate($current_date->format('Y'), $dob_date->format('m'), $dob_date->format('d'));
 
@@ -115,6 +119,11 @@ $lAccessIcon = $employee['login_access'] == '1' ? 'fa-check-circle' : 'fa-times-
 // Calculate experience level (for skill bar)
 $experience_years = $years + ($months / 12);
 $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 5 years is 100% experience
+
+// Get hierarchy information
+$hierarchyPath = getHierarchyPath($pdo, $employee['id']);
+$teamMembers = getTeamMembers($pdo, $employee['id'], false); // Direct reports only
+$allSubordinates = getSubordinates($pdo, $employee['id']); // All subordinates
 ?>
 
 <style>
@@ -248,6 +257,114 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
         background-color: rgba(0, 112, 209, 0.2);
         color: #4da3ff;
     }
+
+    /* Hierarchy Styles */
+    .hierarchy-path {
+        position: relative;
+    }
+
+    .hierarchy-item {
+        position: relative;
+        padding-left: 20px;
+    }
+
+    .hierarchy-item:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        left: 20px;
+        top: 100%;
+        height: 20px;
+        width: 2px;
+        background: #ddd;
+    }
+
+    .hierarchy-level {
+        background: #007bff;
+        color: white;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+
+    .team-member {
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 10px;
+        transition: all 0.3s ease;
+    }
+
+    .team-member:hover {
+        border-color: #007bff;
+        box-shadow: 0 2px 4px rgba(0,123,255,0.1);
+    }
+
+    .stat-box {
+        padding: 15px;
+        border-left: 4px solid #007bff;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+
+    .stat-box h3 {
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+
+    body.dark-mode .team-member {
+        border-color: #555;
+        background: #2a2a2a;
+    }
+
+    body.dark-mode .team-member:hover {
+        border-color: #4da3ff;
+        box-shadow: 0 2px 4px rgba(77,163,255,0.1);
+    }
+
+    body.dark-mode .stat-box {
+        background: #2a2a2a;
+        border-left-color: #4da3ff;
+    }
+    
+    /* Hierarchy styles */
+    .hierarchy-path {
+        padding-left: 20px;
+        border-left: 2px solid #007bff;
+    }
+    
+    .hierarchy-item {
+        position: relative;
+        padding-left: 20px;
+    }
+    
+    .hierarchy-item::before {
+        content: '';
+        position: absolute;
+        left: -10px;
+        top: 8px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: #007bff;
+    }
+    
+    .stat-box {
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background-color: rgba(255, 255, 255, 0.1);
+        transition: transform 0.3s;
+    }
+    
+    .stat-box:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
 </style>
 
 <!-- Page Content - The content area begins here -->
@@ -360,6 +477,11 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
               </a>
             </li>
             <li class="nav-item">
+              <a class="nav-link" href="#hierarchy" data-bs-toggle="tab">
+                <i class="fas fa-sitemap me-1"></i> Hierarchy
+              </a>
+            </li>
+            <li class="nav-item">
               <a class="nav-link" href="#assets" data-bs-toggle="tab">
                 <i class="fas fa-laptop me-1"></i> Assigned Assets
               </a>
@@ -387,15 +509,32 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
                       </div>
                       <div class="profile-info-item">
                         <strong>Gender:</strong>
-                        <p class="mb-0"><?php echo ($employee['gender'] == 'M') ? 'Male' : 'Female'; ?></p>
+                        <p class="mb-0"><?php 
+                          $gender = isset($employee['gender']) ? $employee['gender'] : '';
+                          if ($gender == 'M') {
+                            echo 'Male';
+                          } elseif ($gender == 'F') {
+                            echo 'Female';
+                          } else {
+                            echo 'Not specified';
+                          }
+                        ?></p>
                       </div>
                       <div class="profile-info-item">
                         <strong>Date of Birth:</strong>
                         <p class="mb-0">
-                          <?php echo date('d F Y', strtotime($employee['dob'])); ?>
+                          <?php 
+                          if ($employee['date_of_birth']) {
+                            echo date('d F Y', strtotime($employee['date_of_birth'])); 
+                          ?>
                           <span class="special-badge birthday-badge">
                             <i class="fas fa-hourglass-half me-1"></i> <?php echo $birthdayCountdown; ?>
                           </span>
+                          <?php 
+                          } else {
+                            echo 'Not specified';
+                          }
+                          ?>
                         </p>
                       </div>
                     </div>
@@ -414,6 +553,10 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
                       <div class="profile-info-item">
                         <strong>Role:</strong>
                         <p class="mb-0"><?php echo htmlspecialchars($employee['role_name'] ?: 'Not Assigned'); ?></p>
+                      </div>
+                      <div class="profile-info-item">
+                        <strong>Department:</strong>
+                        <p class="mb-0"><?php echo htmlspecialchars($employee['department_name'] ?: 'Not Assigned'); ?></p>
                       </div>
                       <div class="profile-info-item">
                         <strong>Status:</strong>
@@ -464,6 +607,127 @@ $experience_level = min(round(($experience_years / 5) * 100), 100); // Assuming 
                 </div>
                 <div>
                   <i class="far fa-clock bg-gray"></i>
+                </div>
+              </div>
+            </div>
+            <!-- /.tab-pane -->
+
+            <!-- Hierarchy Tab -->
+            <div class="tab-pane" id="hierarchy">
+              <div class="row">
+                <!-- Reporting Structure -->
+                <div class="col-md-6">
+                  <div class="card">
+                    <div class="card-header">
+                      <h5 class="card-title mb-0">
+                        <i class="fas fa-level-up-alt me-2"></i>Reports To
+                      </h5>
+                    </div>
+                    <div class="card-body">
+                      <?php if (!empty($hierarchyPath) && count($hierarchyPath) > 1): ?>
+                        <div class="hierarchy-path">
+                          <?php 
+                          $reversedPath = array_reverse(array_slice($hierarchyPath, 1)); // Remove self and reverse
+                          foreach ($reversedPath as $index => $pathEmployee): 
+                          ?>
+                            <div class="hierarchy-item d-flex align-items-center mb-2">
+                              <div class="hierarchy-level">L<?php echo $index + 1; ?></div>
+                              <div class="ms-3">
+                                <strong><?php echo htmlspecialchars($pathEmployee['full_name']); ?></strong><br>
+                                <small class="text-muted"><?php echo htmlspecialchars($pathEmployee['designation'] ?: 'No Designation'); ?></small>
+                              </div>
+                            </div>
+                          <?php endforeach; ?>
+                        </div>
+                      <?php else: ?>
+                        <div class="text-center text-muted py-4">
+                          <i class="fas fa-crown fa-3x mb-3"></i>
+                          <p>This employee is at the top level<br><small>No supervisor assigned</small></p>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Team Members -->
+                <div class="col-md-6">
+                  <div class="card">
+                    <div class="card-header">
+                      <h5 class="card-title mb-0">
+                        <i class="fas fa-users me-2"></i>Direct Reports
+                        <span class="badge bg-primary ms-2"><?php echo count($teamMembers); ?></span>
+                      </h5>
+                    </div>
+                    <div class="card-body">
+                      <?php if (!empty($teamMembers)): ?>
+                        <div class="team-members">
+                          <?php foreach ($teamMembers as $member): ?>
+                            <div class="team-member d-flex align-items-center mb-3">
+                              <img src="<?php echo $member['user_image'] ?: 'resources/userimg/default-image.jpg'; ?>" 
+                                   alt="Profile" class="rounded-circle me-3" width="40" height="40">
+                              <div class="flex-grow-1">
+                                <a href="employee-viewer.php?empId=<?php echo $member['emp_id']; ?>" class="text-decoration-none">
+                                  <strong><?php echo htmlspecialchars($member['first_name'] . ' ' . $member['last_name']); ?></strong>
+                                </a><br>
+                                <small class="text-muted">
+                                  <?php echo htmlspecialchars($member['designation_title'] ?: 'No Designation'); ?>
+                                  <?php if ($member['department_name']): ?>
+                                    • <?php echo htmlspecialchars($member['department_name']); ?>
+                                  <?php endif; ?>
+                                </small>
+                              </div>
+                            </div>
+                          <?php endforeach; ?>
+                        </div>
+                      <?php else: ?>
+                        <div class="text-center text-muted py-4">
+                          <i class="fas fa-user-friends fa-3x mb-3"></i>
+                          <p>No direct reports<br><small>This employee doesn't supervise anyone</small></p>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Hierarchy Statistics -->
+              <div class="row mt-4">
+                <div class="col-12">
+                  <div class="card">
+                    <div class="card-header">
+                      <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-line me-2"></i>Hierarchy Statistics
+                      </h5>
+                    </div>
+                    <div class="card-body">
+                      <div class="row text-center">
+                        <div class="col-md-3">
+                          <div class="stat-box">
+                            <h3 class="text-primary"><?php echo count($hierarchyPath) - 1; ?></h3>
+                            <p class="text-muted mb-0">Levels Above</p>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <div class="stat-box">
+                            <h3 class="text-success"><?php echo count($teamMembers); ?></h3>
+                            <p class="text-muted mb-0">Direct Reports</p>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <div class="stat-box">
+                            <h3 class="text-info"><?php echo count($allSubordinates); ?></h3>
+                            <p class="text-muted mb-0">Total Subordinates</p>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <div class="stat-box">
+                            <h3 class="text-warning"><?php echo max(0, count($allSubordinates) - count($teamMembers)); ?></h3>
+                            <p class="text-muted mb-0">Indirect Reports</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

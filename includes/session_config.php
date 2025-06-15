@@ -12,6 +12,17 @@ if (!defined('ENVIRONMENT')) {
 
 // Only set session parameters if session hasn't started yet
 if (session_status() == PHP_SESSION_NONE) {
+    // Create custom session directory if it doesn't exist
+    $session_dir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'sessions';
+    if (!is_dir($session_dir)) {
+        mkdir($session_dir, 0755, true);
+    }
+    
+    // Set custom session save path
+    if (is_dir($session_dir) && is_writable($session_dir)) {
+        ini_set('session.save_path', $session_dir);
+    }
+    
     // Configure secure session cookies with proper settings
     ini_set('session.use_cookies', 1);        // Use cookies for session
     ini_set('session.use_only_cookies', 1);   // Only use cookies (no URL parameters)
@@ -45,14 +56,17 @@ if (session_status() == PHP_SESSION_NONE) {
     if (!isset($_SESSION['last_regeneration']) || 
         (time() - $_SESSION['last_regeneration']) > 1800) { // 30 minutes
         
-        // Remember the old session ID to update any references if needed
-        $old_session_id = session_id();
-        
-        // Regenerate the session ID
-        session_regenerate_id(true);
-        
-        // Update the regeneration time
-        $_SESSION['last_regeneration'] = time();
+        // Only regenerate if session is active
+        if (session_status() == PHP_SESSION_ACTIVE) {
+            // Remember the old session ID to update any references if needed
+            $old_session_id = session_id();
+            
+            // Regenerate the session ID
+            session_regenerate_id(true);
+            
+            // Update the regeneration time
+            $_SESSION['last_regeneration'] = time();
+        }
     }
 } else {
     // Add cache control headers to prevent storing cached data even when session already started

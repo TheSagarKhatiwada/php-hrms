@@ -5,7 +5,7 @@ $home = './';
 
 // Set up basic session for testing
 if (!isset($_SESSION['user_id'])) {
-    $_SESSION['user_id'] = 1;
+    $_SESSION['user_id'] = '101'; // Use valid emp_id
     $_SESSION['role'] = 'admin';
 }
 ?>

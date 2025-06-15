@@ -1,10 +1,11 @@
 <?php
 // Simple login test page
-session_start();
+// Include session configuration first to ensure session is available
+require_once 'includes/session_config.php';
 
 if ($_POST && isset($_POST['username']) && isset($_POST['password'])) {
-    // Simple login simulation for testing
-    $_SESSION['user_id'] = 1;
+    // Simple login simulation for testing - use a valid emp_id
+    $_SESSION['user_id'] = '101'; // Use first employee's emp_id 
     $_SESSION['role'] = 'admin';
     $_SESSION['username'] = $_POST['username'];
     echo "<h3>Login successful! Redirecting...</h3>";

@@ -162,9 +162,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $dayOfWeek = (int)$dateObj->format('N'); // 1 (Monday) to 7 (Sunday)
             
             // Check if employee was exited by this date
-            $isExited = (!empty($exitDate) && $date > $exitDate);
-              // Determine if it's a weekend/holiday (Saturday in this case)
+            $isExited = (!empty($exitDate) && $date > $exitDate);            // Determine if it's a weekend/holiday (Saturday in this case)
             $isSaturday = ($dayOfWeek == 6);
+            
+            // Check if the date is a holiday
+            $holiday = is_holiday($date, $employee['branch_id'] ?? null);
+            $isHoliday = $holiday !== false;
             
             // Default status is 'L' for Leave/Absent
             $status = 'L';
@@ -172,8 +175,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($isExited) {
                 // If employee has exited, mark as '-' (not applicable)
                 $status = '-';
-            } elseif ($isSaturday) {
-                // If it's Saturday, mark as Holiday 'H'
+            } elseif ($isSaturday || $isHoliday) {
+                // If it's Saturday or a holiday, mark as Holiday 'H'
                 $status = 'H';
                 $employeeData['summary']['holidays']++;
                 $employeeData['summary']['holiday_count']++; // Increment holiday count for this employee
@@ -212,16 +215,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'date' => $date,
                 'status' => $status
             ];
-            
-            // Update totals for the first employee only (to avoid duplicating the count)
+              // Update totals for the first employee only (to avoid duplicating the count)
             if (count($processedData) === 0) {
-                if (!$isExited && !$isSaturday) {
+                if (!$isExited && !$isSaturday && !$isHoliday) {
                     $totalWorkingDays++;
                     
                     if ($status === 'P') $totalPresent++;
                     else if ($status === 'A') $totalAbsent++;
                     else if ($status === 'L') $totalLeave++;
-                } elseif ($isSaturday) {
+                } elseif ($isSaturday || $isHoliday) {
                     $totalHolidays++;
                 }
             }

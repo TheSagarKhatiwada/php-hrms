@@ -61,16 +61,16 @@ try {
         
         // Query for employees with birthdays in the next 30 days
         $stmt = $pdo->prepare("
-            SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, d.title as designation_name, e.user_image, e.dob, 
-                   DAYOFMONTH(e.dob) as birth_day, 
-                   MONTH(e.dob) as birth_month,
+            SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, d.title as designation_name, e.user_image, e.date_of_birth, 
+                   DAYOFMONTH(e.date_of_birth) as birth_day, 
+                   MONTH(e.date_of_birth) as birth_month,
                    YEAR(CURDATE()) as current_year
             FROM employees e
             LEFT JOIN designations d ON e.designation = d.id
-            WHERE (MONTH(e.dob) = ? AND DAYOFMONTH(e.dob) >= ?) 
-               OR (MONTH(e.dob) = ? AND DAYOFMONTH(e.dob) <= ?)
+            WHERE (MONTH(e.date_of_birth) = ? AND DAYOFMONTH(e.date_of_birth) >= ?) 
+               OR (MONTH(e.date_of_birth) = ? AND DAYOFMONTH(e.date_of_birth) <= ?)
                AND e.exit_date IS NULL
-            ORDER BY MONTH(e.dob), DAYOFMONTH(e.dob)
+            ORDER BY MONTH(e.date_of_birth), DAYOFMONTH(e.date_of_birth)
             LIMIT 5
         ");
         
@@ -118,7 +118,7 @@ try {
         SELECT a.*, e.first_name, e.last_name, e.middle_name, e.user_image, 
                d.title as designation_name, b.name as branch_name 
         FROM attendance_logs a
-        JOIN employees e ON a.emp_Id = e.emp_id
+        JOIN employees e ON a.emp_Id = e.id
         LEFT JOIN branches b ON e.branch = b.id
         LEFT JOIN designations d ON e.designation = d.id
         ORDER BY a.date DESC, a.time DESC
@@ -151,7 +151,7 @@ require_once __DIR__ . '/includes/header.php';
             if (isset($_SESSION['user_id'])) {
                 try {
                     // Get user's first name
-                    $userStmt = $pdo->prepare("SELECT first_name, last_login FROM employees WHERE id = ?");
+                    $userStmt = $pdo->prepare("SELECT first_name, last_login FROM employees WHERE emp_id = ?");
                     $userStmt->execute([$_SESSION['user_id']]);
                     if ($userData = $userStmt->fetch(PDO::FETCH_ASSOC)) {
                         $firstName = $userData['first_name'];
@@ -163,7 +163,7 @@ require_once __DIR__ . '/includes/header.php';
                         
                         // Update last_login timestamp
                         if (!isset($_SESSION['login_recorded'])) {
-                            $updateStmt = $pdo->prepare("UPDATE employees SET last_login = NOW() WHERE id = ?");
+                            $updateStmt = $pdo->prepare("UPDATE employees SET last_login = NOW() WHERE emp_id = ?");
                             $updateStmt->execute([$_SESSION['user_id']]);
                             $_SESSION['login_recorded'] = true;
                         }
@@ -190,7 +190,7 @@ require_once __DIR__ . '/includes/header.php';
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dashboardActions">
                     <li><a class="dropdown-item" href="add-employee.php"><i class="fas fa-user-plus me-2"></i>Add Employee</a></li>
-                    <li><a class="dropdown-item" href="record_manual_attendance.php"><i class="fas fa-clipboard-check me-2"></i>Record Attendance</a></li>
+                    <li><a class="dropdown-item" href="attendance.php?action=manual"><i class="fas fa-clipboard-check me-2"></i>Record Attendance</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="system-settings.php"><i class="fas fa-cogs me-2"></i>System Settings</a></li>
                 </ul>
@@ -564,7 +564,7 @@ require_once __DIR__ . '/includes/header.php';
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="record_manual_attendance.php" class="btn btn-success w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
+                            <a href="attendance.php?action=manual" class="btn btn-success w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
                                 <i class="fas fa-clipboard-check fs-4 mb-2"></i>
                                 <span>Record Attendance</span>
                             </a>
@@ -581,12 +581,27 @@ require_once __DIR__ . '/includes/header.php';
                                 <span>Reports</span>
                             </a>
                         </div>
+                        <div class="col-6">
+                            <button type="button" class="btn btn-info w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-white" data-bs-toggle="modal" data-bs-target="#sendSMSModal">
+                                <i class="fas fa-sms fs-4 mb-2"></i>
+                                <span>Send SMS</span>
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <a href="sms/sms-dashboard.php" class="btn btn-secondary w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-white">
+                                <i class="fas fa-cog fs-4 mb-2"></i>
+                                <span>SMS Dashboard</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div> <!-- /.container-fluid -->
+
+<!-- Include SMS Modal -->
+<?php include 'includes/sms-modal.php'; ?>
 
 <!-- Include the main footer -->
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

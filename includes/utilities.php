@@ -289,4 +289,148 @@ function get_user_permissions() {
         return [];
     }
 }
+
+/**
+ * Check if a given date is a holiday
+ * 
+ * @param string $date Date in Y-m-d format
+ * @param int|null $branch_id Branch ID to check branch-specific holidays (optional)
+ * @return array|false Holiday information if the date is a holiday, false otherwise
+ */
+function is_holiday($date, $branch_id = null) {
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        
+        // Check for exact date match or recurring holiday (same month and day)
+        $sql = "SELECT * FROM holidays 
+                WHERE (date = ? OR (is_recurring = 1 AND MONTH(date) = MONTH(?) AND DAY(date) = DAY(?)))
+                AND (branch_id IS NULL OR branch_id = ?)
+                ORDER BY branch_id ASC LIMIT 1";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$date, $date, $date, $branch_id]);
+        
+        $holiday = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $holiday ? $holiday : false;
+    } catch (PDOException $e) {
+        error_log('Holiday check error: ' . $e->getMessage(), 3, 'error_log.txt');
+        return false;
+    }
+}
+
+/**
+ * Get all holidays for a specific month and year
+ * 
+ * @param int $month Month (1-12)
+ * @param int $year Year
+ * @param int|null $branch_id Branch ID to filter branch-specific holidays (optional)
+ * @return array Array of holidays
+ */
+function get_holidays_for_month($month, $year, $branch_id = null) {
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        
+        $sql = "SELECT * FROM holidays 
+                WHERE ((YEAR(date) = :year AND MONTH(date) = :month) OR 
+                       (is_recurring = 1 AND MONTH(date) = :month))
+                AND (branch_id IS NULL OR branch_id = :branch_id)
+                ORDER BY DAY(date) ASC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':month', $month, PDO::PARAM_INT);
+        $stmt->bindParam(':year', $year, PDO::PARAM_INT);
+        $stmt->bindParam(':branch_id', $branch_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log('Get monthly holidays error: ' . $e->getMessage(), 3, 'error_log.txt');
+        return [];
+    }
+}
+
+/**
+ * Get upcoming holidays within the next X days
+ * 
+ * @param int $days Number of days to look ahead (default: 30)
+ * @param int|null $branch_id Branch ID to filter branch-specific holidays (optional)
+ * @return array Array of upcoming holidays
+ */
+function get_upcoming_holidays($days = 30, $branch_id = null) {
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        
+        $start_date = date('Y-m-d');
+        $end_date = date('Y-m-d', strtotime("+$days days"));
+        
+        $sql = "SELECT *, 
+                CASE 
+                    WHEN is_recurring = 1 THEN 
+                        CONCAT(YEAR(:start_date), '-', MONTH(date), '-', DAY(date))
+                    ELSE date 
+                END as effective_date
+                FROM holidays 
+                WHERE (
+                    (is_recurring = 0 AND date BETWEEN :start_date AND :end_date) OR
+                    (is_recurring = 1 AND 
+                        STR_TO_DATE(CONCAT(YEAR(:start_date), '-', MONTH(date), '-', DAY(date)), '%Y-%m-%d') 
+                        BETWEEN :start_date AND :end_date)
+                )
+                AND (branch_id IS NULL OR branch_id = :branch_id)
+                ORDER BY effective_date ASC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':start_date', $start_date);
+        $stmt->bindParam(':end_date', $end_date);
+        $stmt->bindParam(':branch_id', $branch_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log('Get upcoming holidays error: ' . $e->getMessage(), 3, 'error_log.txt');
+        return [];
+    }
+}
+
+/**
+ * Check if a date range includes any holidays
+ * 
+ * @param string $start_date Start date in Y-m-d format
+ * @param string $end_date End date in Y-m-d format
+ * @param int|null $branch_id Branch ID to check branch-specific holidays (optional)
+ * @return array Array of holidays within the date range
+ */
+function get_holidays_in_range($start_date, $end_date, $branch_id = null) {
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        
+        $sql = "SELECT * FROM holidays 
+                WHERE (
+                    (is_recurring = 0 AND date BETWEEN :start_date AND :end_date) OR
+                    (is_recurring = 1 AND (
+                        STR_TO_DATE(CONCAT(YEAR(:start_date), '-', MONTH(date), '-', DAY(date)), '%Y-%m-%d') 
+                        BETWEEN :start_date AND :end_date OR
+                        STR_TO_DATE(CONCAT(YEAR(:end_date), '-', MONTH(date), '-', DAY(date)), '%Y-%m-%d') 
+                        BETWEEN :start_date AND :end_date
+                    ))
+                )
+                AND (branch_id IS NULL OR branch_id = :branch_id)
+                ORDER BY date ASC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':start_date', $start_date);
+        $stmt->bindParam(':end_date', $end_date);
+        $stmt->bindParam(':branch_id', $branch_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log('Get holidays in range error: ' . $e->getMessage(), 3, 'error_log.txt');
+        return [];
+    }
+}
 ?>

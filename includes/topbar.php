@@ -8,9 +8,9 @@
         <i class="fas fa-bars"></i>
       </button>
 
-      <!-- Home Icon and Search Form Aligned Left -->
-      <a href="<?php echo isset($home) ? $home : './'; ?>" class="navbar-brand d-none d-sm-inline-block me-2">
-        <i class="fas fa-home text-primary"></i>
+      <!-- Contacts Icon -->
+      <a href="<?php echo isset($home) ? $home : './'; ?>contacts.php" class="navbar-brand d-none d-sm-inline-block me-2" title="Contacts">
+        <i class="fas fa-address-book text-primary"></i>
       </a>
 
       <!-- Search Form - Only visible on medium screens and larger -->
@@ -82,8 +82,8 @@
           // Fetch user details from the database if not already available
           if (!isset($user) && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
-            $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = :id");
-            $stmt->execute(['id' => $user_id]);
+            $stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = :emp_id");
+            $stmt->execute(['emp_id' => $user_id]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             $stmt->closeCursor();
           }
