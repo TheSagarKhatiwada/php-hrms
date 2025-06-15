@@ -4,10 +4,10 @@ $page = 'periodic-time-report';
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
-// Check if user has permission to access reports
-if (!has_permission('view_daily_report') && !is_admin()) {
-    $_SESSION['error'] = "You don't have permission to access Reports.";
-    header('Location: index.php');
+// Check if user is logged in
+if (!is_logged_in()) {
+    $_SESSION['error'] = "You must be logged in to access reports.";
+    header('Location: ../../index.php');
     exit();
 }
 

@@ -1,6 +1,17 @@
 <?php
-include("includes/db_connection.php");
-include("includes/utilities.php");
+// Security check and session validation
+session_start();
+require_once '../../../includes/session_config.php';
+require_once '../../../includes/utilities.php';
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(403);
+    echo json_encode(["error" => "Access denied. Please log in."]);
+    exit;
+}
+
+include("../../../includes/db_connection.php");
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (!isset($_POST['reportDateRange']) || empty($_POST['reportDateRange'])) {
@@ -291,7 +302,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 
 
-<form id="jsonForm" action="periodic-report.php" method="post">
+<form id="jsonForm" action="../periodic-report.php" method="post">
     <input type="hidden" name="jsonData" value='<?php echo htmlspecialchars($dataJson, ENT_QUOTES, "UTF-8"); ?>'>
     <input type="hidden" name="startdate" value="<?php echo $startDate; ?>">
     <input type="hidden" name="enddate" value="<?php echo $endDate; ?>">

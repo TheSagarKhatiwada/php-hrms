@@ -1,7 +1,17 @@
 <?php
+// Security check and session validation
+session_start();
+require_once '../../../includes/session_config.php';
+require_once '../../../includes/utilities.php';
 
-include("includes/db_connection.php");
-include("includes/utilities.php");
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(403);
+    echo json_encode(["error" => "Access denied. Please log in."]);
+    exit;
+}
+
+include("../../../includes/db_connection.php");
 
 // Fetch report date and branch filter from the request
 $reportdate = $_POST['reportdate'];
@@ -248,7 +258,7 @@ $dataJson = json_encode($data, JSON_UNESCAPED_UNICODE);
 
 ?>
 
-<form id="jsonForm" action="daily-report.php" method="post">
+<form id="jsonForm" action="../daily-report.php" method="post">
     <input type="hidden" name="jsonData" value='<?php echo htmlspecialchars($dataJson, ENT_QUOTES, "UTF-8"); ?>'>
     <input type="hidden" name="reportdate" value="<?php echo $reportdate;?>">
 </form>

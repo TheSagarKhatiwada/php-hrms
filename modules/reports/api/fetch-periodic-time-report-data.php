@@ -10,14 +10,14 @@ if (session_status() == PHP_SESSION_NONE) {
 // Include necessary files
 require_once '../../../includes/session_config.php';
 require_once '../../../includes/utilities.php';
-include("includes/db_connection.php");
+include("../../../includes/db_connection.php");
 
-// Check if user has permission
-// if (!has_permission('view_daily_report') || !is_admin()) {
-//     $_SESSION['error'] = "You don't have permission to access Reports.";
-//     header('Location: index.php');
-//     exit();
-// }
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    $_SESSION['error'] = "Please log in to access reports.";
+    header('Location: ../../../index.php');
+    exit();
+}
 
 // Function to convert time to seconds for comparison
 function timeToSeconds($timeStr) {
@@ -102,14 +102,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $stmtEmployees->execute();
     $employees = $stmtEmployees->fetchAll(PDO::FETCH_ASSOC);    // Fetch attendance data within the selected date range
     $sqlAttendance = "SELECT
-                        a.emp_Id,
+                        a.emp_id,
                         a.date,
                         MIN(a.time) AS in_time,
                         GROUP_CONCAT(a.method ORDER BY a.time ASC SEPARATOR ', ') AS methods_used
                     FROM attendance_logs a
                     WHERE a.date BETWEEN :startDate AND :endDate
-                    AND emp_Id IN (SELECT emp_id FROM employees WHERE branch = :empBranch)
-                    GROUP BY a.emp_Id, a.date";
+                    AND a.emp_id IN (SELECT emp_id FROM employees WHERE branch = :empBranch)
+                    GROUP BY a.emp_id, a.date";
 
     $stmtAttendance = $pdo->prepare($sqlAttendance);
     $stmtAttendance->bindParam(':startDate', $startDate);
@@ -117,11 +117,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $stmtAttendance->bindParam(':empBranch', $empBranch, PDO::PARAM_INT);
     $stmtAttendance->execute();
     $attendanceData = $stmtAttendance->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Create a map for quick lookup of attendance data by employee ID and date
+      // Create a map for quick lookup of attendance data by employee ID and date
     $attendanceMap = [];
     foreach ($attendanceData as $att) {
-        $attendanceMap[$att['emp_Id']][$att['date']] = $att;
+        $attendanceMap[$att['emp_id']][$att['date']] = $att;
     }
 
     // Generate date range for the report
@@ -255,7 +254,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $dataJson = json_encode($processedData, JSON_UNESCAPED_UNICODE);
 ?>
 
-<form id="jsonForm" action="periodic-time-report.php" method="post">
+<form id="jsonForm" action="../periodic-time-report.php" method="post">
     <input type="hidden" name="jsonData" value='<?php echo htmlspecialchars($dataJson, ENT_QUOTES, "UTF-8"); ?>'>
     <input type="hidden" name="reportDateRange" value="<?php echo htmlspecialchars($daterange, ENT_QUOTES, "UTF-8"); ?>">
     <input type="hidden" name="empBranch" value="<?php echo htmlspecialchars($empBranch, ENT_QUOTES, "UTF-8"); ?>">

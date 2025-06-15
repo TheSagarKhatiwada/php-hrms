@@ -81,7 +81,7 @@ require_once __DIR__ . '/utilities.php';
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'holidays.php'); ?>" class="nav-link <?php if($page == 'Holiday Management'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/leave/holidays.php'); ?>" class="nav-link <?php if($page == 'Holiday Management'){echo 'active';}?>">
                   <i class="nav-icon fas fa-calendar-day"></i>
                   <span>Holiday Management</span>
                 </a>

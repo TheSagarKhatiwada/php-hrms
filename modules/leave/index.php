@@ -28,11 +28,11 @@ $currentEmployeeId = null;
 if ($currentUserId) {
     try {
         // Use the user_id directly as it's already the primary key ID
-        $stmt = $pdo->prepare("SELECT id FROM employees WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE emp_id = ?");
         $stmt->execute([$currentUserId]);
         $result = $stmt->fetch();
         if ($result) {
-            $currentEmployeeId = $result['id']; // Use the primary key ID
+            $currentEmployeeId = $result['emp_id']; // Use the primary key ID
         }
     } catch (PDOException $e) {
         error_log("Error fetching employee ID: " . $e->getMessage());

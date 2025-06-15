@@ -1,24 +1,23 @@
 <?php
 $page = 'periodic-report'; // Updated to match the new filename
-// Define $home variable early for CSS/JS includes
-$home = './';
+$home = '../../'; // Fixed: Should point to project root
 // Include utilities for role check functions
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
-// Check if user has permission to access daily reports
-if (!has_permission('view_daily_report') && !is_admin()) {
-    $_SESSION['error'] = "You don't have permission to access Daily Reports.";
-    header('Location: index.php');
+// Check if user has permission to access reports
+if (!is_logged_in()) {
+    $_SESSION['error'] = "You must be logged in to access reports.";
+    header('Location: ../../index.php');
     exit();
 }
 
 // Check if form is submitting (adding a new report)
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'add') {
-    // Check if user has permission to add daily reports
-    if (!has_permission('add_daily_report') && !is_admin()) {
-        $_SESSION['error'] = "You don't have permission to add new Daily Reports.";
-        header('Location: daily-report.php');
+    // Check if user has permission to add reports
+    if (!is_admin()) {
+        $_SESSION['error'] = "You don't have permission to add new reports.";
+        header('Location: ../../dashboard.php');
         exit();
     }
 }
