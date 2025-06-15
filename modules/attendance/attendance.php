@@ -2,9 +2,9 @@
 ob_start(); // Start output buffering
 $page = 'attendance';
 
-include 'includes/session_config.php';
-include 'includes/db_connection.php';
-include 'includes/utilities.php';
+include '../../includes/session_config.php';
+include '../../includes/db_connection.php';
+include '../../includes/utilities.php';
 
 // Check if we need to open the modal in manual mode
 $openManualModal = isset($_GET['action']) && $_GET['action'] === 'manual';
@@ -26,7 +26,7 @@ try {
 }
 
 // Include the header after data loading (includes topbar, starts main-wrapper and content-wrapper)
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <!-- Content Wrapper (already started in header.php) -->
@@ -356,7 +356,7 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <!-- Include the main footer (which closes content-wrapper, main-wrapper, etc.) -->
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../../includes/footer.php'; ?>
 
 <!-- Page specific script -->
 <script>

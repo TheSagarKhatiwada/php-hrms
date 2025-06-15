@@ -782,7 +782,7 @@ function fetchPublicIp() {
     
     value.textContent = '...';
     refreshBtn.disabled = true;
-    fetch('../api/public-ip.php')
+    fetch('../../api/public-ip.php')
         .then(res => res.json())
         .then(data => {
             if (data.success) {

@@ -3,7 +3,7 @@
 // Instead of having separate logic, we just record the timestamp and let the system determine what it is
 
 // Include session configuration first to avoid conflicts
-require_once 'includes/session_config.php';
+require_once '../../includes/session_config.php';
 
 // Don't start a new session if one already exists
 if (session_status() === PHP_SESSION_NONE) {
@@ -18,14 +18,14 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Include the database connection file
-require_once 'includes/db_connection.php';
+require_once '../../includes/db_connection.php';
 
 // Include settings file to get timezone configuration
-require_once 'includes/settings.php';
+require_once '../../includes/settings.php';
 
 // Include notification helpers
-if (file_exists('includes/notification_helpers.php')) {
-    require_once 'includes/notification_helpers.php';
+if (file_exists('../../includes/notification_helpers.php')) {
+    require_once '../../includes/notification_helpers.php';
 }
 
 // Handle AJAX attendance request

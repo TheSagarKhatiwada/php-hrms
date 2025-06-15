@@ -1,17 +1,17 @@
 <?php
 // Include session configuration first to ensure session is available
-require_once 'includes/session_config.php';
-require_once 'includes/utilities.php';
+require_once '../../includes/session_config.php';
+require_once '../../includes/utilities.php';
 
 $page = 'employees';
 
 // Check if user has admin access
 if (!is_admin()) {
-    header('Location: dashboard.php');
+    header('Location: ../../dashboard.php');
     exit();
 }
 
-include 'includes/db_connection.php';
+include '../../includes/db_connection.php';
 
 // Handle exit date and note update
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['exitDate'])) {
@@ -53,7 +53,7 @@ if (!isset($_GET['_nocache'])) {
 }
 
 // Include the header (which includes topbar, starts main-wrapper and content-wrapper)
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <!-- The main-container div is removed -->
@@ -228,7 +228,7 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <!-- Include the main footer (which closes content-wrapper, main-wrapper, etc.) -->
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../../includes/footer.php'; ?>
 
 <!-- Page specific script -->
 <script>

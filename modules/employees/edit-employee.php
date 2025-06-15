@@ -1,17 +1,17 @@
 <?php
 $page = 'Edit Employee';
 // Include utilities for role check functions
-require_once 'includes/session_config.php';
-require_once 'includes/utilities.php';
+require_once '../../includes/session_config.php';
+require_once '../../includes/utilities.php';
 
 // Use the standardized role check function
 if (!is_admin() && get_user_role() === '0') {
-    header('Location: dashboard.php');
+    header('Location: ../../dashboard.php');
     exit();
 }
 
 // Fetch employee details
-include 'includes/db_connection.php'; // Include database connection
+include '../../includes/db_connection.php'; // Include database connection
 
 if (!isset($_GET['id'])) {
   header('Location: employees.php');
@@ -32,7 +32,7 @@ if (!$employee) {
 }
 
 // Include the header (which includes topbar, starts main-wrapper and content-wrapper)
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <!-- Main content -->
@@ -275,7 +275,7 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../../includes/footer.php'; ?>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">

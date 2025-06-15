@@ -1,6 +1,6 @@
 <?php
 // Apply cache control to prevent showing old versions of the page
-require_once 'includes/cache_control.php';
+require_once '../../../includes/cache_control.php';
 
 // Start session if not already started
 if (session_status() == PHP_SESSION_NONE) {
@@ -8,8 +8,8 @@ if (session_status() == PHP_SESSION_NONE) {
 }
 
 // Include necessary files
-require_once 'includes/session_config.php';
-require_once 'includes/utilities.php';
+require_once '../../../includes/session_config.php';
+require_once '../../../includes/utilities.php';
 include("includes/db_connection.php");
 
 // Check if user has permission

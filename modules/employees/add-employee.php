@@ -1,17 +1,17 @@
 <?php
 // Include session configuration and utilities
-require_once 'includes/session_config.php';
-require_once 'includes/utilities.php';
+require_once '../../includes/session_config.php';
+require_once '../../includes/utilities.php';
 
 $page = 'Add Employee';
 
 // Use the standardized role check function
 if (!is_admin() && get_user_role() === '0') {
-    header('Location: dashboard.php');
+    header('Location: ../../dashboard.php');
     exit();
 }
 
-include 'includes/db_connection.php'; // Include the database connection file
+include '../../includes/db_connection.php'; // Include the database connection file
 
 // Get query parameters for repopulating form after errors
 $machId = $_GET['machId'] ?? '';
@@ -164,7 +164,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   exit();
 }
 
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <!-- Main content -->
@@ -394,7 +394,7 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../../includes/footer.php'; ?>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">

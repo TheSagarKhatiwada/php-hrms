@@ -1,12 +1,12 @@
 <?php
 $page = 'daily-report';
 // Include utilities for role check functions
-require_once 'includes/session_config.php';
-require_once 'includes/utilities.php';
+require_once '../../includes/session_config.php';
+require_once '../../includes/utilities.php';
 
 // Include the header (handles head, body, topbar, sidebar, opens wrappers)
-require_once __DIR__ . '/includes/header.php';
-include 'includes/db_connection.php'; // DB connection needed after header potentially?
+require_once __DIR__ . '/../../includes/header.php';
+include '../../includes/db_connection.php'; // DB connection needed after header potentially?
 ?>
 <!-- Page-specific CSS (DataTables) - Ideally loaded via header.php, but placed here for now -->
 <link rel="stylesheet" href="<?php echo $home;?>plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
@@ -112,7 +112,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
  <div class="container-fluid">
  <div class="card">
           <div class="card-header" style="padding: 10px;">
-            <form action="fetch-daily-report-data.php" method="POST" id="daily-report-form" class="mt-3">
+            <form action="api/fetch-daily-report-data.php" method="POST" id="daily-report-form" class="mt-3">
               <div class="row">
                 <div class="col-md-3">
                   <div class="form-group">
@@ -326,7 +326,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
 
 <!-- Footer include (handles closing wrappers, common JS) -->
 <?php 
-include 'includes/footer.php';
+include '../../includes/footer.php';
 ?>
 
 <!-- Wrapper div closing tag is removed -->

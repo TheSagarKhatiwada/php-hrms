@@ -1,10 +1,10 @@
 <?php
 $page = 'employee';
-include 'includes/header.php';
-include 'includes/db_connection.php';
+include '../../includes/header.php';
+include '../../includes/db_connection.php';
 
 // Include hierarchy helpers
-require_once 'includes/hierarchy_helpers.php';
+require_once '../../includes/hierarchy_helpers.php';
 
 // Handle password reset request
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password']) && isset($_POST['confirm_password']) && isset($_POST['emp_id'])) {
@@ -838,7 +838,7 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
 </div><!-- /.container-fluid -->
 
 <?php 
-include 'includes/footer.php';
+include '../../includes/footer.php';
 ?>
 
 <!-- Change Password Modal -->

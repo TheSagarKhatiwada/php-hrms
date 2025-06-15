@@ -65,7 +65,7 @@ if (!isset($_SESSION['user_id'])) {
             <div class="container-fluid">
                 <div class="card">
                     <div class="card-header">
-                        <form action="fetch-periodic-report-data.php" method="POST" id="periodic-report-form">
+                        <form action="api/fetch-periodic-report-data.php" method="POST" id="periodic-report-form">
                             <div class="row">
                                 <div class="col-md-3">
                                     <div class="form-group">

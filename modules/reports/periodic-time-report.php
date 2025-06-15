@@ -1,8 +1,8 @@
 <?php
 $page = 'periodic-time-report';
 // Include utilities for role check functions
-require_once 'includes/session_config.php';
-require_once 'includes/utilities.php';
+require_once '../../includes/session_config.php';
+require_once '../../includes/utilities.php';
 
 // Check if user has permission to access reports
 if (!has_permission('view_daily_report') && !is_admin()) {
@@ -12,8 +12,8 @@ if (!has_permission('view_daily_report') && !is_admin()) {
 }
 
 // Include the header (handles head, body, topbar, sidebar, opens wrappers)
-require_once __DIR__ . '/includes/header.php';
-include 'includes/db_connection.php'; // DB connection needed after header potentially?
+require_once __DIR__ . '/../../includes/header.php';
+include '../../includes/db_connection.php'; // DB connection needed after header potentially?
 ?>
 
 <!-- DataTables & CSS -->
@@ -263,7 +263,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
     <div class="container-fluid">
         <div class="card">
             <div class="card-header" style="padding: 10px;">
-                <form action="fetch-periodic-time-report-data.php" method="POST" id="periodic-time-report-form" class="mt-3">                    <?php $savedDateRange = isset($_POST['reportDateRange']) ? $_POST['reportDateRange'] : ''; ?>
+                <form action="api/fetch-periodic-time-report-data.php" method="POST" id="periodic-time-report-form" class="mt-3">                    <?php $savedDateRange = isset($_POST['reportDateRange']) ? $_POST['reportDateRange'] : ''; ?>
                     <input type="hidden" id="hiddenReportDateRange" value="<?php echo $savedDateRange; ?>">
                     <div class="row">
                         <div class="col-md-3">
@@ -534,7 +534,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
 
 <!-- Footer include (handles closing wrappers, common JS) -->
 <?php 
-include 'includes/footer.php';
+include '../../includes/footer.php';
 ?>
 
 <!-- Page Specific Scripts -->

@@ -3,8 +3,8 @@ $page = 'periodic-report'; // Updated to match the new filename
 // Define $home variable early for CSS/JS includes
 $home = './';
 // Include utilities for role check functions
-require_once 'includes/session_config.php';
-require_once 'includes/utilities.php';
+require_once '../../includes/session_config.php';
+require_once '../../includes/utilities.php';
 
 // Check if user has permission to access daily reports
 if (!has_permission('view_daily_report') && !is_admin()) {
@@ -24,8 +24,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 }
 
 // Include the header (handles head, body, topbar, sidebar, opens wrappers)
-require_once __DIR__ . '/includes/header.php';
-include 'includes/db_connection.php'; // DB connection needed after header potentially?
+require_once __DIR__ . '/../../includes/header.php';
+include '../../includes/db_connection.php'; // DB connection needed after header potentially?
 ?>
 
 <!-- Page-specific CSS (DataTables) - Bootstrap 4 compatible -->
@@ -168,7 +168,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
     <div class="container-fluid">
         <div class="card">
             <div class="card-header" style="padding: 10px;">
-                <form action="fetch-periodic-report-data.php" method="POST" id="periodic-report-form" class="mt-3">
+                <form action="api/fetch-periodic-report-data.php" method="POST" id="periodic-report-form" class="mt-3">
                     <?php $savedDateRange = isset($_POST['reportDateRange']) ? $_POST['reportDateRange'] : ''; ?>
                     <input type="hidden" name="reportDateRange" id="hiddenReportDateRange" value="<?php echo $savedDateRange; ?>">
                     <div class="row">
@@ -362,7 +362,7 @@ include 'includes/db_connection.php'; // DB connection needed after header poten
 </div>
 
 
-<?php require_once 'includes/footer.php'; ?>
+<?php require_once '../../includes/footer.php'; ?>
 
 <!-- Date picker libraries - Load after jQuery is available -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>

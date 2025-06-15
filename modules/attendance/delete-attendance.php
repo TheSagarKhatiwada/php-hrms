@@ -3,7 +3,7 @@
 session_start();
 
 // Include the database connection file
-require_once 'includes/db_connection.php';
+require_once '../../includes/db_connection.php';
 
 // Check if the 'id' parameter is provided in the URL
 if (isset($_GET['id'])) {

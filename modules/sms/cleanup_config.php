@@ -10,8 +10,8 @@
  * - sms_daily_limit
  */
 
-require_once __DIR__ . '/../includes/config.php';
-require_once __DIR__ . '/../includes/db_connection.php';
+require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/db_connection.php';
 
 echo "=== SMS Configuration Cleanup ===\n";
 echo "Removing unused SMS configuration fields...\n\n";

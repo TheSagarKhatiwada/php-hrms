@@ -1,6 +1,6 @@
 <?php
 // Include session configuration first to ensure session is available
-require_once 'includes/session_config.php';
+require_once '../../includes/session_config.php';
 
 // Enable error reporting but don't display errors on screen
 error_reporting(E_ALL);
@@ -8,9 +8,9 @@ ini_set('display_errors', 0);
 
 // Include required files
 try {
-    require_once 'includes/db_connection.php';
-    require_once 'includes/settings.php';
-    require_once 'includes/notification_helpers.php';
+    require_once '../../includes/db_connection.php';
+    require_once '../../includes/settings.php';
+    require_once '../../includes/notification_helpers.php';
 } catch (Exception $e) {
     // If any required file is missing, set error and redirect
     $_SESSION['error'] = 'System error: Failed to load required dependencies';

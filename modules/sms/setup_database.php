@@ -9,7 +9,7 @@ echo "=== SMS Module Database Setup ===\n\n";
 // Load database configuration from centralized config file
 function createDatabaseConnection() {
     // Load configuration from main config file
-    $config_file = __DIR__ . '/../includes/config.php';
+    $config_file = __DIR__ . '/../../includes/config.php';
     if (!file_exists($config_file)) {
         echo "Configuration error: Database configuration file not found at: $config_file\n";
         echo "Please ensure includes/config.php exists with proper database configuration.\n";

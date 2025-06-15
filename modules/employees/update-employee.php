@@ -1,10 +1,10 @@
 <?php
 // Include session configuration before starting any session
-require_once 'includes/session_config.php';
+require_once '../../includes/session_config.php';
 
-require 'includes/db_connection.php'; // Include database connection
-require_once 'includes/utilities.php'; // Include utilities
-require_once 'includes/hierarchy_helpers.php'; // Include hierarchy helpers
+require '../../includes/db_connection.php'; // Include database connection
+require_once '../../includes/utilities.php'; // Include utilities
+require_once '../../includes/hierarchy_helpers.php'; // Include hierarchy helpers
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Get form data
@@ -256,7 +256,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Send email if login access is granted and was not previously granted
         if ($loginAccess == '1' && $employee['login_access'] != '1') {
             // Include the mail helper file
-            require_once 'includes/mail_helper.php';
+            require_once '../../includes/mail_helper.php';
             
             $to = $empEmail;
             $subject = "Login Access Granted";

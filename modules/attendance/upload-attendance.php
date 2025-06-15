@@ -1,6 +1,6 @@
 <?php
 // Include session configuration before starting any session
-require_once 'includes/session_config.php';
+require_once '../../includes/session_config.php';
 
 // Remove duplicate session_start() - it's already handled in session_config.php
 // Increase execution time and memory limit for large file processing
@@ -8,7 +8,7 @@ set_time_limit(300); // 5 minutes
 ini_set('memory_limit', '256M');
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
-    require 'includes/db_connection.php'; // Include the PDO connection
+    require '../../includes/db_connection.php'; // Include the PDO connection
 
     $file = $_FILES['attendanceFile'];
 

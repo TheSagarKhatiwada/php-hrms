@@ -1,7 +1,7 @@
 <?php
 // Include session configuration first to ensure session is available
-require_once 'includes/session_config.php';
-require 'includes/db_connection.php';
+require_once '../../includes/session_config.php';
+require '../../includes/db_connection.php';
 
 if (isset($_GET['id'])) {
     $emp_id = $_GET['id'];

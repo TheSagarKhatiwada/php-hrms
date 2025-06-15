@@ -69,13 +69,13 @@ require_once __DIR__ . '/utilities.php';
           <div class="collapse <?php if($page == 'employees' || $page == 'attendance' || $page == 'Holiday Management'){echo 'show';}?>" id="employeeSubmenu">
             <ul class="nav nav-sub flex-column">
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'employees.php'); ?>" class="nav-link <?php if($page == 'employees'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/employees/employees.php'); ?>" class="nav-link <?php if($page == 'employees'){echo 'active';}?>">
                   <i class="nav-icon fas fa-users"></i>
                   <span>Employees</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'attendance.php'); ?>" class="nav-link <?php if($page == 'attendance'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/attendance/attendance.php'); ?>" class="nav-link <?php if($page == 'attendance'){echo 'active';}?>">
                   <i class="nav-icon fas fa-clipboard-check"></i>
                   <span>Attendance</span>
                 </a>
@@ -166,19 +166,19 @@ require_once __DIR__ . '/utilities.php';
           <div class="collapse <?php if($page == 'daily-report' || $page == 'periodic-report' || $page == 'periodic-time-report'){echo 'show';}?>" id="reportsSubmenu">
             <ul class="nav nav-sub flex-column">
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/reports/daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
                   <i class="nav-icon fas fa-file-alt"></i>
                   <span>Daily Report</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/reports/periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
                   <i class="nav-icon fas fa-calendar"></i>
                   <span>Periodic Report</span>
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
+                <a href="<?php echo append_sid($home . 'modules/reports/periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
                   <i class="nav-icon fas fa-clock"></i>
                   <span>Periodic Time Report</span>
                 </a>

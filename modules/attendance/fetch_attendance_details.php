@@ -1,5 +1,5 @@
 <?php
-require_once 'includes/db_connection.php';
+require_once '../../includes/db_connection.php';
 
 if (isset($_POST['id'])) {
     try {

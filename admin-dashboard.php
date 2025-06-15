@@ -189,8 +189,8 @@ require_once __DIR__ . '/includes/header.php';
                     <i class="fas fa-cog me-1"></i> Actions
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dashboardActions">
-                    <li><a class="dropdown-item" href="add-employee.php"><i class="fas fa-user-plus me-2"></i>Add Employee</a></li>
-                    <li><a class="dropdown-item" href="attendance.php?action=manual"><i class="fas fa-clipboard-check me-2"></i>Record Attendance</a></li>
+                    <li><a class="dropdown-item" href="modules/employees/add-employee.php"><i class="fas fa-user-plus me-2"></i>Add Employee</a></li>
+                    <li><a class="dropdown-item" href="modules/attendance/attendance.php?action=manual"><i class="fas fa-clipboard-check me-2"></i>Record Attendance</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="system-settings.php"><i class="fas fa-cogs me-2"></i>System Settings</a></li>
                 </ul>
@@ -466,7 +466,7 @@ require_once __DIR__ . '/includes/header.php';
             <div class="card border-0 shadow-sm rounded-3">
                 <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
                     <h5 class="card-title mb-0">Recent Attendance</h5>
-                    <a href="attendance.php" class="btn btn-sm btn-primary">
+                    <a href="modules/attendance/attendance.php" class="btn btn-sm btn-primary">
                         <i class="fas fa-list me-1"></i> View All
                     </a>
                 </div>
@@ -558,13 +558,13 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-6">
-                            <a href="add-employee.php" class="btn btn-primary w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
+                            <a href="modules/employees/add-employee.php" class="btn btn-primary w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
                                 <i class="fas fa-user-plus fs-4 mb-2"></i>
                                 <span>Add Employee</span>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="attendance.php?action=manual" class="btn btn-success w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
+                            <a href="modules/attendance/attendance.php?action=manual" class="btn btn-success w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn">
                                 <i class="fas fa-clipboard-check fs-4 mb-2"></i>
                                 <span>Record Attendance</span>
                             </a>

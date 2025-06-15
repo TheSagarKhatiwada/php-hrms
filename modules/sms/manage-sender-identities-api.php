@@ -5,8 +5,8 @@
  */
 
 header('Content-Type: application/json');
-require_once __DIR__ . '/../includes/session_config.php';
-require_once __DIR__ . '/../includes/db_connection.php';
+require_once __DIR__ . '/../../includes/session_config.php';
+require_once __DIR__ . '/../../includes/db_connection.php';
 require_once __DIR__ . '/SparrowSMS.php';
 
 // Start session if not already started
