@@ -37,14 +37,13 @@ if ($_POST && isset($_POST['reject_request'])) {
         if (!$request_data) {
             throw new Exception("Leave request not found or already processed.");
         }
-        
-        // Update request status
+          // Update request status
         $sql = "UPDATE leave_requests 
                 SET status = 'rejected', 
-                    reviewed_by = ?, 
+                    approved_by = ?, 
                     reviewed_date = NOW(),
                     rejection_reason = ?
-                WHERE id = ? AND status = 'pending'";        $stmt = $pdo->prepare($sql);
+                WHERE id = ? AND status = 'pending'";$stmt = $pdo->prepare($sql);
         
         if ($stmt->execute([$_SESSION['user_id'], $rejection_reason, $request_id]) && $stmt->rowCount() > 0) {
             // Send notification

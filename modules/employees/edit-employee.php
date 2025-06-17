@@ -230,9 +230,17 @@ require_once __DIR__ . '/../../includes/header.php';
           <div class="col-md-4">
             <div class="text-center mb-3">
               <div class="position-relative d-inline-block">
-                <img id="photoPreview" src="<?php echo htmlspecialchars($employee['user_image'] ?: 'resources/images/default-user.png'); ?>" 
+                <img id="photoPreview" src="<?php 
+                  $imagePath = $employee['user_image'] ?: '../../resources/userimg/default-image.jpg';
+                  // If the image path doesn't start with ../ or http, it's stored without the relative path
+                  if (!empty($employee['user_image']) && !str_starts_with($employee['user_image'], '../') && !str_starts_with($employee['user_image'], 'http')) {
+                    $imagePath = '../../' . $employee['user_image'];
+                  }
+                  echo htmlspecialchars($imagePath);
+                ?>" 
                      alt="Employee Photo" class="rounded-circle img-thumbnail" 
-                     style="width: 200px; height: 200px; object-fit: cover;">
+                     style="width: 200px; height: 200px; object-fit: cover;"
+                     onerror="this.src='../../resources/userimg/default-image.jpg'">
                 <button type="button" class="btn btn-sm btn-primary position-absolute bottom-0 end-0 rounded-circle"
                         onclick="document.getElementById('empPhoto').click();">
                   <i class="fas fa-camera"></i>

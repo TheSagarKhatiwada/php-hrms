@@ -436,10 +436,17 @@ try {
                     <div class="col-md-4 text-center text-white position-relative p-0">
                         <div class="d-flex flex-column justify-content-center align-items-center h-100 p-4"
                              style="background: linear-gradient(135deg, var(--primary-color), #4e73df);"> 
-                            <div class="position-relative mx-auto mb-4">
-                                <img src="<?php echo $userData['user_image'] ?? 'resources/images/default-user.png'; ?>" 
+                            <div class="position-relative mx-auto mb-4">                                <img src="<?php 
+                                  $imagePath = $userData['user_image'] ?? 'resources/userimg/default-image.jpg';
+                                  // If the image path doesn't start with ../ or http, it might be stored without proper path
+                                  if (!empty($userData['user_image']) && !str_starts_with($userData['user_image'], 'resources/') && !str_starts_with($userData['user_image'], 'http')) {
+                                    $imagePath = $userData['user_image'];
+                                  }
+                                  echo htmlspecialchars($imagePath);
+                                ?>" 
                                      class="rounded-circle img-thumbnail border-4 shadow"
-                                     style="width: 130px; height: 130px; object-fit: cover;">
+                                     style="width: 130px; height: 130px; object-fit: cover;"
+                                     onerror="this.src='resources/userimg/default-image.jpg'">
                                 <div class="position-absolute bottom-0 end-0 translate-middle-y">
                                     <div class="rounded-circle border-3 border-white d-flex align-items-center justify-content-center bg-<?php echo !empty($userData['exit_date']) ? 'danger' : 'success'; ?>"
                                          style="width: 32px; height: 32px;">
@@ -486,10 +493,9 @@ try {
                                         <small class="text-muted d-block">Department</small>
                                         <span class="fw-medium">
                                             <?php 
-                                                try {
-                                                    $stmt = $pdo->prepare("SELECT departments.dept_name FROM departments 
+                                                try {                                                    $stmt = $pdo->prepare("SELECT departments.dept_name FROM departments 
                                                                         JOIN employees ON departments.id = employees.department 
-                                                                        WHERE employees.id = ?");
+                                                                        WHERE employees.emp_id = ?");
                                                     $stmt->execute([$userId]);
                                                     $dept = $stmt->fetchColumn();
                                                     echo htmlspecialchars($dept ?? 'Not assigned');

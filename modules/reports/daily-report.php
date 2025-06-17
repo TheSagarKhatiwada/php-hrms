@@ -87,6 +87,31 @@ include '../../includes/db_connection.php'; // DB connection needed after header
             margin: 0.5cm !important;
         }
     }
+    
+    /* Styles for wide table handling */
+    .table-responsive {
+        overflow-x: auto;
+    }
+    
+    #daily-report-table {
+        min-width: 1200px; /* Ensure minimum width for all columns */
+        font-size: 0.875rem; /* Slightly smaller font for better fit */
+    }
+    
+    #daily-report-table th,
+    #daily-report-table td {
+        white-space: nowrap;
+        min-width: 60px;
+        padding: 0.375rem 0.25rem; /* Reduced padding */
+    }
+    
+    /* Specific column widths */
+    #daily-report-table th:nth-child(1),
+    #daily-report-table td:nth-child(1) { min-width: 40px; } /* SN */
+    #daily-report-table th:nth-child(2),
+    #daily-report-table td:nth-child(2) { min-width: 150px; } /* Employee Name */
+    #daily-report-table th:nth-child(3),
+    #daily-report-table td:nth-child(3) { min-width: 80px; } /* Branch */
 </style>
 
 <!-- Body tag is opened in header.php -->
@@ -176,65 +201,34 @@ include '../../includes/db_connection.php'; // DB connection needed after header
             <div class="d-none print-logo">
               <img src="<?php echo $home;?>resources/logo.png" alt="Company Logo" style="height: 80px; float: right; margin-bottom: 10px;">
             </div>
+            
+            <!-- Report Title -->
+            <div class="text-center mb-3">
+              <h4>Daily Attendance Report: <?php if (isset($_POST['reportdate'])) { echo $_POST['reportdate']; } ?></h4>
+            </div>
+            
             <!-- Removed print button from here -->
+            <div class="table-responsive">
             <table id="daily-report-table" class="table table-sm table-bordered table-striped" width="100%">
               <thead>
-                <!-- <tr>
-                  <th class="align-items-center text-center" style="font-size: 1.8rem;" colspan="18">Prime Express Courier & Cargo Pvt. Ltd.</th>
-                </tr> -->
                 <tr>
-                  <?php
-                    // Count the number of <th> in the next row to set dynamic colspan
-                    $colspan = 0;
-                    $headerRow = [
-                      ['rowspan' => 2], // SN
-                      ['rowspan' => 2], // Employee Name
-                      ['rowspan' => 2], // Branch
-                      ['colspan' => 3], // Planned Time
-                      ['colspan' => 3], // Worked Time
-                      ['rowspan' => 2], // Overtime
-                      ['rowspan' => 2], // Late In
-                      ['rowspan' => 2], // Early Out
-                      ['rowspan' => 2], // Early In
-                      ['rowspan' => 2], // Late Out
-                      ['rowspan' => 2], // Marked As
-                      ['rowspan' => 2], // Methods
-                      ['rowspan' => 2], // Remarks
-                    ];
-                    foreach ($headerRow as $col) {
-                      if (isset($col['colspan'])) {
-                        $colspan += $col['colspan'];
-                      } else {
-                        $colspan += 1;
-                      }
-                    }
-                  ?>
-                  <th class="align-items-center text-center" colspan="<?php echo $colspan; ?>">
-                    Daily Attendance Report: <?php if (isset($_POST['reportdate'])) { echo $_POST['reportdate']; } ?>
-                  </th>
-                </tr>
-                <tr>
-                  <th class="align-items-center text-center" rowspan="2">SN</th>
-                  <th class="align-items-center text-center" rowspan="2">Employee Name</th>
-                  <th class="align-items-center text-center" rowspan="2">Branch</th>
-                  <th class="align-items-center text-center" colspan="3">Planned Time</th>
-                  <th class="align-items-center text-center" colspan="3">Worked Time</th>
-                  <th class="align-items-center text-center" rowspan="2">Overtime</th>
-                  <th class="align-items-center text-center" rowspan="2">Late In</th>
-                  <th class="align-items-center text-center" rowspan="2">Early Out</th>
-                  <th class="align-items-center text-center" rowspan="2">Early In</th>
-                  <th class="align-items-center text-center" rowspan="2">Late Out</th>
-                  <th class="align-items-center text-center" rowspan="2">Marked As</th>
-                  <th class="align-items-center text-center" rowspan="2">Methods</th>
-                  <th class="align-items-center text-center" rowspan="2">Remarks</th>
-                </tr>
-                <tr>
-                  <th class="align-items-center text-center">In</th>
-                  <th class="align-items-center text-center">Out</th>
-                  <th class="align-items-center text-center">Work hrs</th>
-                  <th class="align-items-center text-center">In</th>
-                  <th class="align-items-center text-center">Out</th>
-                  <th class="align-items-center text-center">Actual</th>
+                  <th class="align-items-center text-center">SN</th>
+                  <th class="align-items-center text-center">Employee Name</th>
+                  <th class="align-items-center text-center">Branch</th>
+                  <th class="align-items-center text-center">Planned In</th>
+                  <th class="align-items-center text-center">Planned Out</th>
+                  <th class="align-items-center text-center">Work Hrs</th>
+                  <th class="align-items-center text-center">Actual In</th>
+                  <th class="align-items-center text-center">Actual Out</th>
+                  <th class="align-items-center text-center">Worked Hrs</th>
+                  <th class="align-items-center text-center">Overtime</th>
+                  <th class="align-items-center text-center">Late In</th>
+                  <th class="align-items-center text-center">Early Out</th>
+                  <th class="align-items-center text-center">Early In</th>
+                  <th class="align-items-center text-center">Late Out</th>
+                  <th class="align-items-center text-center">Marked As</th>
+                  <th class="align-items-center text-center">Methods</th>
+                  <th class="align-items-center text-center">Remarks</th>
                 </tr>
               </thead>
               <tbody>
@@ -311,6 +305,7 @@ include '../../includes/db_connection.php'; // DB connection needed after header
               </tr>
             </tfoot>
             </table>
+            </div> <!-- /.table-responsive -->
           </div>
           <!-- /.card-body -->
         </div>
@@ -335,104 +330,95 @@ include '../../includes/footer.php';
 
 <!-- Page Specific Scripts -->
 <script>
-  $(function () {
-    var table = $("#daily-report-table").DataTable({
-        "responsive": true,
-        "lengthChange": false,
-        "autoWidth": false, // Changed to false to avoid width calculations
-        "paging": false,
-        "searching": true,
-        "ordering": false,
-        "info": false,
-        "columnDefs": [
-            { "orderable": false, "targets": '_all' } // Disable ordering on all columns
-        ],
-        "dom": 't',  // Only show the table, no other controls
-        "fixedHeader": false, // Disable fixed header which can cause issues with complex headers
-        "buttons": [
-            'colvis', // Add column visibility button
-            {
-                extend: 'print',
-                text: 'Print',
-                exportOptions: {
-                    modifier: {
-                        page: 'all',  // Ensure it applies to all pages
-                    },
-                    header: true  // Include the headers in the print
-                },
-                autoPrint: true,
-                title: 'Daily Attendance Report of <?php echo  $_POST['reportdate'] ?? '' ?>',
-                messageTop: '', // Subtitle text for the printed page
-                customize: function (win) {
-                    $(win.document.body)
-                        .css('font-size', '10pt') // Adjust font size for print
-                        .prepend('<img src="<?php echo $home;?>resources/logo.png" style="position:absolute; top:0; right:5px; width:200px;" />');
-                    $(win.document.body).find('table')
-                        .addClass('compact') // Adjust table layout
-                        .css('font-size', 'inherit');
-                    
-                    // Customize the print page size
-                    var css = '@page { size: A4 landscape; }'; 
-                    var head = win.document.head || win.document.getElementsByTagName('head')[0];
-                    var style = win.document.createElement('style');
-                    style.type = 'text/css';
-                    style.media = 'print';
-                    if (style.styleSheet) {
-                        style.styleSheet.cssText = css;
-                    } else {
-                        style.appendChild(win.document.createTextNode(css));
-                    }
-                    head.appendChild(style);
-                }
-            }
-        ], // Buttons: copy, csv, excel, pdf, print, colvis
-        "language": {
-            "paginate": {
-                "first": '<i class="fas fa-angle-double-left"></i>',
-                "previous": '<i class="fas fa-angle-left"></i>',
-                "next": '<i class="fas fa-angle-right"></i>',
-                "last": '<i class="fas fa-angle-double-right"></i>'
-            },
-            "emptyTable": "No data available in table",
-            "info": "Showing _START_ to _END_ of _TOTAL_ entries",
-            "infoEmpty": "Showing 0 to 0 of 0 entries",
-            "infoFiltered": "(filtered from _MAX_ total entries)",
-            "lengthMenu": "Show _MENU_ entries",
-            "loadingRecords": "Loading...",
-            "processing": "Processing...",
-            "search": "Search:",
-            "zeroRecords": "No matching records found"
+$(document).ready(function() {
+    // Check if table exists and has data before initializing DataTables
+    var table = $('#daily-report-table');
+    
+    if (table.length > 0) {
+        // Count actual data rows (exclude header)
+        var dataRows = table.find('tbody tr').length;
+        var headerCols = table.find('thead tr:last th').length; // Get columns from last header row
+        
+        console.log('Table found with', headerCols, 'columns and', dataRows, 'data rows');
+        
+        // Check if the row is actually a "no data" message
+        var firstRowText = '';
+        if (dataRows > 0) {
+            firstRowText = table.find('tbody tr:first td').text().trim();
         }
-    });
-
-    // Enable buttons and append them to the container
-    table.buttons().container().appendTo('#daily-report-table_wrapper .col-md-6:eq(0)');
+        var isNoDataRow = firstRowText.includes('No data') || 
+                         firstRowText.includes('no data') || 
+                         firstRowText.includes('Submit above') ||
+                         firstRowText.includes('no employees');
+        
+        console.log('First row text:', firstRowText);
+        console.log('Is no-data row:', isNoDataRow);
+        
+        // Only initialize DataTables if we have actual data
+        if (dataRows > 0 && headerCols === 17 && !isNoDataRow) {
+            try {
+                table.DataTable({
+                    "responsive": false,
+                    "lengthChange": false,
+                    "autoWidth": false,
+                    "paging": false,
+                    "searching": true,
+                    "ordering": false,
+                    "info": false,
+                    "destroy": true,
+                    "scrollX": true,
+                    "columnDefs": [
+                        { "orderable": false, "targets": '_all' },
+                        { "searchable": true, "targets": [1, 2, 14] },
+                        { "searchable": false, "targets": [0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16] },
+                        { "className": "text-center", "targets": [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] },
+                        { "className": "text-left", "targets": [1] }
+                    ],
+                    "dom": 't',
+                    "language": {
+                        "emptyTable": "No data available in table",
+                        "search": "Search:",
+                        "zeroRecords": "No matching records found"
+                    }
+                });
+                console.log('DataTables initialized successfully');
+            } catch (error) {
+                console.error('DataTables initialization error:', error);
+                // Fallback: just show the table without DataTables
+                table.show();
+            }
+        } else {
+            var reason = [];
+            if (headerCols !== 17) reason.push('Wrong column count (' + headerCols + ')');
+            if (isNoDataRow) reason.push('No actual data (placeholder row)');
+            if (dataRows === 0) reason.push('No data rows');
+            
+            console.log('DataTables not initialized:', reason.join(', '));
+        }
+    } else {
+        console.log('Table not found');
+    }
 });
-
-// Prevent the data being autoload on page refresh
-if (window.history.replaceState) {
-    window.history.replaceState(null, null, window.location.href);
-}
 
 // Add functionality to the print button - ensure DOM is ready
 $(document).ready(function() {
     // Check if print button exists and attach event
     const printBtn = $('#print-table-btn');
     if (printBtn.length > 0) {
-        console.log('Daily report print button found, attaching event'); // Debug log
+        console.log('Daily report print button found, attaching event');
         printBtn.on('click', function(e) {
             e.preventDefault();
-            console.log('Daily report print button clicked - initiating print'); // Debug log
+            console.log('Daily report print button clicked - initiating print');
             window.print();
         });
     } else {
-        console.log('Daily report print button not found in DOM'); // Debug log
+        console.log('Daily report print button not found in DOM');
     }
     
     // Also handle click using event delegation for dynamic content
     $(document).on('click', '#print-table-btn', function(e) {
         e.preventDefault();
-        console.log('Daily report print button clicked via delegation'); // Debug log
+        console.log('Daily report print button clicked via delegation');
         window.print();
     });
 });

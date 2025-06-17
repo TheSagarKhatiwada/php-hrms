@@ -57,13 +57,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
   // Handle file upload
   if ($croppedImage) {
-      $targetDir = "resources/userimg/uploads/";
+      $targetDir = "../../resources/userimg/uploads/";
       $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
       $imageName = uniqid() . '.png';
       $targetFile = $targetDir . $imageName;
+      // Store relative path for database
+      $dbPath = "resources/userimg/uploads/" . $imageName;
       file_put_contents($targetFile, $imageData);
   } else {
-      $targetFile = "resources/userimg/default-image.jpg";
+      $dbPath = "resources/userimg/default-image.jpg";
   }
 
   // Generate empID based on branch value and finding the next available number
@@ -101,7 +103,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':empJoinDate' => $empJoinDate,
         ':designation' => $designation,
         ':loginAccess' => $loginAccess,
-        ':userImage' => $targetFile,
+        ':userImage' => $dbPath,
         ':date_of_birth' => $dob,
         ':role_id' => $role,
         ':officeEmail' => $officeEmail,

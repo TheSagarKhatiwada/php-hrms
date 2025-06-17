@@ -5,18 +5,18 @@ $home = '../../'; // Fixed: Should point to project root
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
-// Check if user has permission to access reports
-if (!is_logged_in()) {
-    $_SESSION['error'] = "You must be logged in to access reports.";
-    header('Location: ../../index.php');
+// Check if user has permission to access daily reports
+if (!has_permission('view_daily_report') && !is_admin()) {
+    $_SESSION['error'] = "You don't have permission to access Daily Reports.";
+    header('Location: ../../dashboard.php');
     exit();
 }
 
 // Check if form is submitting (adding a new report)
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'add') {
-    // Check if user has permission to add reports
-    if (!is_admin()) {
-        $_SESSION['error'] = "You don't have permission to add new reports.";
+    // Check if user has permission to add daily reports
+    if (!has_permission('add_daily_report') && !is_admin()) {
+        $_SESSION['error'] = "You don't have permission to add new Daily Reports.";
         header('Location: ../../dashboard.php');
         exit();
     }

@@ -13,9 +13,9 @@ require_once '../../../includes/utilities.php';
 include("../../../includes/db_connection.php");
 require_once '../../../includes/report-templates/monthly-attendance.php';
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    $_SESSION['error'] = "Please log in to access reports.";
+// Check if user has permission to access periodic reports
+if (!has_permission('view_monthly_report') && !is_admin()) {
+    $_SESSION['error'] = "You don't have permission to access Periodic Reports.";
     header('Location: ../../../dashboard.php');
     exit();
 }

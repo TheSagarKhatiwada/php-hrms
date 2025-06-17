@@ -1,12 +1,76 @@
-# Exclude uploads folder
+# HRMS - Development and Production .gitignore
+
+# ========================
+# User Uploads & Generated Content
+# ========================
 resources/userimg/uploads/
 
-# Exclude log files and temporary files
+# ========================
+# PHP/Server Files
+# ========================
 *.log
+error_log.txt
+debug_log.txt
 temp/
 
-# Exclude AdminLTE Theme folder
+# Session files (keep structure but exclude session data)
+sessions/sess_*
+!sessions/.htaccess
+
+# ========================
+# Database & Backup Files
+# ========================
+# Exclude development backups but keep essential restoration files
+db_backup/
+backups/
+*.backup
+hrms_backup*.sql
+
+# Keep these essential files for deployment:
+!server_restore_backup.sql
+!attendance_logs_restored.sql
+!setup_leave_management.sql
+
+# ========================
+# Development & Documentation Files
+# ========================
+# Temporary and test files
+temp_*.php
+test_*.php
+debug_*.php
+check_*.php
+
+# Documentation files (not needed in production)
+README.md
+QUICK-START.md
+*_SUMMARY.md
+*_STATUS.md
+*_COMPLETE.md
+*_FIXED.md
+
+# ========================
+# Theme & External Libraries
+# ========================
 AdminLTE/
 
-# Exclude a config file
+# ========================
+# Configuration Files
+# ========================
 include/config.php
+includes/config.php
+
+# ========================
+# IDE/Editor Files
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ========================
+# OS Files
+# ========================
+.DS_Store
+Thumbs.db
+*.tmp

@@ -68,10 +68,18 @@ require_once __DIR__ . '/../../includes/header.php';
                   <td class="text-center align-middle"><?php echo htmlspecialchars($record['emp_id']); ?></td>
                   <td>
                     <div class="d-flex align-items-center">
-                      <img src="<?php echo htmlspecialchars($record['user_image'] ?: 'resources/images/default-user.png'); ?>" 
+                      <img src="<?php 
+                        $imagePath = $record['user_image'] ?: '../../resources/userimg/default-image.jpg';
+                        // If the image path doesn't start with ../ or http, it's stored without the relative path
+                        if (!empty($record['user_image']) && !str_starts_with($record['user_image'], '../') && !str_starts_with($record['user_image'], 'http')) {
+                          $imagePath = '../../' . $record['user_image'];
+                        }
+                        echo htmlspecialchars($imagePath);
+                      ?>" 
                            alt="Employee" 
                            class="rounded-circle me-3" 
-                           style="width: 40px; height: 40px; object-fit: cover;">
+                           style="width: 40px; height: 40px; object-fit: cover;"
+                           onerror="this.src='../../resources/userimg/default-image.jpg'">
                       <div>
                         <div class="fw-bold"><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['middle_name'] . ' ' . $record['last_name']); ?></div>
                         <small class="text-muted"><?php echo htmlspecialchars($record['designation'] ?: 'Not Assigned'); ?></small>
@@ -431,7 +439,13 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // Set employee image
       const imageElem = document.getElementById('edit_emp_image');
-      imageElem.src = empImage || 'resources/images/default-user.png';
+      let imagePath = empImage || '../../resources/userimg/default-image.jpg';
+      // If the image path doesn't start with ../ or http, it's stored without the relative path
+      if (empImage && !empImage.startsWith('../') && !empImage.startsWith('http')) {
+        imagePath = '../../' + empImage;
+      }
+      imageElem.src = imagePath;
+      imageElem.onerror = function() { this.src = '../../resources/userimg/default-image.jpg'; };
     });
   }
   

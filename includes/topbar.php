@@ -95,7 +95,7 @@
           $companyLogo = defined('COMPANY_LOGO') ? COMPANY_LOGO : 'company_logo.png';
           ?>
           <a class="nav-link p-0" href="#" id="mobileMenuToggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-            <img src="<?php echo htmlspecialchars($user['user_image'] ?: $homeDir.'resources/images/default-user.png'); ?>" 
+            <img src="<?php echo htmlspecialchars($user['user_image'] ?: $homeDir.'resources/userimg/default-image.jpg'); ?>" 
                 alt="User" class="rounded-circle border" width="32" height="32" style="object-fit: cover;">
           </a>
           
@@ -103,7 +103,7 @@
             <!-- Mobile Menu Items -->
             <div class="mobile-menu-header">
               <div class="d-flex align-items-center p-2 border-bottom">
-                <img src="<?php echo htmlspecialchars($user['user_image'] ?: $homeDir.'resources/images/default-user.png'); ?>" 
+                <img src="<?php echo htmlspecialchars($user['user_image'] ?: $homeDir.'resources/userimg/default-image.jpg'); ?>" 
                     alt="User" class="rounded-circle me-2 border" width="40" height="40" style="object-fit: cover;">
                 <div>
                   <h6 class="mb-0"><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name']); ?></h6>

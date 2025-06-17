@@ -63,7 +63,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Handle file upload
     if ($croppedImage) {
-        $targetDir = "resources/userimg/uploads/";
+        $targetDir = "../../resources/userimg/uploads/";
 
         // Ensure directory exists
         if (!is_dir($targetDir)) {
@@ -73,9 +73,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $imageData = base64_decode(preg_split('#^data:image/\w+;base64,#i', $croppedImage)[1]);
         $imageName = uniqid() . '.png';
         $targetFile = $targetDir . $imageName;
+        $dbPath = "resources/userimg/uploads/" . $imageName;
         file_put_contents($targetFile, $imageData);
     } else {
-        $targetFile = $employee['user_image']; // Keep existing image
+        $dbPath = $employee['user_image']; // Keep existing image
     }
 
     // Generate a random password if login access is granted and was not previously granted
@@ -125,7 +126,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             ':empJoinDate' => $empJoinDate,
             ':designation' => $designation,
             ':loginAccess' => $loginAccess,
-            ':userImage' => $targetFile,
+            ':userImage' => $dbPath,
             ':password' => $hashedPassword,
             ':date_of_birth' => $dob,
             ':role_id' => $role_id, // Changed from role to role_id

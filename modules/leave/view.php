@@ -37,7 +37,7 @@ $sql = "SELECT lr.*,
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.emp_id
         JOIN leave_types lt ON lr.leave_type_id = lt.id
-        LEFT JOIN employees reviewer ON lr.reviewed_by = reviewer.id
+        LEFT JOIN employees reviewer ON lr.approved_by = reviewer.emp_id
         WHERE lr.id = ?";
 
 // Add permission check - employees can only view their own requests

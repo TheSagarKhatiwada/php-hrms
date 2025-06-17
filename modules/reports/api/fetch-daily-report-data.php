@@ -4,10 +4,10 @@ session_start();
 require_once '../../../includes/session_config.php';
 require_once '../../../includes/utilities.php';
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
+// Check if user is logged in and has appropriate permissions
+if (!isset($_SESSION['user_id']) || (!has_permission('view_daily_report') && !is_admin())) {
     http_response_code(403);
-    echo json_encode(["error" => "Access denied. Please log in."]);
+    echo json_encode(["error" => "Access denied."]);
     exit;
 }
 
@@ -258,7 +258,7 @@ $dataJson = json_encode($data, JSON_UNESCAPED_UNICODE);
 
 ?>
 
-<form id="jsonForm" action="../daily-report.php" method="post">
+<form id="jsonForm" action="daily-report.php" method="post">
     <input type="hidden" name="jsonData" value='<?php echo htmlspecialchars($dataJson, ENT_QUOTES, "UTF-8"); ?>'>
     <input type="hidden" name="reportdate" value="<?php echo $reportdate;?>">
 </form>

@@ -526,7 +526,7 @@ require_once __DIR__ . '/utilities.php';
             <img src="<?php
   $img = $user['user_image'];
   if (empty($img)) {
-    $img = $home . 'resources/images/default-user.png';
+    $img = $home . 'resources/userimg/default-image.jpg';
   } else if (strpos($img, 'http') === 0 || strpos($img, '/') === 0) {
     // Absolute URL or root-relative
   } else {

@@ -34,11 +34,10 @@ if ($_POST && isset($_POST['approve_request'])) {
         if (!$request_data) {
             throw new Exception("Leave request not found or already processed.");
         }
-        
-        // Update request status
+          // Update request status
         $sql = "UPDATE leave_requests 
                 SET status = 'approved', 
-                    reviewed_by = ?, 
+                    approved_by = ?, 
                     reviewed_date = NOW(),
                     approval_comments = ?
                 WHERE id = ? AND status = 'pending'";

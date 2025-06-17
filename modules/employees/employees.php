@@ -102,10 +102,18 @@ require_once __DIR__ . '/../../includes/header.php';
                   <td class="text-center align-middle"><?php echo htmlspecialchars($employee['emp_id']); ?></td>
                   <td>
                     <div class="d-flex align-items-center">
-                      <img src="<?php echo htmlspecialchars($employee['user_image'] ?: 'resources/images/default-user.png'); ?>" 
+                      <img src="<?php 
+                        $imagePath = $employee['user_image'] ?: '../../resources/userimg/default-image.jpg';
+                        // If the image path doesn't start with ../ or http, it's stored without the relative path
+                        if (!empty($employee['user_image']) && !str_starts_with($employee['user_image'], '../') && !str_starts_with($employee['user_image'], 'http')) {
+                          $imagePath = '../../' . $employee['user_image'];
+                        }
+                        echo htmlspecialchars($imagePath);
+                      ?>" 
                            alt="Employee" 
                            class="rounded-circle me-3" 
-                           style="width: 40px; height: 40px; object-fit: cover;">
+                           style="width: 40px; height: 40px; object-fit: cover;"
+                           onerror="this.src='../../resources/userimg/default-image.jpg'">
                       <div>
                         <div class="fw-bold"><?php 
                           $fullName = $employee['first_name'];

@@ -16,8 +16,7 @@ if ($_POST && isset($_POST['bulk_action'])) {
       if (!empty($selected_requests) && in_array($action, ['approve', 'reject'])) {
         $status = $action == 'approve' ? 'approved' : 'rejected';
         $placeholders = str_repeat('?,', count($selected_requests) - 1) . '?';
-        
-        $sql = "UPDATE leave_requests SET status = ?, reviewed_by = ?, reviewed_date = NOW() 
+          $sql = "UPDATE leave_requests SET status = ?, approved_by = ?, reviewed_date = NOW() 
                 WHERE id IN ($placeholders) AND status = 'pending'";
         $stmt = $pdo->prepare($sql);
         $params = array_merge([$status, $_SESSION['user_id']], $selected_requests);
@@ -86,7 +85,7 @@ $sql = "SELECT lr.*,
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.emp_id
         JOIN leave_types lt ON lr.leave_type_id = lt.id
-        LEFT JOIN employees reviewer ON lr.reviewed_by = reviewer.id
+        LEFT JOIN employees reviewer ON lr.approved_by = reviewer.emp_id
         $where_clause        ORDER BY lr.applied_date DESC";
 
 if (!empty($params)) {
