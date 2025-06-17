@@ -1,10 +1,19 @@
 <?php
-ob_start(); // Start output buffering
+// Start output buffering to prevent issues with redirects
+ob_start();
+
 $page = 'attendance';
 
 include '../../includes/session_config.php';
 include '../../includes/db_connection.php';
 include '../../includes/utilities.php';
+
+// Debug: Add error display for development
+if (defined('ENVIRONMENT') && ENVIRONMENT === 'development') {
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
+}
 
 // Check if we need to open the modal in manual mode
 $openManualModal = isset($_GET['action']) && $_GET['action'] === 'manual';
@@ -21,9 +30,31 @@ try {
                            LIMIT 200");
     $stmt->execute();
     $attendanceRecords = $stmt->fetchAll();
+    
+    // Debug: Log the number of attendance records fetched
+    error_log("Fetched " . count($attendanceRecords) . " attendance records from database", 3, dirname(__DIR__) . '/../../debug_log.txt');
+    
 } catch (PDOException $e) {
+    error_log("Error fetching attendance data: " . $e->getMessage(), 3, dirname(__DIR__) . '/../../debug_log.txt');
+    $attendanceRecords = []; // Set empty array to prevent errors in the view
     $_SESSION['error'] = "Error fetching attendance data: " . $e->getMessage();
 }
+
+// Force fresh load by checking for cache-busting parameter
+// Only redirect if not already redirected and no POST data
+if (!isset($_GET['_nocache']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    // Ensure no output has been sent before redirect
+    if (!headers_sent()) {
+        // Clean any output buffer before redirect
+        ob_clean();
+        header("Location: attendance.php?_nocache=" . time());
+        exit();
+    }
+}
+
+// Clean the output buffer and start fresh for HTML output
+ob_end_clean();
+ob_start();
 
 // Include the header after data loading (includes topbar, starts main-wrapper and content-wrapper)
 require_once __DIR__ . '/../../includes/header.php';
@@ -63,7 +94,14 @@ require_once __DIR__ . '/../../includes/header.php';
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($attendanceRecords as $record): ?>
+                <?php 
+                // Debug information (only show in development)
+                if (defined('ENVIRONMENT') && ENVIRONMENT === 'development') {
+                    echo "<!-- DEBUG: Found " . count($attendanceRecords) . " attendance records -->";
+                }
+
+                if (!empty($attendanceRecords)) {
+                    foreach ($attendanceRecords as $record): ?>
                 <tr>
                   <td class="text-center align-middle"><?php echo htmlspecialchars($record['emp_id']); ?></td>
                   <td>
@@ -71,7 +109,7 @@ require_once __DIR__ . '/../../includes/header.php';
                       <img src="<?php 
                         $imagePath = $record['user_image'] ?: '../../resources/userimg/default-image.jpg';
                         // If the image path doesn't start with ../ or http, it's stored without the relative path
-                        if (!empty($record['user_image']) && !str_starts_with($record['user_image'], '../') && !str_starts_with($record['user_image'], 'http')) {
+                        if (!empty($record['user_image']) && strpos($record['user_image'], '../') !== 0 && strpos($record['user_image'], 'http') !== 0) {
                           $imagePath = '../../' . $record['user_image'];
                         }
                         echo htmlspecialchars($imagePath);
@@ -172,7 +210,14 @@ require_once __DIR__ . '/../../includes/header.php';
                     <?php endif; ?>
                   </td>
                 </tr>
-                <?php endforeach; ?>
+                <?php 
+                    endforeach; 
+                } else { 
+                ?>
+                <tr>
+                    <td colspan="7" class="text-center">No attendance records found.</td>
+                </tr>
+                <?php } ?>
               </tbody>
             </table>
           </div>
