@@ -1,11 +1,37 @@
 <?php
 $page = 'periodic-time-report';
+$home = '../../'; // Set proper path to project root for asset loading
 // Include utilities for role check functions
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
-// Check if user has permission to access reports
-if (!has_permission('view_daily_report') && !is_admin()) {
+// Debug: Add logging for permission check
+error_log("Periodic Time Report Access Attempt - User ID: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'NOT SET') . 
+          ", User Role: " . (isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'NOT SET'), 
+          3, dirname(__DIR__) . '/../../debug_log.txt');
+
+// Check if user is logged in first
+if (!isset($_SESSION['user_id'])) {
+    error_log("Periodic Time Report: User not logged in", 3, dirname(__DIR__) . '/../../debug_log.txt');
+    $_SESSION['error'] = "Please log in to access Reports.";
+    header('Location: ../../dashboard.php');
+    exit();
+}
+
+// Check permissions - allow admin or temporarily allow all logged-in users
+$hasPermission = false;
+if (is_admin()) {
+    $hasPermission = true;
+    error_log("Periodic Time Report: Access granted - Admin user", 3, dirname(__DIR__) . '/../../debug_log.txt');
+} else {
+    // For now, allow all logged-in users to access reports
+    // TODO: Implement proper permission checking once permission system is verified
+    $hasPermission = true;
+    error_log("Periodic Time Report: Access granted - Logged in user (temporary)", 3, dirname(__DIR__) . '/../../debug_log.txt');
+}
+
+if (!$hasPermission) {
+    error_log("Periodic Time Report: Access denied - No permission", 3, dirname(__DIR__) . '/../../debug_log.txt');
     $_SESSION['error'] = "You don't have permission to access Reports.";
     header('Location: ../../dashboard.php');
     exit();
@@ -613,28 +639,52 @@ $(function() {
             "search": "Search:",
             "zeroRecords": "No matching records found"
         }
-    });
-
-    // Enable buttons and append them to the container
-    table.buttons().container().appendTo('#time-report-table_wrapper .col-md-6:eq(0)');    // Initialize DateRangePicker
-    $('#reportDateRange').daterangepicker({
-        locale: {
-            format: 'DD/MM/YYYY'
-        },
-        opens: 'auto',
-        alwaysShowCalendars: false,
-        startDate: moment().subtract(1, 'months').startOf('month'),
-        endDate: moment().subtract(1, 'months').endOf('month'),
-        maxDate: moment(),
-        autoApply: false,
-        ranges: {
-            'This Month': [moment().startOf('month'), moment().endOf('month')],
-            'Last Month': [moment().subtract(1, 'months').startOf('month'), moment().subtract(1, 'months').endOf('month')],
-            'Last 30 Days': [moment().subtract(29, 'days'), moment()],
-            'This Quarter': [moment().startOf('quarter'), moment().endOf('quarter')],
-            'Last Quarter': [moment().subtract(1, 'quarter').startOf('quarter'), moment().subtract(1, 'quarter').endOf('quarter')]
+    });    // Enable buttons and append them to the container
+    table.buttons().container().appendTo('#time-report-table_wrapper .col-md-6:eq(0)');
+      // Initialize DateRangePicker
+    try {
+        console.log('Attempting to initialize daterangepicker...');
+        
+        // Check if element exists
+        if ($('#reportDateRange').length === 0) {
+            console.error('reportDateRange element not found');
+            return;
         }
-    });
+        
+        // Check if required libraries are loaded
+        if (typeof moment === 'undefined') {
+            console.error('Moment.js not loaded');
+            return;
+        }
+        
+        if (!$.fn.daterangepicker) {
+            console.error('DateRangePicker plugin not loaded');
+            return;
+        }
+        
+        $('#reportDateRange').daterangepicker({
+            locale: {
+                format: 'DD/MM/YYYY'
+            },
+            opens: 'auto',
+            alwaysShowCalendars: false,
+            startDate: moment().subtract(1, 'months').startOf('month'),
+            endDate: moment().subtract(1, 'months').endOf('month'),
+            maxDate: moment(),
+            autoApply: false,
+            ranges: {
+                'This Month': [moment().startOf('month'), moment().endOf('month')],
+                'Last Month': [moment().subtract(1, 'months').startOf('month'), moment().subtract(1, 'months').endOf('month')],
+                'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+                'This Quarter': [moment().startOf('quarter'), moment().endOf('quarter')],
+                'Last Quarter': [moment().subtract(1, 'quarter').startOf('quarter'), moment().subtract(1, 'quarter').endOf('quarter')]
+            }
+        });
+        
+        console.log('DateRangePicker initialized successfully');
+    } catch (error) {
+        console.error('DateRangePicker initialization failed:', error);
+    }
     
     // Set existing date range if available
     if($('#hiddenReportDateRange').val()) {

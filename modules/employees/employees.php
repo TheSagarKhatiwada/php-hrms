@@ -1,7 +1,17 @@
 <?php
+// Start output buffering to prevent issues with redirects
+ob_start();
+
 // Include session configuration first to ensure session is available
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
+
+// Debug: Add error display for development
+if (defined('ENVIRONMENT') && ENVIRONMENT === 'development') {
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
+}
 
 $page = 'employees';
 
@@ -38,19 +48,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['exitDate'])) {
 }
 
 // Fetch data from the database
-$stmt = $pdo->prepare("SELECT e.*, b.name, d.title AS designation_title 
-                FROM employees e 
-                JOIN branches b ON e.branch = b.id 
-                LEFT JOIN designations d ON e.designation = d.id 
-                ORDER BY e.join_date DESC");
-$stmt->execute();
-$employees = $stmt->fetchAll();
+try {
+    $stmt = $pdo->prepare("SELECT e.*, b.name, d.title AS designation_title 
+                    FROM employees e 
+                    JOIN branches b ON e.branch = b.id 
+                    LEFT JOIN designations d ON e.designation = d.id 
+                    ORDER BY e.join_date DESC");
+    $stmt->execute();
+    $employees = $stmt->fetchAll();
+    
+    // Debug: Log the number of employees fetched
+    error_log("Fetched " . count($employees) . " employees from database", 3, dirname(__DIR__) . '/../../debug_log.txt');
+    
+} catch (PDOException $e) {
+    error_log("Error fetching employees: " . $e->getMessage(), 3, dirname(__DIR__) . '/../../debug_log.txt');
+    $employees = []; // Set empty array to prevent errors in the view
+    $_SESSION['error'] = "Error loading employees: " . $e->getMessage();
+}
 
 // Force fresh load by checking for cache-busting parameter
-if (!isset($_GET['_nocache'])) {
-    header("Location: employees.php?_nocache=" . time());
-    exit();
+// Only redirect if not already redirected and no POST data
+if (!isset($_GET['_nocache']) && $_SERVER['REQUEST_METHOD'] !== 'POST' && !isset($_POST['exitDate'])) {
+    // Ensure no output has been sent before redirect
+    if (!headers_sent()) {
+        // Clean any output buffer before redirect
+        ob_clean();
+        header("Location: employees.php?_nocache=" . time());
+        exit();
+    }
 }
+
+// Clean the output buffer and start fresh for HTML output
+ob_end_clean();
+ob_start();
 
 // Include the header (which includes topbar, starts main-wrapper and content-wrapper)
 require_once __DIR__ . '/../../includes/header.php';
@@ -97,7 +127,13 @@ require_once __DIR__ . '/../../includes/header.php';
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($employees as $employee): ?>
+                <?php 
+                // Debug information (only show in development)
+                if (defined('ENVIRONMENT') && ENVIRONMENT === 'development') {
+                    echo "<!-- DEBUG: Found " . count($employees) . " employees -->";
+                }
+                
+                foreach ($employees as $employee): ?>
                 <tr>
                   <td class="text-center align-middle"><?php echo htmlspecialchars($employee['emp_id']); ?></td>
                   <td>
@@ -105,7 +141,7 @@ require_once __DIR__ . '/../../includes/header.php';
                       <img src="<?php 
                         $imagePath = $employee['user_image'] ?: '../../resources/userimg/default-image.jpg';
                         // If the image path doesn't start with ../ or http, it's stored without the relative path
-                        if (!empty($employee['user_image']) && !str_starts_with($employee['user_image'], '../') && !str_starts_with($employee['user_image'], 'http')) {
+                        if (!empty($employee['user_image']) && strpos($employee['user_image'], '../') !== 0 && strpos($employee['user_image'], 'http') !== 0) {
                           $imagePath = '../../' . $employee['user_image'];
                         }
                         echo htmlspecialchars($imagePath);

@@ -52,7 +52,7 @@ function redirectToSetup($reason = '') {
 }
 
 // Log connection attempt for debugging - to a file, not to screen
-error_log("Attempting database connection at: " . date('Y-m-d H:i:s'), 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
+error_log("Attempting database connection at: " . date('Y-m-d H:i:s'), 3, dirname(__DIR__) . '/debug_log.txt');
 
 // Load configuration from config.php - this file is required
 $config_file = __DIR__ . '/config.php';
@@ -92,9 +92,12 @@ try {
     // Create the PDO instance
     $pdo = new PDO($dsn, $DB_CONFIG['user'], $DB_CONFIG['pass'], $options);
     
+    // Set SQL mode for compatibility across different environments
+    $pdo->exec("SET sql_mode = 'TRADITIONAL'");
+    
     // Test the connection with a simple query
     $pdo->query("SELECT 1");
-    error_log("Database connection established successfully", 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
+    error_log("Database connection established successfully", 3, dirname(__DIR__) . '/debug_log.txt');
 
 } catch (PDOException $e) {
     // Log the error message with detailed information

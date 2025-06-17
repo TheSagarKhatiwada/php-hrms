@@ -30,8 +30,8 @@ $stmt = $pdo->prepare("SELECT e.first_name,
                                       INNER JOIN branches b ON e.branch = b.id 
                                       LEFT JOIN roles r ON e.role_id = r.id 
                                       LEFT JOIN designations d ON e.designation = d.id 
-                                      WHERE e.id = :id");
-$stmt->execute(['id' => $user_id]);
+                                      WHERE e.emp_id = :emp_id");
+$stmt->execute(['emp_id' => $user_id]);
 $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$user_data) {
@@ -67,8 +67,8 @@ $assigned_assets_stmt = $pdo->prepare("SELECT
                                         fa.AssetSerial, 
                                         aa.AssignmentDate,
                                         fa.Status AS AssetStatus
-                                    FROM AssetAssignments aa
-                                    JOIN FixedAssets fa ON aa.AssetID = fa.AssetID
+                                    FROM assetassignments aa
+                                    JOIN fixedassets fa ON aa.AssetID = fa.AssetID
                                     WHERE aa.EmployeeID = :employee_id AND aa.ReturnDate IS NULL
                                     ORDER BY aa.AssignmentDate DESC");
 $assigned_assets_stmt->execute(['employee_id' => $user_id]); // Assuming $user_id is the ID from the employees table used in AssetAssignments.EmployeeID
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['croppedImage'])) {
     file_put_contents($targetFile, $imageData);
 
     // Update the database with the new profile picture
-    $stmt = $pdo->prepare("UPDATE employees SET user_image = :user_image WHERE id = :id");
+    $stmt = $pdo->prepare("UPDATE employees SET user_image = :user_image WHERE emp_id = :id");
     $stmt->execute(['user_image' => $targetFile, 'id' => $user_id]);
     $user_data['user_image'] = $targetFile;
 }
@@ -496,7 +496,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                             </div>
                                             <div class="profile-info-item">
                                                 <strong>Date of Birth:</strong>
-                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['dob']); ?></p>
+                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['date_of_birth']); ?></p>
                                             </div>
                                         </div>
                                     </div>

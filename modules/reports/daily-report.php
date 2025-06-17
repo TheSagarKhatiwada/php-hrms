@@ -1,5 +1,6 @@
 <?php
 $page = 'daily-report';
+$home = '../../'; // Set proper path to project root for asset loading
 // Include utilities for role check functions
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';

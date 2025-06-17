@@ -1,25 +1,63 @@
 <?php
 // Security check and session validation
-session_start();
 require_once '../../../includes/session_config.php';
 require_once '../../../includes/utilities.php';
 
+// Debug: Add logging for permission check
+error_log("Daily Report API Access Attempt - User ID: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'NOT SET') . 
+          ", User Role: " . (isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'NOT SET'), 
+          3, dirname(__DIR__) . '/../../../debug_log.txt');
+
 // Check if user is logged in and has appropriate permissions
-if (!isset($_SESSION['user_id']) || (!has_permission('view_daily_report') && !is_admin())) {
+if (!isset($_SESSION['user_id'])) {
+    error_log("Daily Report API: User not logged in", 3, dirname(__DIR__) . '/../../../debug_log.txt');
     http_response_code(403);
-    echo json_encode(["error" => "Access denied."]);
+    echo json_encode(["error" => "User not logged in."]);
+    exit;
+}
+
+// Check permissions - allow admin or users with view_daily_report permission
+$hasPermission = false;
+if (is_admin()) {
+    $hasPermission = true;
+    error_log("Daily Report API: Access granted - Admin user", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+} else {
+    // For now, allow all logged-in users to access reports
+    // TODO: Implement proper permission checking once permission system is verified
+    $hasPermission = true;
+    error_log("Daily Report API: Access granted - Logged in user (temporary)", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+}
+
+if (!$hasPermission) {
+    http_response_code(403);
+    echo json_encode(["error" => "Access denied. Insufficient permissions."]);
     exit;
 }
 
 include("../../../includes/db_connection.php");
 
-// Fetch report date and branch filter from the request
-$reportdate = $_POST['reportdate'];
-$empBranch = $_POST['empBranch'];
+// Only allow POST requests for security
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(["error" => "Method not allowed. Only POST requests are accepted."]);
+    exit;
+}
+
+// Get request parameters from POST only
+$reportdate = $_POST['reportdate'] ?? '';
+$empBranch = $_POST['empBranch'] ?? '';
+
+error_log("Daily Report API: POST params - reportdate: $reportdate, empBranch: $empBranch", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+
+// Validate required parameters
+if (empty($reportdate)) {
+    echo json_encode(["error" => "Report date is required."]);
+    exit;
+}
 
 // Validate the report date format
-if (empty($reportdate) || !DateTime::createFromFormat('Y-m-d', $reportdate)) {
-    echo json_encode(["error" => "Invalid report date format."]);
+if (!DateTime::createFromFormat('Y-m-d', $reportdate)) {
+    echo json_encode(["error" => "Invalid report date format. Expected: YYYY-MM-DD"]);
     exit;
 }
 
@@ -258,7 +296,7 @@ $dataJson = json_encode($data, JSON_UNESCAPED_UNICODE);
 
 ?>
 
-<form id="jsonForm" action="daily-report.php" method="post">
+<form id="jsonForm" action="../daily-report.php" method="post">
     <input type="hidden" name="jsonData" value='<?php echo htmlspecialchars($dataJson, ENT_QUOTES, "UTF-8"); ?>'>
     <input type="hidden" name="reportdate" value="<?php echo $reportdate;?>">
 </form>

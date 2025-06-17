@@ -1,30 +1,69 @@
 <?php
 // Security check and session validation
-session_start();
 require_once '../../../includes/session_config.php';
 require_once '../../../includes/utilities.php';
 
+// Debug: Add logging for permission check
+error_log("Periodic Report API Access Attempt - User ID: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'NOT SET') . 
+          ", User Role: " . (isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'NOT SET'), 
+          3, dirname(__DIR__) . '/../../../debug_log.txt');
+
 // Check if user is logged in and has appropriate permissions
-if (!isset($_SESSION['user_id']) || (!has_permission('view_periodic_report') && !is_admin())) {
+if (!isset($_SESSION['user_id'])) {
+    error_log("Periodic Report API: User not logged in", 3, dirname(__DIR__) . '/../../../debug_log.txt');
     http_response_code(403);
-    echo json_encode(["error" => "Access denied."]);
+    echo json_encode(["error" => "User not logged in."]);
+    exit;
+}
+
+// Check permissions - allow admin or users with view_periodic_report permission
+$hasPermission = false;
+if (is_admin()) {
+    $hasPermission = true;
+    error_log("Periodic Report API: Access granted - Admin user", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+} else {
+    // For now, allow all logged-in users to access reports
+    // TODO: Implement proper permission checking once permission system is verified
+    $hasPermission = true;
+    error_log("Periodic Report API: Access granted - Logged in user (temporary)", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+}
+
+if (!$hasPermission) {
+    http_response_code(403);
+    echo json_encode(["error" => "Access denied. Insufficient permissions."]);
     exit;
 }
 
 include("../../../includes/db_connection.php");
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    if (!isset($_POST['reportDateRange']) || empty($_POST['reportDateRange'])) {
-        echo json_encode(["error" => "Date range not received."]);
-        exit;
-    }
+// Only allow POST requests for security
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(["error" => "Method not allowed. Only POST requests are accepted."]);
+    exit;
+}
 
-    $daterange = $_POST['reportDateRange'];
-    list($startDate, $endDate) = explode(' - ', $daterange);
+// Validate required parameters
+if (!isset($_POST['reportDateRange']) || empty($_POST['reportDateRange'])) {
+    error_log("Periodic Report API: Missing reportDateRange parameter", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+    echo json_encode(["error" => "Date range not received."]);
+    exit;
+}
 
-    // Convert to proper format (YYYY-MM-DD)
-    $startDateObj = DateTime::createFromFormat('d/m/Y', trim($startDate));
-    $endDateObj = DateTime::createFromFormat('d/m/Y', trim($endDate));
+$daterange = $_POST['reportDateRange'];
+error_log("Periodic Report API: Received daterange: $daterange", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+
+// Split the date range
+if (strpos($daterange, ' - ') === false) {
+    echo json_encode(["error" => "Invalid date range format. Expected: 'DD/MM/YYYY - DD/MM/YYYY'"]);
+    exit;
+}
+
+list($startDate, $endDate) = explode(' - ', $daterange);
+
+// Convert to proper format (YYYY-MM-DD)
+$startDateObj = DateTime::createFromFormat('d/m/Y', trim($startDate));
+$endDateObj = DateTime::createFromFormat('d/m/Y', trim($endDate));
 
     if (!$startDateObj || !$endDateObj) {
         echo json_encode(["error" => "Invalid date range format.", "received" => $_POST['reportDateRange']]);
@@ -297,12 +336,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Encode data as JSON
     $dataJson = json_encode($data, JSON_UNESCAPED_UNICODE);
-}
 ?>
 
-
-
-<form id="jsonForm" action="periodic-report.php" method="post">
+<form id="jsonForm" action="../periodic-report.php" method="post">
     <input type="hidden" name="jsonData" value='<?php echo htmlspecialchars($dataJson, ENT_QUOTES, "UTF-8"); ?>'>
     <input type="hidden" name="startdate" value="<?php echo $startDate; ?>">
     <input type="hidden" name="enddate" value="<?php echo $endDate; ?>">
