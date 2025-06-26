@@ -74,6 +74,9 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?php echo $appName . " | " . ucwords(isset($page) ? $page : 'Page Title');?></title>
 
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="https://primeexpress.com.np/favicon.ico">
+
   <!-- PWA Meta Tags -->
   <meta name="theme-color" content="<?php echo PRIMARY_COLOR; ?>">
   <meta name="description" content="<?php echo COMPANY_FULL_NAME; ?> - Human Resource Management System">

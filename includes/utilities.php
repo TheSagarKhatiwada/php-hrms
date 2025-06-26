@@ -433,4 +433,41 @@ function get_holidays_in_range($start_date, $end_date, $branch_id = null) {
         return [];
     }
 }
+
+/**
+ * Set a flash message in the session
+ * 
+ * @param string $type Type of message (success, error, warning, info)
+ * @param string $message Message content
+ */
+function set_flash_message($type, $message) {
+    $_SESSION[$type] = $message;
+}
+
+/**
+ * Get and clear a flash message from the session
+ * 
+ * @param string $type Type of message to retrieve
+ * @return string|null The message or null if not set
+ */
+function get_flash_message($type) {
+    if (isset($_SESSION[$type])) {
+        $message = $_SESSION[$type];
+        unset($_SESSION[$type]);
+        return $message;
+    }
+    return null;
+}
+
+/**
+ * Append session ID to URL if needed (for URL-based sessions)
+ * 
+ * @param string $url URL to append session ID to
+ * @return string URL with session ID appended if necessary
+ */
+function append_sid($url) {
+    // Since we're using cookies for sessions, we don't need to append SID
+    // But this function is kept for compatibility
+    return $url;
+}
 ?>

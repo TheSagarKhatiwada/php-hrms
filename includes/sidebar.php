@@ -154,6 +154,47 @@ require_once __DIR__ . '/utilities.php';
             </ul>
           </div>
         </li>
+
+        <!-- Task Management Module -->
+        <li class="nav-item">
+          <a href="#taskSubmenu" data-bs-toggle="collapse" 
+             class="nav-link <?php if(strpos($_SERVER['REQUEST_URI'], 'modules/tasks/') !== false){echo 'active';}?>
+                    <?php if(!(strpos($_SERVER['REQUEST_URI'], 'modules/tasks/') !== false)){echo 'collapsed';}?>">
+            <i class="nav-icon fas fa-tasks"></i>
+            <span>Task Management</span>
+            <i class="nav-arrow fas fa-chevron-right"></i>
+          </a>
+          <div class="collapse <?php if(strpos($_SERVER['REQUEST_URI'], 'modules/tasks/') !== false){echo 'show';}?>" id="taskSubmenu">
+            <ul class="nav nav-sub flex-column">
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/tasks/index.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'index.php' && strpos($_SERVER['REQUEST_URI'], 'modules/tasks/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tachometer-alt"></i>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/tasks/my-tasks.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'my-tasks.php'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-user-check"></i>
+                  <span>My Tasks</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/tasks/team-tasks.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'team-tasks.php'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-users"></i>
+                  <span>Team Tasks</span>
+                </a>
+              </li>
+              <?php if ($user['role_id'] == 1 || has_permission('manage_all_tasks')): ?>
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/tasks/task-categories.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'task-categories.php'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-tags"></i>
+                  <span>Task Categories</span>
+                </a>
+              </li>
+              <?php endif; ?>
+            </ul>
+          </div>
+        </li>
         
         <li class="nav-item">
           <a href="#reportsSubmenu" data-bs-toggle="collapse" 
