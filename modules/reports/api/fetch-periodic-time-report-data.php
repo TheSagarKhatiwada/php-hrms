@@ -86,23 +86,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $settings = $settingsStmt->fetch(PDO::FETCH_ASSOC);
     
     // Default working hours setup if settings not available
-    $scheduled_in_time = isset($settings['work_start_time']) ? $settings['work_start_time'] : '09:30';
+    $scheduled_in_time = isset($settings['work_start_time']) ? $settings['work_start_time'] : '09:35';
     $scheduled_out_time = isset($settings['work_end_time']) ? $settings['work_end_time'] : '18:00';
 
     // Create DateTime objects for easier time calculations
     $scheduled_in = new DateTime($scheduled_in_time);
-    $scheduled_out = new DateTime($scheduled_out_time);    // Fetch employees
+    $scheduled_out = new DateTime($scheduled_out_time);    // Fetch employees - exclude those who joined or exited during the selected range
     $sqlEmployees = "SELECT 
                         e.emp_id, 
                         CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS employee_name, 
-                        e.exit_date
+                        e.exit_date,
+                        e.join_date
                     FROM employees e
                     WHERE e.branch = :empBranch
-                    AND (e.exit_date IS NULL OR e.exit_date >= :startDate)";    $stmtEmployees = $pdo->prepare($sqlEmployees);
+                    AND (e.join_date IS NULL OR e.join_date < :startDate)
+                    AND (e.exit_date IS NULL OR e.exit_date > :endDate)";    $stmtEmployees = $pdo->prepare($sqlEmployees);
     $stmtEmployees->bindParam(':empBranch', $empBranch, PDO::PARAM_INT);
     $stmtEmployees->bindParam(':startDate', $startDate);
+    $stmtEmployees->bindParam(':endDate', $endDate);
     $stmtEmployees->execute();
-    $employees = $stmtEmployees->fetchAll(PDO::FETCH_ASSOC);    // Fetch attendance data within the selected date range
+    $employees = $stmtEmployees->fetchAll(PDO::FETCH_ASSOC);// Fetch attendance data within the selected date range
     $sqlAttendance = "SELECT
                         a.emp_id,
                         a.date,
@@ -163,7 +166,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $dayOfWeek = (int)$dateObj->format('N'); // 1 (Monday) to 7 (Sunday)
             
             // Check if employee was exited by this date
-            $isExited = (!empty($exitDate) && $date > $exitDate);            // Determine if it's a weekend/holiday (Saturday in this case)
+            $isExited = (!empty($exitDate) && $date > $exitDate); // Determine if it's a weekend/holiday (Saturday in this case)
             $isSaturday = ($dayOfWeek == 6);
             
             // Check if the date is a holiday

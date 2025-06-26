@@ -22,6 +22,7 @@ $empLastName = $_GET['empLastName'] ?? '';
 $gender = $_GET['gender'] ?? '';
 $empEmail = $_GET['empEmail'] ?? '';
 $empPhone = $_GET['empPhone'] ?? '';
+$empHireDate = $_GET['empHireDate'] ?? '';
 $empJoinDate = $_GET['empJoinDate'] ?? '';
 $designation = $_GET['designation'] ?? '';
 $loginAccess = $_GET['login_access'] ?? '';
@@ -33,27 +34,47 @@ $supervisor_id = $_GET['supervisor_id'] ?? '';
 $department_id = $_GET['department_id'] ?? '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-  // Get form data
-  $machId = $_POST['machId'];
-  $empBranch = $_POST['empBranch'];
-  $empFirstName = $_POST['empFirstName'];
-  $empMiddleName = $_POST['empMiddleName'];
-  $empLastName = $_POST['empLastName'];
-  $gender = $_POST['gender'];
-  $empEmail = $_POST['empEmail'];
-  $empPhone = $_POST['empPhone'];
-  $empJoinDate = $_POST['empJoinDate'];
-  $designation = $_POST['designation']; 
-  $loginAccess = $_POST['login_access']; 
+  // Get form data and trim/validate
+  $machId = trim($_POST['machId']);
+  $empBranch = trim($_POST['empBranch']);
+  $empFirstName = trim($_POST['empFirstName']);
+  $empMiddleName = trim($_POST['empMiddleName']);
+  $empLastName = trim($_POST['empLastName']);
+  $gender = trim($_POST['gender']);
+  $empEmail = trim($_POST['empEmail']);
+  $empPhone = trim($_POST['empPhone']);
+  $empHireDate = trim($_POST['empHireDate']);
+  $empJoinDate = trim($_POST['empJoinDate']);
+  $designation = trim($_POST['designation']); 
+  $loginAccess = trim($_POST['login_access']); 
   $croppedImage = $_POST['croppedImage'];
-  $dob = $_POST['dob'];
-  $role = $_POST['role'];
-  $officeEmail = $_POST['office_email'];
-  $officePhone = $_POST['office_phone'];
+  $dob = trim($_POST['dob']);
+  $role = trim($_POST['role']);
+  $officeEmail = trim($_POST['office_email']);
+  $officePhone = trim($_POST['office_phone']);
   
   // Hierarchy fields
-  $supervisor_id = !empty($_POST['supervisor_id']) ? $_POST['supervisor_id'] : null;
-  $department_id = !empty($_POST['department_id']) ? $_POST['department_id'] : null;
+  $supervisor_id = !empty($_POST['supervisor_id']) ? trim($_POST['supervisor_id']) : null;
+  $department_id = !empty($_POST['department_id']) ? trim($_POST['department_id']) : null;
+
+  // Validate and clean gender field
+  $gender = strtoupper(trim($gender)); // Ensure uppercase and no whitespace
+  if (!in_array($gender, ['M', 'F'])) {
+      $gender = 'M'; // Default to M if invalid
+  }
+  
+  // Convert gender to database format (enum expects 'male', 'female', 'other')
+  $genderForDb = '';
+  switch($gender) {
+      case 'M':
+          $genderForDb = 'male';
+          break;
+      case 'F':
+          $genderForDb = 'female';
+          break;
+      default:
+          $genderForDb = 'male';
+  }
 
   // Handle file upload
   if ($croppedImage) {
@@ -89,25 +110,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
             VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([
+    
+    $result = $stmt->execute([
         ':empId' => $empId,
-        ':machId' => $machId,
+        ':machId' => (int)$machId,
         ':empBranch' => $empBranch,
         ':empFirstName' => $empFirstName,
         ':empMiddleName' => $empMiddleName,
         ':empLastName' => $empLastName,
-        ':gender' => $gender,
+        ':gender' => $genderForDb,
         ':empEmail' => $empEmail,
         ':empPhone' => $empPhone,
-        ':hire_date' => $empJoinDate, // Use join date as hire date
-        ':empJoinDate' => $empJoinDate,
-        ':designation' => $designation,
-        ':loginAccess' => $loginAccess,
+        ':hire_date' => $empHireDate,
+        ':empJoinDate' => $empJoinDate ?: null,
+        ':designation' => (int)$designation,
+        ':loginAccess' => (int)$loginAccess,
         ':userImage' => $dbPath,
-        ':date_of_birth' => $dob,
-        ':role_id' => $role,
-        ':officeEmail' => $officeEmail,
-        ':officePhone' => $officePhone,
+        ':date_of_birth' => $dob ?: null,
+        ':role_id' => (int)$role,
+        ':officeEmail' => $officeEmail ?: null,
+        ':officePhone' => $officePhone ?: null,
         ':supervisor_id' => $supervisor_id,
         ':department_id' => $department_id
     ]);
@@ -116,15 +138,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $newEmployeeId = $empId; // Use the generated emp_id
 
     // Add detailed error logging
-    if (!$newEmployeeId) {
+    if (!$result) {
         $errorInfo = $stmt->errorInfo();
         $_SESSION['error'] = "Database error: " . $errorInfo[2];
         error_log("Employee add error: " . print_r($errorInfo, true));
     } else {
-        // Update attendance_logs with emp_Id from employees based on machine_id
-        $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute();
+        // Update attendance_logs with emp_Id from employees based on machine_id (only for valid numeric mach_id)
+        try {
+            $sql = "UPDATE attendance_logs a 
+                    JOIN employees e ON a.mach_id = e.mach_id 
+                    SET a.emp_Id = e.emp_id 
+                    WHERE a.mach_id IS NOT NULL 
+                    AND e.mach_id IS NOT NULL 
+                    AND a.mach_id > 0 
+                    AND e.mach_id > 0";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute();
+        } catch (PDOException $e) {
+            // Log the error but don't stop the employee creation process
+            error_log("Warning: Could not update attendance_logs: " . $e->getMessage());
+        }
 
         // Send welcome notification to the new employee if login access is granted
         if ($loginAccess == '1' && $newEmployeeId) {
@@ -158,7 +191,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $_SESSION['success'] = "Employee added successfully!";
   } catch (PDOException $e) {
-    $_SESSION['error'] = "Error adding employee: " . $e->getMessage();
+    $errorMessage = "Error adding employee: " . $e->getMessage();
+    $_SESSION['error'] = $errorMessage;
+    error_log("PDO Exception in add-employee.php: " . $e->getMessage());
+    error_log("PDO Error Code: " . $e->getCode());
+    error_log("Stack trace: " . $e->getTraceAsString());
+  } catch (Exception $e) {
+    $errorMessage = "General error adding employee: " . $e->getMessage();
+    $_SESSION['error'] = $errorMessage;
+    error_log("General Exception in add-employee.php: " . $e->getMessage());
   }
 
   // Redirect to the employees page
@@ -266,12 +307,22 @@ require_once __DIR__ . '/../../includes/header.php';
             
             <div class="row mb-3">
               <div class="col-md-6">
-                <label for="empJoinDate" class="form-label">Joining Date <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" required 
-                       value="<?php echo $empJoinDate ?: date('Y-m-d'); ?>" 
-                       min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
-                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>">
+                <label for="empHireDate" class="form-label">Hire Date <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" id="empHireDate" name="empHireDate" required 
+                       value="<?php echo date('Y-m-d'); ?>" readonly
+                       title="Hire date is automatically set to today's date">
               </div>
+              <div class="col-md-6">
+                <label for="empJoinDate" class="form-label">Join Date (Start Working)</label>
+                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" 
+                       value="<?php echo $empJoinDate; ?>" 
+                       min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
+                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>"
+                       title="Date when employee actually started working (can be updated later)">
+              </div>
+            </div>
+            
+            <div class="row mb-3">
               <div class="col-md-6">
                 <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
                 <select class="form-select" id="designation" name="designation" required>

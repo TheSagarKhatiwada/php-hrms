@@ -87,6 +87,7 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
         PDO::ATTR_TIMEOUT => 5, // 5 second timeout
+        PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true, // Enable buffered queries to prevent "unbuffered query" errors
     ];
     
     // Create the PDO instance

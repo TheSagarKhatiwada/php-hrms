@@ -101,9 +101,14 @@ require_once __DIR__ . '/../../includes/header.php';
                 <select class="form-select" id="gender" name="gender" required>
                   <option disabled>Select a Gender</option>
                   <?php 
+                    // Convert database values back to display format
+                    $displayGender = '';
+                    if ($employee['gender'] == 'male') $displayGender = 'M';
+                    elseif ($employee['gender'] == 'female') $displayGender = 'F';
+                    
                     $genders = ['M' => 'Male', 'F' => 'Female'];
                     foreach ($genders as $key => $value) {
-                      $selected = ($employee['gender'] == $key) ? 'selected' : '';
+                      $selected = ($displayGender == $key) ? 'selected' : '';
                       echo "<option value='$key' $selected>$value</option>";
                     }
                   ?>
@@ -139,11 +144,21 @@ require_once __DIR__ . '/../../includes/header.php';
             
             <div class="row mb-3">
               <div class="col-md-6">
-                <label for="empJoinDate" class="form-label">Joining Date <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" required 
-                       value="<?php echo htmlspecialchars($employee['join_date']); ?>" 
-                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>">
+                <label for="empHireDate" class="form-label">Hire Date</label>
+                <input type="date" class="form-control" id="empHireDate" name="empHireDate" 
+                       value="<?php echo htmlspecialchars($employee['hire_date']); ?>" readonly
+                       title="Hire date cannot be changed">
               </div>
+              <div class="col-md-6">
+                <label for="empJoinDate" class="form-label">Join Date (Start Working)</label>
+                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" 
+                       value="<?php echo htmlspecialchars($employee['join_date']); ?>" 
+                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>"
+                       title="Date when employee actually started working">
+              </div>
+            </div>
+            
+            <div class="row mb-3">
               <div class="col-md-6">
                 <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
                 <select class="form-select" id="designation" name="designation" required>
@@ -197,16 +212,40 @@ require_once __DIR__ . '/../../includes/header.php';
                 <select class="form-select" id="supervisor" name="supervisor_id">
                   <option value="">-- No Supervisor --</option>
                   <?php 
-                    $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
-                                       FROM employees 
-                                       WHERE emp_id != :current_emp_id
-                                       ORDER BY first_name, last_name";
+                    // DEBUG: Check total employees first
+                    $totalQuery = "SELECT COUNT(*) as total FROM employees";
+                    $totalStmt = $pdo->prepare($totalQuery);
+                    $totalStmt->execute();
+                    $totalCount = $totalStmt->fetch()['total'];
+                    echo "<!-- DEBUG: Total employees in database: $totalCount -->";
+                    
+                    // DEBUG: Check active employees (no exit date)
+                    $activeQuery = "SELECT COUNT(*) as active FROM employees WHERE (exit_date IS NULL OR exit_date = '' OR exit_date = '0000-00-00')";
+                    $activeStmt = $pdo->prepare($activeQuery);
+                    $activeStmt->execute();
+                    $activeCount = $activeStmt->fetch()['active'];
+                    echo "<!-- DEBUG: Active employees (no exit date): $activeCount -->";
+                    
+                    // DEBUG: Current employee being edited
+                    echo "<!-- DEBUG: Current employee ID being edited: {$employee['emp_id']} -->";
+                    
+                    // Modified query to exclude employees with exit dates and show designation
+                    $supervisorQuery = "SELECT e.emp_id, CONCAT(e.first_name, ' ', e.last_name, ' (', COALESCE(d.designation_name, 'No Designation'), ')') as supervisor_name 
+                                       FROM employees e
+                                       LEFT JOIN designations d ON e.designation_id = d.designation_id
+                                       WHERE e.emp_id != :current_emp_id 
+                                       AND (e.exit_date IS NULL OR e.exit_date = '' OR e.exit_date = '0000-00-00')
+                                       ORDER BY e.first_name, e.last_name";
                     $stmtSupervisor = $pdo->prepare($supervisorQuery);
                     $stmtSupervisor->execute(['current_emp_id' => $employee['emp_id']]);
+                    
+                    $supervisorCount = 0;
                     while ($rowSupervisor = $stmtSupervisor->fetch()) {
+                      $supervisorCount++;
                       $selectedSupervisor = ($rowSupervisor['emp_id'] == $employee['supervisor_id']) ? 'selected' : '';
                       echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
                     }
+                    echo "<!-- DEBUG: Total supervisors shown in dropdown: $supervisorCount -->";
                   ?>
                 </select>
               </div>

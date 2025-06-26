@@ -235,20 +235,16 @@ include '../../includes/db_connection.php'; // DB connection needed after header
             background-color: #ffffff !important;
             background: #ffffff !important;
             color: #000000 !important;
-        }
-          /* Ensure colors print properly */
+        }        /* Ensure colors print properly */
         * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            color-adjust: exact !important;
         }
         
         /* Force color printing for specific status cells */
         .bg-success, .bg-danger, .bg-secondary, .bg-warning {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            color-adjust: exact !important;
-            print-color: exact !important;
         }
           /* Custom styling for Nepali rules in print */
         .rules-section h4 {
@@ -336,10 +332,9 @@ include '../../includes/db_connection.php'; // DB connection needed after header
                                 </button>
                             </div>
                         </div>
-                        <div class="col-md-3 d-flex align-items-end text-left">
-                            <div class="form-group mb-0">
+                        <div class="col-md-3 d-flex align-items-end text-left">                            <div class="form-group mb-0">
                                 <?php if (isset($_POST['jsonData'])): ?>
-                                <button type="button" id="print-report-btn" class="btn btn-success btn-md px-4">
+                                <button type="button" id="print-report-btn" class="btn btn-success btn-md px-4" onclick="printReport()">
                                     <i class="fas fa-print mr-1"></i> Print
                                 </button>
                                 <?php endif; ?>
@@ -347,7 +342,9 @@ include '../../includes/db_connection.php'; // DB connection needed after header
                         </div>
                     </div>
                 </form>
-            </div>            <div class="card-body p-0">                <!-- Hidden logo for printing -->
+            </div>            
+            <div class="card-body p-0">                
+                <!-- Hidden logo for printing -->
                 <div class="d-none print-logo">
                     <img src="<?php echo $home;?>resources/logo.png" alt="Company Logo" style="height: 60px; width: auto;">
                 </div>
@@ -590,38 +587,6 @@ $(function() {
         "searching": true,
         "ordering": false,
         "info": false,
-        // "buttons": [
-        //     'colvis',
-        //     {
-        //         extend: 'print',
-        //         text: 'Print',
-        //         exportOptions: {
-        //             modifier: {
-        //                 page: 'all',
-        //             },
-        //             header: true
-        //         },
-        //         customize: function (win) {
-        //             $(win.document.body).css('font-size', '10pt');
-        //             $(win.document.body).find('table')
-        //                 .addClass('compact')
-        //                 .css('font-size', 'inherit');
-                    
-        //             // Set paper size and orientation 
-        //             var css = '@page { size: landscape; margin: 0.3cm; }';
-        //             var head = win.document.head || win.document.getElementsByTagName('head')[0];
-        //             var style = win.document.createElement('style');
-        //             style.type = 'text/css';
-        //             style.media = 'print';
-        //             if (style.styleSheet) {
-        //                 style.styleSheet.cssText = css;
-        //             } else {
-        //                 style.appendChild(win.document.createTextNode(css));
-        //             }
-        //             head.appendChild(style);
-        //         }
-        //     }
-        // ],
         "language": {
             "paginate": {
                 "first": '<i class="fas fa-angle-double-left"></i>',
@@ -639,19 +604,20 @@ $(function() {
             "search": "Search:",
             "zeroRecords": "No matching records found"
         }
-    });    // Enable buttons and append them to the container
+    });
+
+    // Enable buttons and append them to the container
     table.buttons().container().appendTo('#time-report-table_wrapper .col-md-6:eq(0)');
-      // Initialize DateRangePicker
+
+    // Initialize DateRangePicker
     try {
         console.log('Attempting to initialize daterangepicker...');
         
-        // Check if element exists
         if ($('#reportDateRange').length === 0) {
             console.error('reportDateRange element not found');
             return;
         }
         
-        // Check if required libraries are loaded
         if (typeof moment === 'undefined') {
             console.error('Moment.js not loaded');
             return;
@@ -689,8 +655,17 @@ $(function() {
     // Set existing date range if available
     if($('#hiddenReportDateRange').val()) {
         $('#reportDateRange').val($('#hiddenReportDateRange').val());
-    }    // Print button functionality - improved to ensure table display with proper colors
+    }
+
+    // Print button functionality
     $(document).on('click', '#print-report-btn', function() {
+        console.log('Print button clicked');
+        
+        if (!$(this).length) {
+            console.error('Print button not found');
+            return;
+        }
+        
         // Force rules section to be visible during print
         $('.rules-section').addClass('print-visible');
         
@@ -708,7 +683,8 @@ $(function() {
         
         // Set background colors only for non-status cells
         $('.time-report-table td:not(.bg-success):not(.bg-danger):not(.bg-secondary):not(.bg-warning)').css('background-color', '#ffffff');
-          // Ensure status cells have proper colors
+        
+        // Ensure status cells have proper colors
         $('.time-report-table td.bg-success').css('background-color', '#28a745').css('color', '#ffffff');
         $('.time-report-table td.bg-danger').css('background-color', '#dc3545').css('color', '#ffffff');
         $('.time-report-table td.bg-secondary').css('background-color', '#6c757d').css('color', '#ffffff');
@@ -717,33 +693,80 @@ $(function() {
         // Make sure the rules section appears correctly
         $('.rules-section').css('display', 'block').css('visibility', 'visible');
         
+        console.log('Preparing to print...');
+        
         setTimeout(function() {
-            window.print();
-        }, 500); // Increased delay for better rendering
-    });// Ensure the reportDateRange input is populated correctly
-    $(document).ready(function() {
-        // Handle date range changes
-        $('#reportDateRange').on('change', function() {
-            const selectedDateRange = $(this).val();
-            $('#hiddenReportDateRange').val(selectedDateRange);
-        });
-
-        // Set the initial value of hiddenReportDateRange
-        const initialDateRange = $('#reportDateRange').val();
-        $('#hiddenReportDateRange').val(initialDateRange);
-        
-        // Make sure the date picker has a value if there's a saved one
-        if($('#hiddenReportDateRange').val() && $('#reportDateRange').val() === '') {
-            $('#reportDateRange').val($('#hiddenReportDateRange').val());
-        }
-        
-        // Enable print functionality even after page reload
-        if($('#time-report-table').length > 0) {
-            console.log('Report table detected');
-            $('#print-report-btn').show();
-        } else {
-            console.log('No report table detected');
-        }
+            console.log('Calling window.print()');
+            try {
+                window.print();
+            } catch (error) {
+                console.error('Print error:', error);
+                alert('Print failed. Please try using Ctrl+P or your browser\'s print option.');
+            }
+        }, 500);
     });
+
+    // Handle date range changes
+    $('#reportDateRange').on('change', function() {
+        const selectedDateRange = $(this).val();
+        $('#hiddenReportDateRange').val(selectedDateRange);
+    });
+
+    // Set the initial value of hiddenReportDateRange
+    const initialDateRange = $('#reportDateRange').val();
+    $('#hiddenReportDateRange').val(initialDateRange);
+    
+    // Make sure the date picker has a value if there's a saved one
+    if($('#hiddenReportDateRange').val() && $('#reportDateRange').val() === '') {
+        $('#reportDateRange').val($('#hiddenReportDateRange').val());
+    }
+    
+    // Enable print functionality even after page reload
+    if($('#time-report-table').length > 0) {
+        console.log('Report table detected');
+        $('#print-report-btn').show();
+    } else {
+        console.log('No report table detected');
+    }
 });
+
+// Standalone print function as fallback (outside jQuery wrapper)
+function printReport() {
+    console.log('printReport() function called');
+    
+    // Force rules section to be visible during print
+    $('.rules-section').addClass('print-visible');
+    
+    // Remove unwanted margins for better printing
+    $('body').css('margin', '0');
+    $('.card-body').css('padding', '0');
+    
+    // Set white background for print
+    $('body, html').css('background-color', '#ffffff');
+    $('.content-wrapper, .card, .card-body').css('background-color', '#ffffff');
+    
+    // Ensure table visibility
+    $('.time-report-table').css('display', 'table').css('visibility', 'visible');
+    $('.time-report-table *').css('visibility', 'visible');
+    
+    // Set background colors only for non-status cells
+    $('.time-report-table td:not(.bg-success):not(.bg-danger):not(.bg-secondary):not(.bg-warning)').css('background-color', '#ffffff');
+    
+    // Ensure status cells have proper colors
+    $('.time-report-table td.bg-success').css('background-color', '#28a745').css('color', '#ffffff');
+    $('.time-report-table td.bg-danger').css('background-color', '#dc3545').css('color', '#ffffff');
+    $('.time-report-table td.bg-secondary').css('background-color', '#6c757d').css('color', '#ffffff');
+    $('.time-report-table td.bg-warning').css('background-color', '#ffc107').css('color', '#ffffff');
+    
+    // Make sure the rules section appears correctly
+    $('.rules-section').css('display', 'block').css('visibility', 'visible');
+    
+    setTimeout(function() {
+        try {
+            window.print();
+        } catch (error) {
+            console.error('Print error:', error);
+            alert('Print failed. Please use Ctrl+P to print.');        }
+    }, 500);
+}
 </script>

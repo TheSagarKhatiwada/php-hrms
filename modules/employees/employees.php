@@ -6,6 +6,11 @@ ob_start();
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
+// Fix session role if not set but user_role exists
+if (!isset($_SESSION['role']) && isset($_SESSION['user_role'])) {
+    $_SESSION['role'] = $_SESSION['user_role'];
+}
+
 // Debug: Add error display for development
 if (defined('ENVIRONMENT') && ENVIRONMENT === 'development') {
     ini_set('display_errors', 1);
@@ -20,7 +25,6 @@ if (!is_admin()) {
     header('Location: ../../dashboard.php');
     exit();
 }
-
 include '../../includes/db_connection.php';
 
 // Handle exit date and note update
@@ -42,6 +46,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['exitDate'])) {
         exit();
     } catch (PDOException $e) {
         $_SESSION['error'] = "Error updating exit details: " . $e->getMessage();
+        header('Location: employees.php?_nocache=' . time());
+        exit();
+    }
+}
+
+// Handle join date update
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['joinDate'])) {
+    $empId = $_POST['empId'];
+    $joinDate = $_POST['joinDate'];
+    $joinNote = $_POST['joinNote'];
+
+    // For now, we'll just update the join_date. The join_note can be added later if needed.
+    $sql = "UPDATE employees SET join_date = :joinDate WHERE emp_id = :empId";
+    $stmt = $pdo->prepare($sql);
+    try {
+        $stmt->execute([
+            ':joinDate' => $joinDate,
+            ':empId' => $empId
+        ]);
+        
+        // Log the join note in the system for now (can be moved to database later)
+        if (!empty($joinNote)) {
+            error_log("Join date update note for employee $empId: $joinNote");
+        }
+        
+        $_SESSION['success'] = "Employee join date updated successfully!";
+        header('Location: employees.php?_nocache=' . time());
+        exit();
+    } catch (PDOException $e) {
+        $_SESSION['error'] = "Error updating join date: " . $e->getMessage();
         header('Location: employees.php?_nocache=' . time());
         exit();
     }
@@ -168,7 +202,7 @@ require_once __DIR__ . '/../../includes/header.php';
                     <div><i class="fas fa-phone me-1 text-muted small"></i> <?php echo htmlspecialchars($employee['office_phone'] ? $employee['office_phone'] : 'N/A'); ?></div>
                   </td>
                   <td><?php echo htmlspecialchars($employee['name']); ?></td>
-                  <td class="text-center align-middle"><?php echo date('M d, Y', strtotime($employee['join_date'])); ?></td>
+                  <td class="text-center align-middle"><?php echo date('Y-m-d', strtotime($employee['join_date'])); ?></td>
                   <td class="text-center align-middle">
                     <?php if ($employee['exit_date']): ?>
                       <span class="badge bg-danger">Exited on</span></br><?php echo date('M d, Y', strtotime($employee['exit_date'])); ?>
@@ -199,6 +233,11 @@ require_once __DIR__ . '/../../includes/header.php';
                           </a>
                         </li>
                         <?php endif; ?>
+                        <li>
+                          <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#markJoinModal" data-emp-id="<?php echo $employee['emp_id']; ?>" data-current-join-date="<?php echo $employee['join_date']; ?>">
+                            <i class="fas fa-calendar-plus me-2"></i> Update Join Date
+                          </a>
+                        </li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
                           <a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#deleteEmployeeModal" data-emp-id="<?php echo $employee['emp_id']; ?>">
@@ -245,6 +284,35 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-primary">Update Exit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Join Date Modal -->
+<div class="modal fade" id="markJoinModal" tabindex="-1" aria-labelledby="markJoinModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="markJoinModalLabel">Update Employee Join Date</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="markJoinForm" method="POST" action="employees.php">
+        <div class="modal-body">
+          <input type="hidden" id="joinEmpId" name="empId">
+          <div class="mb-3">
+            <label for="joinDate" class="form-label">Join Date (Start Working) <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="joinDate" name="joinDate" max="<?php echo date('Y-m-d'); ?>" required>
+          </div>
+          <div class="mb-3">
+            <label for="joinNote" class="form-label">Remarks</label>
+            <textarea class="form-control" id="joinNote" name="joinNote" rows="3" placeholder="Enter reason for join date update or other remarks"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Update Join Date</button>
         </div>
       </form>
     </div>
@@ -308,6 +376,18 @@ document.addEventListener('DOMContentLoaded', function() {
       const button = event.relatedTarget;
       const empId = button.getAttribute('data-emp-id');
       document.getElementById('exitEmpId').value = empId;
+    });
+  }
+
+  // Mark Join Date Modal Handler
+  const markJoinModal = document.getElementById('markJoinModal');
+  if (markJoinModal) {
+    markJoinModal.addEventListener('show.bs.modal', function(event) {
+      const button = event.relatedTarget;
+      const empId = button.getAttribute('data-emp-id');
+      const currentJoinDate = button.getAttribute('data-current-join-date');
+      document.getElementById('joinEmpId').value = empId;
+      document.getElementById('joinDate').value = currentJoinDate || '';
     });
   }
   

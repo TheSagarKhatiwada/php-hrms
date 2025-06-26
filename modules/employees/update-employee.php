@@ -17,7 +17,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $gender = $_POST['gender'];
     $empEmail = filter_var($_POST['empEmail'], FILTER_VALIDATE_EMAIL) ? $_POST['empEmail'] : null;
     $empPhone = preg_match('/^\d+$/', $_POST['empPhone']) ? $_POST['empPhone'] : null;
-    $empJoinDate = $_POST['empJoinDate'];
+    $empHireDate = $_POST['empHireDate']; // Hire date (usually readonly)
+    $empJoinDate = $_POST['empJoinDate']; // Join date (actual start working date)
     $designation = $_POST['designation']; 
     $loginAccess = $_POST['login_access']; 
     $croppedImage = $_POST['croppedImage'];
@@ -97,6 +98,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             gender = :gender, 
             email = :empEmail, 
             phone = :empPhone, 
+            hire_date = :empHireDate,
             join_date = :empJoinDate, 
             designation = :designation,
             login_access = :loginAccess,
@@ -123,6 +125,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             ':gender' => $gender,
             ':empEmail' => $empEmail,
             ':empPhone' => $empPhone,
+            ':empHireDate' => $empHireDate,
             ':empJoinDate' => $empJoinDate,
             ':designation' => $designation,
             ':loginAccess' => $loginAccess,

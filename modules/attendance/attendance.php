@@ -60,6 +60,42 @@ ob_start();
 require_once __DIR__ . '/../../includes/header.php';
 ?>
 
+<style>
+.form-check-label {
+    cursor: pointer;
+}
+
+.form-check-input:checked + .form-check-label {
+    color: #0d6efd;
+    font-weight: 500;
+}
+
+#selectAllDays + .form-check-label {
+    color: #0d6efd;
+    cursor: pointer;
+}
+
+.alert-info {
+    border-left: 4px solid #0dcaf0;
+    background-color: #e7f3ff;
+}
+
+.nav-tabs .nav-link {
+    border-radius: 0.375rem 0.375rem 0 0;
+}
+
+.nav-tabs .nav-link.active {
+    border-color: #dee2e6 #dee2e6 #fff;
+    background-color: #fff;
+}
+
+.tab-pane {
+    border-top: none;
+    border-radius: 0 0 0.375rem 0.375rem;
+    padding: 1.5rem;
+}
+</style>
+
 <!-- Content Wrapper (already started in header.php) -->
 <!-- <div class="content-wrapper"> --> <!-- This div is opened in header.php -->
     <!-- Topbar is included in header.php -->
@@ -241,7 +277,10 @@ require_once __DIR__ . '/../../includes/header.php';
             <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-tab-pane" type="button" role="tab" aria-controls="upload-tab-pane" aria-selected="true">Upload</button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual-tab-pane" type="button" role="tab" aria-controls="manual-tab-pane" aria-selected="false">Manual</button>
+            <button class="nav-link" id="manual-single-tab" data-bs-toggle="tab" data-bs-target="#manual-single-tab-pane" type="button" role="tab" aria-controls="manual-single-tab-pane" aria-selected="false">Manual (Single)</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="manual-periodic-tab" data-bs-toggle="tab" data-bs-target="#manual-periodic-tab-pane" type="button" role="tab" aria-controls="manual-periodic-tab-pane" aria-selected="false">Manual (Periodic)</button>
           </li>
         </ul>
         
@@ -263,8 +302,8 @@ require_once __DIR__ . '/../../includes/header.php';
             </form>
           </div>
           
-          <!-- Manual Tab -->
-          <div class="tab-pane fade" id="manual-tab-pane" role="tabpanel" aria-labelledby="manual-tab" tabindex="0">
+          <!-- Manual (Single) Tab -->
+          <div class="tab-pane fade" id="manual-single-tab-pane" role="tabpanel" aria-labelledby="manual-single-tab" tabindex="0">
             <form id="manualAttendance" method="POST" action="record_manual_attendance.php">
               <div class="row g-3">
                 <div class="col-md-6 mb-3">
@@ -315,6 +354,120 @@ require_once __DIR__ . '/../../includes/header.php';
                 </div>
                 <div class="col-12 text-end">
                   <button type="submit" class="btn btn-primary">Save Attendance</button>
+                </div>
+              </div>
+            </form>
+          </div>
+          
+          <!-- Manual (Periodic) Tab -->
+          <div class="tab-pane fade" id="manual-periodic-tab-pane" role="tabpanel" aria-labelledby="manual-periodic-tab" tabindex="0">
+            <form id="manualPeriodicAttendance" method="POST" action="record_manual_attendance_periodic.php">
+              <div class="row g-3">
+                <div class="col-md-6 mb-3">
+                  <label for="periodicEmpBranch" class="form-label">Branch <span class="text-danger">*</span></label>
+                  <select class="form-select" id="periodicEmpBranch" name="empBranch" required>
+                    <option value="" selected disabled>Select Branch</option>
+                    <?php 
+                    $branchQuery = "SELECT DISTINCT id, name FROM branches";
+                    $stmt = $pdo->query($branchQuery);
+                    while ($row = $stmt->fetch()) {
+                        echo "<option value='{$row['id']}'>{$row['name']}</option>";
+                    }
+                    ?>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="periodic_emp_id" class="form-label">Employee <span class="text-danger">*</span></label>
+                  <select class="form-select" id="periodic_emp_id" name="empId" required>
+                    <option value="">Select Employee</option>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="periodicStartDate" class="form-label">Start Date <span class="text-danger">*</span></label>
+                  <input type="date" class="form-control" id="periodicStartDate" name="startDate" 
+                         min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
+                         max="<?php echo date('Y-m-d'); ?>" 
+                         required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="periodicEndDate" class="form-label">End Date <span class="text-danger">*</span></label>
+                  <input type="date" class="form-control" id="periodicEndDate" name="endDate" 
+                         min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
+                         max="<?php echo date('Y-m-d'); ?>" 
+                         required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="periodicInTime" class="form-label">In Time <span class="text-danger">*</span></label>
+                  <input type="time" class="form-control" id="periodicInTime" name="inTime" step="1" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="periodicOutTime" class="form-label">Out Time <span class="text-danger">*</span></label>
+                  <input type="time" class="form-control" id="periodicOutTime" name="outTime" step="1" required>
+                </div>
+                <div class="col-md-12 mb-3">
+                  <label class="form-label">Working Days <span class="text-danger">*</span></label>
+                  <div class="row">
+                    <div class="col-md-6">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1" id="monday" name="workingDays[]">
+                        <label class="form-check-label" for="monday">Monday</label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="2" id="tuesday" name="workingDays[]">
+                        <label class="form-check-label" for="tuesday">Tuesday</label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="3" id="wednesday" name="workingDays[]">
+                        <label class="form-check-label" for="wednesday">Wednesday</label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="4" id="thursday" name="workingDays[]">
+                        <label class="form-check-label" for="thursday">Thursday</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="5" id="friday" name="workingDays[]">
+                        <label class="form-check-label" for="friday">Friday</label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="6" id="saturday" name="workingDays[]">
+                        <label class="form-check-label" for="saturday">Saturday</label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="0" id="sunday" name="workingDays[]">
+                        <label class="form-check-label" for="sunday">Sunday</label>
+                      </div>
+                      <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="selectAllDays">
+                        <label class="form-check-label fw-bold text-primary" for="selectAllDays">Select All</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="periodicReason" class="form-label">Reason <span class="text-danger">*</span></label>
+                  <select class="form-select" id="periodicReason" name="reason" required>
+                    <option value="" selected disabled>Select Reason</option>
+                    <option value="1">Card Forgot</option>
+                    <option value="2">Card Lost</option>
+                    <option value="3">Forgot to Punch</option>
+                    <option value="4">Office Work Delay</option>
+                    <option value="5">Field Visit</option>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="periodicRemarks" class="form-label">Remarks</label>
+                  <input type="text" class="form-control" id="periodicRemarks" name="remarks" placeholder="Optional">
+                </div>
+                <div class="col-12">
+                  <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Note:</strong> This will create attendance records for the selected employee on the specified working days within the date range.
+                  </div>
+                </div>
+                <div class="col-12 text-end">
+                  <button type="submit" class="btn btn-primary">Save Periodic Attendance</button>
                 </div>
               </div>
             </form>
@@ -433,22 +586,122 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('empBranch').addEventListener('change', function() {
     const branch = this.value;
     if (branch) {
-      fetch('fetch_users.php', {
+      fetch('../../fetch_users.php', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: 'branch=' + branch
       })
-      .then(response => response.text())
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.text();
+      })
       .then(data => {
         document.getElementById('emp_id').innerHTML = data;
       })
       .catch(error => {
         console.error('Error fetching employees:', error);
+        document.getElementById('emp_id').innerHTML = '<option value="">Error loading employees</option>';
       });
     } else {
       document.getElementById('emp_id').innerHTML = '<option value="">Select Employee</option>';
+    }
+  });
+
+  // Branch change for periodic attendance - fetch employees
+  document.getElementById('periodicEmpBranch').addEventListener('change', function() {
+    const branch = this.value;
+    if (branch) {
+      fetch('../../fetch_users.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'branch=' + branch
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.text();
+      })
+      .then(data => {
+        document.getElementById('periodic_emp_id').innerHTML = data;
+      })
+      .catch(error => {
+        console.error('Error fetching employees:', error);
+        document.getElementById('periodic_emp_id').innerHTML = '<option value="">Error loading employees</option>';
+      });
+    } else {
+      document.getElementById('periodic_emp_id').innerHTML = '<option value="">Select Employee</option>';
+    }
+  });
+
+  // Date validation for periodic attendance
+  document.getElementById('periodicStartDate').addEventListener('change', function() {
+    const startDate = this.value;
+    const endDateInput = document.getElementById('periodicEndDate');
+    
+    if (startDate) {
+      endDateInput.min = startDate;
+      if (endDateInput.value && endDateInput.value < startDate) {
+        endDateInput.value = startDate;
+      }
+    }
+  });
+
+  document.getElementById('periodicEndDate').addEventListener('change', function() {
+    const endDate = this.value;
+    const startDateInput = document.getElementById('periodicStartDate');
+    
+    if (endDate) {
+      startDateInput.max = endDate;
+      if (startDateInput.value && startDateInput.value > endDate) {
+        startDateInput.value = endDate;
+      }
+    }
+  });
+
+  // Select all days checkbox handler
+  document.getElementById('selectAllDays').addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('input[name="workingDays[]"]');
+    checkboxes.forEach(checkbox => {
+      checkbox.checked = this.checked;
+    });
+  });
+
+  // Individual day checkbox handler to update "select all" state
+  document.querySelectorAll('input[name="workingDays[]"]').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+      const allCheckboxes = document.querySelectorAll('input[name="workingDays[]"]');
+      const checkedCheckboxes = document.querySelectorAll('input[name="workingDays[]"]:checked');
+      const selectAllCheckbox = document.getElementById('selectAllDays');
+      
+      selectAllCheckbox.checked = allCheckboxes.length === checkedCheckboxes.length;
+      selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < allCheckboxes.length;
+    });
+  });
+
+  // Debug: Add form submission handler for periodic attendance
+  document.getElementById('manualPeriodicAttendance').addEventListener('submit', function(e) {
+    console.log('Periodic attendance form submitted');
+    
+    // Check if at least one working day is selected
+    const checkedDays = document.querySelectorAll('input[name="workingDays[]"]:checked');
+    if (checkedDays.length === 0) {
+      e.preventDefault();
+      alert('Please select at least one working day.');
+      return false;
+    }
+    
+    // Log form data for debugging
+    const formData = new FormData(this);
+    console.log('Form data:');
+    for (let [key, value] of formData.entries()) {
+      console.log(key, value);
     }
   });
 
@@ -533,10 +786,10 @@ document.addEventListener('DOMContentLoaded', function() {
       const addAttendanceModal = new bootstrap.Modal(document.getElementById('addAttendanceModal'));
       addAttendanceModal.show();
       
-      // Switch to manual tab after modal is shown
+      // Switch to manual single tab after modal is shown
       addAttendanceModal._element.addEventListener('shown.bs.modal', function() {
-        const manualTab = new bootstrap.Tab(document.getElementById('manual-tab'));
-        manualTab.show();
+        const manualSingleTab = new bootstrap.Tab(document.getElementById('manual-single-tab'));
+        manualSingleTab.show();
       }, { once: true });
     }, 100);
   }
