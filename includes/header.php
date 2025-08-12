@@ -82,6 +82,9 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   <meta name="description" content="<?php echo COMPANY_FULL_NAME; ?> - Human Resource Management System">
   <link rel="manifest" href="<?php echo isset($home) ? $home : ''; ?>manifest.json">
   <link rel="apple-touch-icon" href="<?php echo isset($home) ? $home : ''; ?>resources/images/icon-192x192.png">
+  <?php if (defined('ENVIRONMENT') && ENVIRONMENT === 'development' && isset($_SESSION['user_id'])): ?>
+  <meta name="x-dev-seeder" content="<?php echo (isset($home) ? rtrim($home, '/') : ''); ?>/tools/seed_demo.php">
+  <?php endif; ?>
   
   <!-- Meta tags to prevent caching of dynamic content -->
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
@@ -102,14 +105,18 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
-  <!-- Bootstrap 5 CSS -->
+  <!-- Bootstrap 5 CSS (Primary CDN) -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap 5 CSS (Fallback CDN) -->
+  <link href="https://unpkg.com/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" media="print" onload="this.media='all'">
   
   <!-- Font Awesome 6 -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
-  <!-- DataTables Bootstrap 5 -->
+  <!-- DataTables Bootstrap 5 (Primary CDN) -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+  <!-- DataTables Bootstrap 5 (Fallback CDN via jsDelivr mirror) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs5@1.13.6/css/dataTables.bootstrap5.min.css" media="print" onload="this.media='all'">
   
   <!-- SweetAlert2 CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
@@ -879,8 +886,51 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
     a:hover {
       text-decoration: none;
     }
+
+    /* Celebration card chevron animation */
+    #celebrationsChevron {
+      transition: transform 0.3s ease;
+    }
+
+    /* Collapsible card button styling */
+    .btn-link:focus {
+      box-shadow: none;
+    }
+
+    .btn-link:hover {
+      color: var(--primary-color) !important;
+    }
   </style>
   <?php include __DIR__ . '/pwa_install.php'; ?>
+  <script>
+    // Fallback: if Bootstrap classes aren't applied (CDN blocked), inject local CSS fallbacks
+    (function(){
+      try {
+        var test = document.createElement('div');
+        test.className = 'd-none';
+        document.head.appendChild(test);
+        var computed = window.getComputedStyle(test).display;
+        document.head.removeChild(test);
+        if (computed !== 'none') {
+          // Inject AdminLTE base CSS as fallback
+          var link1 = document.createElement('link');
+          link1.rel = 'stylesheet';
+          link1.href = '<?php echo isset($home)?$home:""; ?>dist/css/adminlte.min.css';
+          document.head.appendChild(link1);
+          // Inject DataTables local CSS fallback (Bootstrap4 skin)
+          var link2 = document.createElement('link');
+          link2.rel = 'stylesheet';
+          link2.href = '<?php echo isset($home)?$home:""; ?>plugins/datatables-bs4/css/dataTables.bootstrap4.min.css';
+          document.head.appendChild(link2);
+          // Inject FontAwesome local fallback if available
+          var link3 = document.createElement('link');
+          link3.rel = 'stylesheet';
+          link3.href = '<?php echo isset($home)?$home:""; ?>plugins/fontawesome-free/css/all.min.css';
+          document.head.appendChild(link3);
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
 </head>
 <body class="<?php echo isset($_COOKIE['dark-mode']) && $_COOKIE['dark-mode'] === 'true' ? 'dark-mode' : ''; ?>">
   <!-- Loading Overlay -->
@@ -896,6 +946,12 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('loadingOverlay').style.display = 'none';
   });
+  
+  // Global configuration for API endpoints
+  window.HRMS_CONFIG = {
+    BASE_URL: <?php echo json_encode(rtrim(isset($home) ? $home : '', '/')); ?>,
+    API_URL: <?php echo json_encode(rtrim(isset($home) ? $home : '', '/') . '/api'); ?>
+  };
   </script>
 
   <!-- App Container Wrapper -->
@@ -916,4 +972,9 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       
       <!-- Content Wrapper -->
       <div class="content-wrapper" id="content-wrapper">
+        <!-- Global Modals -->
+        <?php 
+          // Include global Apply Leave modal so it's accessible from anywhere
+          include __DIR__ . '/leave-request-modal.php';
+        ?>
         <!-- Page Content - Starts Here -->

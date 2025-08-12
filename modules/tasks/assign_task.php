@@ -1,196 +1,101 @@
 <?php
-require_once '../../includes/session_config.php';
-require_once '../../includes/db_connection.php';
-require_once 'task_helpers.php';
+// Self-assign a task (for open/department tasks) or reassign if permitted
+// Expects POST: task_id, csrf_token
+
+declare(strict_types=1);
+
+// Use unified session bootstrap to ensure correct session name and settings
+require_once __DIR__ . '/../../includes/session_config.php';
 
 header('Content-Type: application/json');
 
-// Check if user is logged in
+require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/db_connection.php';
+require_once __DIR__ . '/../../includes/validation.php';
+require_once __DIR__ . '/../../includes/csrf_protection.php';
+require_once __DIR__ . '/../../includes/hierarchy_helpers.php';
+
+function json_error(string $message, int $code = 400): void {
+    http_response_code($code);
+    echo json_encode(['success' => false, 'message' => $message]);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    json_error('Invalid request method', 405);
+}
+
+// Do a non-die CSRF validation to avoid HTML error responses
+$csrf = $_POST['csrf_token'] ?? '';
+$sessionToken = $_SESSION['csrf_token'] ?? '';
+if (!is_string($csrf) || !is_string($sessionToken) || $csrf === '' || $sessionToken === '' || !hash_equals($sessionToken, $csrf)) {
+    json_error('Invalid CSRF token', 403);
+}
+
 if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-    exit();
+    json_error('Not authenticated', 401);
 }
 
-$current_user_id = $_SESSION['user_id'];
+$taskId = isset($_POST['task_id']) ? (int)$_POST['task_id'] : 0;
+if ($taskId <= 0) {
+    json_error('Invalid task id');
+}
 
-// Handle POST request for task assignment
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    try {
-        $task_id = intval($_POST['task_id'] ?? 0);
-        $action = $_POST['action'] ?? '';
-        
-        if ($task_id <= 0) {
-            throw new Exception("Invalid task ID");
-        }
-        
-        // Get task details
-        $stmt = $pdo->prepare("
-            SELECT t.*, e.department_id, e.role_id 
-            FROM tasks t
-            LEFT JOIN employees e ON e.emp_id = ?
-            WHERE t.id = ?
-        ");
-        $stmt->execute([$current_user_id, $task_id]);
-        $task = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$task) {
-            throw new Exception("Task not found");
-        }
-        
-        // Check if user can assign this task to themselves
-        $can_assign = false;
-        $message = '';
-        
-        switch ($task['task_type']) {
-            case 'open':
-                // Anyone can assign open tasks to themselves
-                $can_assign = true;
-                break;
-                
-            case 'department':
-                // Only department members can assign department tasks
-                if ($task['target_department_id'] == $task['department_id']) {
-                    $can_assign = true;
-                }
-                break;
-                
-            case 'assigned':
-                // Already assigned tasks cannot be self-assigned
-                break;
-        }
-        
-        if (!$can_assign) {
-            throw new Exception("You cannot assign this task to yourself");
-        }
-        
-        // Check if task is already assigned
-        if ($task['assigned_to'] !== null) {
-            throw new Exception("This task is already assigned to someone else");
-        }
-        
-        if ($action === 'assign') {
-            // Begin transaction
-            $pdo->beginTransaction();
-            
-            // Check if self_assigned_at column exists
-            $stmt = $pdo->prepare("SHOW COLUMNS FROM tasks LIKE 'self_assigned_at'");
-            $stmt->execute();
-            $has_self_assigned_column = $stmt->rowCount() > 0;
-            
-            // Assign task to user
-            if ($has_self_assigned_column) {
-                $stmt = $pdo->prepare("
-                    UPDATE tasks 
-                    SET assigned_to = ?, self_assigned_at = NOW(), status = 'in_progress', updated_at = NOW()
-                    WHERE id = ?
-                ");
-            } else {
-                $stmt = $pdo->prepare("
-                    UPDATE tasks 
-                    SET assigned_to = ?, status = 'in_progress', updated_at = NOW()
-                    WHERE id = ?
-                ");
-            }
-            $stmt->execute([$current_user_id, $task_id]);
-            
-            // Check if task_history table exists and add history entry
-            try {
-                $stmt = $pdo->prepare("SHOW TABLES LIKE 'task_history'");
-                $stmt->execute();
-                $has_history_table = $stmt->rowCount() > 0;
-                
-                if ($has_history_table) {
-                    $stmt = $pdo->prepare("
-                        INSERT INTO task_history (task_id, employee_id, action, new_value, created_at) 
-                        VALUES (?, ?, 'self_assigned', 'Task self-assigned', NOW())
-                    ");
-                    $stmt->execute([$task_id, $current_user_id]);
-                }
-            } catch (Exception $e) {
-                // Continue even if history table doesn't exist or has issues
-            }
-            
-            // Commit transaction
-            $pdo->commit();
-            
-            echo json_encode([
-                'success' => true,
-                'message' => 'Task successfully assigned to you!',
-                'task_id' => $task_id
-            ]);
-            
-        } elseif ($action === 'unassign') {
-            // Allow unassigning only if user assigned it to themselves
-            if ($task['assigned_to'] != $current_user_id) {
-                throw new Exception("You can only unassign tasks that you assigned to yourself");
-            }
-            
-            // Begin transaction
-            $pdo->beginTransaction();
-            
-            // Check if self_assigned_at column exists
-            $stmt = $pdo->prepare("SHOW COLUMNS FROM tasks LIKE 'self_assigned_at'");
-            $stmt->execute();
-            $has_self_assigned_column = $stmt->rowCount() > 0;
-            
-            // Unassign task
-            if ($has_self_assigned_column) {
-                $stmt = $pdo->prepare("
-                    UPDATE tasks 
-                    SET assigned_to = NULL, self_assigned_at = NULL, status = 'pending', progress = 0, updated_at = NOW()
-                    WHERE id = ?
-                ");
-            } else {
-                $stmt = $pdo->prepare("
-                    UPDATE tasks 
-                    SET assigned_to = NULL, status = 'pending', progress = 0, updated_at = NOW()
-                    WHERE id = ?
-                ");
-            }
-            $stmt->execute([$task_id]);
-            
-            // Add to task history if table exists
-            try {
-                $stmt = $pdo->prepare("SHOW TABLES LIKE 'task_history'");
-                $stmt->execute();
-                $has_history_table = $stmt->rowCount() > 0;
-                
-                if ($has_history_table) {
-                    $stmt = $pdo->prepare("
-                        INSERT INTO task_history (task_id, employee_id, action, new_value, created_at) 
-                        VALUES (?, ?, 'unassigned', 'Task unassigned by user', NOW())
-                    ");
-                    $stmt->execute([$task_id, $current_user_id]);
-                }
-            } catch (Exception $e) {
-                // Continue even if history table doesn't exist or has issues
-            }
-            
-            // Commit transaction
-            $pdo->commit();
-            
-            echo json_encode([
-                'success' => true,
-                'message' => 'Task unassigned successfully!',
-                'task_id' => $task_id
-            ]);
-            
-        } else {
-            throw new Exception("Invalid action");
-        }
-        
-    } catch (Exception $e) {
-        // Rollback transaction on error
-        if ($pdo->inTransaction()) {
-            $pdo->rollback();
-        }
-        
-        echo json_encode([
-            'success' => false,
-            'message' => $e->getMessage()
-        ]);
+try {
+    // Use shared PDO from db_connection.php
+    global $pdo;
+    if (!$pdo) {
+        json_error('Database not available', 500);
     }
-} else {
-    echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+    $pdo->beginTransaction();
+
+    $stmt = $pdo->prepare("SELECT id, title, task_type, target_department_id, assigned_to, status FROM tasks WHERE id = :id FOR UPDATE");
+    $stmt->execute([':id' => $taskId]);
+    $task = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$task) {
+        $pdo->rollBack();
+        json_error('Task not found', 404);
+    }
+
+    // Only open or department tasks can be self-assigned
+    if (!in_array($task['task_type'], ['open', 'department'], true)) {
+        $pdo->rollBack();
+        json_error('Task is not available for self-assignment');
+    }
+
+    // If already assigned, block double take
+    if (!empty($task['assigned_to'])) {
+        $pdo->rollBack();
+        json_error('Task is already assigned');
+    }
+
+    $currentUserId = $_SESSION['user_id'];
+
+    // If department task, ensure user belongs to the target department
+    if ($task['task_type'] === 'department') {
+        $targetDeptId = (int)($task['target_department_id'] ?? 0);
+        if ($targetDeptId > 0) {
+            // Check membership via employees table (department_id)
+            $chk = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE emp_id = :uid AND department_id = :did");
+            $chk->execute([':uid' => $currentUserId, ':did' => $targetDeptId]);
+            $isMember = ((int)$chk->fetchColumn() > 0);
+            if (!$isMember) {
+                $pdo->rollBack();
+                json_error('You are not a member of the target department', 403);
+            }
+        }
+    }
+
+    // Assign to current user and set self_assigned_at; advance status if currently pending
+    $stmt = $pdo->prepare("UPDATE tasks SET assigned_to = :uid, self_assigned_at = NOW(), status = CASE WHEN status = 'pending' THEN 'in_progress' ELSE status END WHERE id = :id");
+    $stmt->execute([':uid' => $currentUserId, ':id' => $taskId]);
+
+    $pdo->commit();
+
+    echo json_encode(['success' => true, 'message' => 'Task assigned to you']);
+} catch (Throwable $e) {
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    json_error('Server error: ' . $e->getMessage(), 500);
 }
-?>

@@ -301,18 +301,71 @@ function is_holiday($date, $branch_id = null) {
     try {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
-        
-        // Check for exact date match or recurring holiday (same month and day)
-        $sql = "SELECT * FROM holidays 
-                WHERE (date = ? OR (is_recurring = 1 AND MONTH(date) = MONTH(?) AND DAY(date) = DAY(?)))
-                AND (branch_id IS NULL OR branch_id = ?)
-                ORDER BY branch_id ASC LIMIT 1";
-        
+
+        // Build SQL with optional branch filter and support for recurring types
+        $sql = "SELECT * FROM holidays WHERE (date = :dateExact)";
+        // Include recurring via recurring_type (new) and fallback to is_recurring (legacy)
+        $sql .= " OR (
+                    (recurring_type IS NOT NULL AND recurring_type <> 'none')
+                    OR (COALESCE(is_recurring,0) = 1)
+                 )";
+
+        if (!is_null($branch_id)) {
+            $sql .= " AND (branch_id IS NULL OR branch_id = :branch_id)";
+        }
+
+        $sql .= " ORDER BY branch_id IS NOT NULL ASC"; // prefer global if both exist
+
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$date, $date, $date, $branch_id]);
-        
-        $holiday = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $holiday ? $holiday : false;
+        $stmt->bindValue(':dateExact', $date);
+        if (!is_null($branch_id)) {
+            $stmt->bindValue(':branch_id', $branch_id, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $dateTs = strtotime($date);
+        $y = (int)date('Y', $dateTs);
+        $m = (int)date('n', $dateTs);
+        $d = (int)date('j', $dateTs);
+        $dow = (int)date('N', $dateTs); // 1=Mon..7=Sun
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            // Exact date
+            if ($row['date'] === $date) {
+                return $row;
+            }
+
+            // New recurring types
+            $rtype = $row['recurring_type'] ?? 'none';
+            if ($rtype && $rtype !== 'none') {
+                $base = strtotime($row['date']);
+                $baseM = (int)date('n', $base);
+                $baseD = (int)date('j', $base);
+                $baseQ = (int)ceil($baseM / 3);
+                $currQ = (int)ceil($m / 3);
+
+                if ($rtype === 'weekly') {
+                    $rowDow = (int)($row['recurring_day_of_week'] ?? date('N', $base));
+                    if ($rowDow === $dow) return $row;
+                } elseif ($rtype === 'monthly') {
+                    if ($baseD === $d) return $row;
+                } elseif ($rtype === 'quarterly') {
+                    if ($currQ === $baseQ && $baseD === $d) return $row;
+                } elseif ($rtype === 'annually') {
+                    if ($baseM === $m && $baseD === $d) return $row;
+                }
+            }
+
+            // Legacy recurring (annual same month/day)
+            if (!empty($row['is_recurring'])) {
+                $base = strtotime($row['date']);
+                if (date('n', $base) == $m && date('j', $base) == $d) {
+                    return $row;
+                }
+            }
+        }
+
+        return false;
     } catch (PDOException $e) {
         error_log('Holiday check error: ' . $e->getMessage(), 3, 'error_log.txt');
         return false;
@@ -331,20 +384,54 @@ function get_holidays_for_month($month, $year, $branch_id = null) {
     try {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
-        
-        $sql = "SELECT * FROM holidays 
-                WHERE ((YEAR(date) = :year AND MONTH(date) = :month) OR 
-                       (is_recurring = 1 AND MONTH(date) = :month))
-                AND (branch_id IS NULL OR branch_id = :branch_id)
-                ORDER BY DAY(date) ASC";
-        
+
+        $sql = "SELECT * FROM holidays WHERE (
+                    (YEAR(date) = ? AND MONTH(date) = ?)
+                    OR (recurring_type IN ('monthly','quarterly','annually'))
+                    OR (COALESCE(is_recurring,0) = 1)
+                )";
+        $params = [(int)$year, (int)$month];
+        if (!is_null($branch_id)) {
+            $sql .= " AND (branch_id IS NULL OR branch_id = ?)";
+            $params[] = (int)$branch_id;
+        }
+        $sql .= " ORDER BY DAY(date) ASC";
+
         $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':month', $month, PDO::PARAM_INT);
-        $stmt->bindParam(':year', $year, PDO::PARAM_INT);
-        $stmt->bindParam(':branch_id', $branch_id, PDO::PARAM_INT);
-        $stmt->execute();
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->execute($params);
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Filter to the requested month for recurring types
+        $out = [];
+        foreach ($rows as $row) {
+            $dateStr = $row['date'];
+            $rtype = $row['recurring_type'] ?? 'none';
+            if ($rtype === 'monthly' || (!empty($row['is_recurring']))) {
+                // same day every month
+                if ((int)date('n', strtotime("$year-" . str_pad($month,2,'0',STR_PAD_LEFT) . "-01")) == (int)$month) {
+                    $out[] = $row;
+                }
+            } elseif ($rtype === 'quarterly') {
+                // show if any day in month matches the base day and month falls in same quarter offset
+                $baseM = (int)date('n', strtotime($dateStr));
+                $baseD = (int)date('j', strtotime($dateStr));
+                $currQ = (int)ceil($month / 3);
+                $baseQ = (int)ceil($baseM / 3);
+                if ($currQ === $baseQ) {
+                    $out[] = $row;
+                }
+            } elseif ($rtype === 'annually') {
+                if ((int)date('n', strtotime($dateStr)) === (int)$month) {
+                    $out[] = $row;
+                }
+            } else {
+                // non-recurring in this month
+                if ((int)date('n', strtotime($dateStr)) === (int)$month && (int)date('Y', strtotime($dateStr)) === (int)$year) {
+                    $out[] = $row;
+                }
+            }
+        }
+        return $out;
     } catch (PDOException $e) {
         error_log('Get monthly holidays error: ' . $e->getMessage(), 3, 'error_log.txt');
         return [];
@@ -362,33 +449,35 @@ function get_upcoming_holidays($days = 30, $branch_id = null) {
     try {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
-        
+
         $start_date = date('Y-m-d');
         $end_date = date('Y-m-d', strtotime("+$days days"));
-        
-        $sql = "SELECT *, 
-                CASE 
-                    WHEN is_recurring = 1 THEN 
-                        CONCAT(YEAR(:start_date), '-', MONTH(date), '-', DAY(date))
-                    ELSE date 
-                END as effective_date
-                FROM holidays 
-                WHERE (
-                    (is_recurring = 0 AND date BETWEEN :start_date AND :end_date) OR
-                    (is_recurring = 1 AND 
-                        STR_TO_DATE(CONCAT(YEAR(:start_date), '-', MONTH(date), '-', DAY(date)), '%Y-%m-%d') 
-                        BETWEEN :start_date AND :end_date)
-                )
-                AND (branch_id IS NULL OR branch_id = :branch_id)
-                ORDER BY effective_date ASC";
-        
+
+        $sql = "SELECT * FROM holidays";
+        if (!is_null($branch_id)) {
+            $sql .= " WHERE (branch_id IS NULL OR branch_id = :branch_id)";
+        }
+        $sql .= " ORDER BY date ASC";
+
         $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':start_date', $start_date);
-        $stmt->bindParam(':end_date', $end_date);
-        $stmt->bindParam(':branch_id', $branch_id, PDO::PARAM_INT);
+        if (!is_null($branch_id)) {
+            $stmt->bindValue(':branch_id', (int)$branch_id, PDO::PARAM_INT);
+        }
         $stmt->execute();
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $result = [];
+        $startTs = strtotime($start_date);
+        $endTs = strtotime($end_date);
+        for ($dayTs = $startTs; $dayTs <= $endTs; $dayTs = strtotime('+1 day', $dayTs)) {
+            $day = date('Y-m-d', $dayTs);
+            $h = is_holiday($day, $branch_id);
+            if ($h) {
+                $h['effective_date'] = $day;
+                $result[] = $h;
+            }
+        }
+        return $result;
     } catch (PDOException $e) {
         error_log('Get upcoming holidays error: ' . $e->getMessage(), 3, 'error_log.txt');
         return [];
@@ -407,27 +496,21 @@ function get_holidays_in_range($start_date, $end_date, $branch_id = null) {
     try {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
-        
-        $sql = "SELECT * FROM holidays 
-                WHERE (
-                    (is_recurring = 0 AND date BETWEEN :start_date AND :end_date) OR
-                    (is_recurring = 1 AND (
-                        STR_TO_DATE(CONCAT(YEAR(:start_date), '-', MONTH(date), '-', DAY(date)), '%Y-%m-%d') 
-                        BETWEEN :start_date AND :end_date OR
-                        STR_TO_DATE(CONCAT(YEAR(:end_date), '-', MONTH(date), '-', DAY(date)), '%Y-%m-%d') 
-                        BETWEEN :start_date AND :end_date
-                    ))
-                )
-                AND (branch_id IS NULL OR branch_id = :branch_id)
-                ORDER BY date ASC";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':start_date', $start_date);
-        $stmt->bindParam(':end_date', $end_date);
-        $stmt->bindParam(':branch_id', $branch_id, PDO::PARAM_INT);
-        $stmt->execute();
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // We’ll reuse is_holiday across the date range for exact, new recurring, and legacy recurring
+        $out = [];
+        $cur = strtotime($start_date);
+        $end = strtotime($end_date);
+        while ($cur <= $end) {
+            $day = date('Y-m-d', $cur);
+            $h = is_holiday($day, $branch_id);
+            if ($h) {
+                $h['effective_date'] = $day;
+                $out[] = $h;
+            }
+            $cur = strtotime('+1 day', $cur);
+        }
+        return $out;
     } catch (PDOException $e) {
         error_log('Get holidays in range error: ' . $e->getMessage(), 3, 'error_log.txt');
         return [];
@@ -435,39 +518,118 @@ function get_holidays_in_range($start_date, $end_date, $branch_id = null) {
 }
 
 /**
- * Set a flash message in the session
- * 
- * @param string $type Type of message (success, error, warning, info)
- * @param string $message Message content
+ * Get upcoming employee celebrations (birthdays and anniversaries)
+ * Returns combined list with days_until and display_date, sorted soonest first
+ *
+ * @param int $days  Lookahead window in days (default 30)
+ * @param int $limit Max number of items to return (default 8)
+ * @param int|null $branch_id Optional branch filter (employees.branch)
+ * @return array
  */
-function set_flash_message($type, $message) {
-    $_SESSION[$type] = $message;
-}
+function get_upcoming_celebrations($days = 30, $limit = 8, $branch_id = null) {
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
 
-/**
- * Get and clear a flash message from the session
- * 
- * @param string $type Type of message to retrieve
- * @return string|null The message or null if not set
- */
-function get_flash_message($type) {
-    if (isset($_SESSION[$type])) {
-        $message = $_SESSION[$type];
-        unset($_SESSION[$type]);
-        return $message;
+        $params = [];
+        $where = "e.exit_date IS NULL";
+        if (!is_null($branch_id)) {
+            $where .= " AND (e.branch = :branch_id)";
+            $params[':branch_id'] = (int)$branch_id;
+        }
+
+        $sql = "SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, e.user_image, e.date_of_birth, e.join_date,
+                       d.title AS designation_name
+                FROM employees e
+                LEFT JOIN designations d ON e.designation = d.id
+                WHERE $where";
+
+        $stmt = $pdo->prepare($sql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue($k, $v, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $today = new DateTime(date('Y-m-d'));
+        $items = [];
+
+        foreach ($rows as $e) {
+            // Birthday
+            if (!empty($e['date_of_birth'])) {
+                $dob = DateTime::createFromFormat('Y-m-d', $e['date_of_birth']);
+                if ($dob) {
+                    $event = (clone $dob)->setDate((int)$today->format('Y'), (int)$dob->format('m'), (int)$dob->format('d'));
+                    // Handle Feb 29 on non-leap years -> Mar 1
+                    if (!checkdate((int)$dob->format('m'), (int)$dob->format('d'), (int)$today->format('Y'))) {
+                        $event = (clone $dob)->setDate((int)$today->format('Y'), 3, 1);
+                    }
+                    if ($event < $today) { $event->modify('+1 year'); }
+                    $diffDays = (int)$today->diff($event)->days;
+                    if ($diffDays <= $days) {
+                        $items[] = [
+                            'emp_id' => $e['emp_id'],
+                            'first_name' => $e['first_name'],
+                            'middle_name' => $e['middle_name'] ?? '',
+                            'last_name' => $e['last_name'],
+                            'designation_name' => $e['designation_name'] ?? null,
+                            'user_image' => $e['user_image'] ?? null,
+                            'event_date' => $event->format('Y-m-d'),
+                            'event_day' => (int)$event->format('d'),
+                            'event_month' => (int)$event->format('m'),
+                            'celebration_type' => 'birthday',
+                            'days_until' => $diffDays,
+                            'display_date' => $event->format('F j')
+                        ];
+                    }
+                }
+            }
+
+            // Anniversary
+            if (!empty($e['join_date'])) {
+                $jd = DateTime::createFromFormat('Y-m-d', $e['join_date']);
+                if ($jd) {
+                    // Only if join year < current year
+                    $curYear = (int)$today->format('Y');
+                    if ((int)$jd->format('Y') < $curYear && (int)$jd->format('Y') > 1990) {
+                        $event = (clone $jd)->setDate($curYear, (int)$jd->format('m'), (int)$jd->format('d'));
+                        if (!checkdate((int)$jd->format('m'), (int)$jd->format('d'), $curYear)) {
+                            $event = (clone $jd)->setDate($curYear, 3, 1);
+                        }
+                        if ($event < $today) { $event->modify('+1 year'); $curYear++; }
+                        $diffDays = (int)$today->diff($event)->days;
+                        if ($diffDays <= $days) {
+                            $yearsCompleted = (int)$event->format('Y') - (int)$jd->format('Y');
+                            $items[] = [
+                                'emp_id' => $e['emp_id'],
+                                'first_name' => $e['first_name'],
+                                'middle_name' => $e['middle_name'] ?? '',
+                                'last_name' => $e['last_name'],
+                                'designation_name' => $e['designation_name'] ?? null,
+                                'user_image' => $e['user_image'] ?? null,
+                                'event_date' => $event->format('Y-m-d'),
+                                'event_day' => (int)$event->format('d'),
+                                'event_month' => (int)$event->format('m'),
+                                'celebration_type' => 'anniversary',
+                                'days_until' => $diffDays,
+                                'years_completed' => $yearsCompleted,
+                                'display_date' => $event->format('F j')
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort and limit
+        usort($items, function($a, $b) { return $a['days_until'] <=> $b['days_until']; });
+        if ($limit > 0) {
+            $items = array_slice($items, 0, $limit);
+        }
+        return $items;
+    } catch (Throwable $e) {
+        error_log('Get upcoming celebrations error: ' . $e->getMessage(), 3, 'error_log.txt');
+        return [];
     }
-    return null;
-}
-
-/**
- * Append session ID to URL if needed (for URL-based sessions)
- * 
- * @param string $url URL to append session ID to
- * @return string URL with session ID appended if necessary
- */
-function append_sid($url) {
-    // Since we're using cookies for sessions, we don't need to append SID
-    // But this function is kept for compatibility
-    return $url;
 }
 ?>

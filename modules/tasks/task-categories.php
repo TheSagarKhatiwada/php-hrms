@@ -155,7 +155,7 @@ require_once '../../includes/header.php';
     <div class="row">
         <div class="col-md-8">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
+                <div class="card-header">
                     <h3 class="card-title mb-0 fw-bold">
                         <i class="fas fa-list me-2 text-primary"></i>Task Categories
                     </h3>
@@ -170,7 +170,7 @@ require_once '../../includes/header.php';
                     <?php else: ?>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
+                                <thead class="table-dark">
                                     <tr>
                                         <th class="fw-semibold">Category Name</th>
                                         <th class="fw-semibold">Description</th>
@@ -230,7 +230,7 @@ require_once '../../includes/header.php';
 
         <div class="col-md-4">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
+                <div class="card-header">
                     <h3 class="card-title mb-0 fw-bold">
                         <i class="fas fa-plus me-2 text-success"></i>
                         <?php echo $editing_category ? 'Edit Category' : 'Add New Category'; ?>
@@ -262,7 +262,7 @@ require_once '../../includes/header.php';
                                       placeholder="Enter category description (optional)"><?php echo $editing_category ? htmlspecialchars($edit_data['description']) : ''; ?></textarea>
                         </div>
                     </div>
-                    <div class="card-footer bg-light">
+                    <div class="card-footer">
                         <div class="d-flex gap-2">
                             <button type="submit" 
                                     name="<?php echo $editing_category ? 'edit_category' : 'add_category'; ?>" 

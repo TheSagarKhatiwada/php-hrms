@@ -4,7 +4,7 @@ require_once '../../includes/db_connection.php';
 require_once 'task_helpers.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $current_user = $_SESSION['emp_id'] ?? null;
+    $current_user = $_SESSION['user_id'] ?? ($_SESSION['emp_id'] ?? null);
     if (!$current_user) {
         $_SESSION['error'] = "Session expired. Please login again.";
         header("Location: ../../index.php");
@@ -13,9 +13,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Validate required fields
     $title = trim($_POST['title'] ?? '');
-    $assigned_to = intval($_POST['assigned_to'] ?? 0);
+    $assigned_to = trim($_POST['assigned_to'] ?? '');
     
-    if (empty($title) || !$assigned_to) {
+    if ($title === '' || $assigned_to === '') {
         $_SESSION['error'] = "Task title and assignee are required.";
         header("Location: tasks.php");
         exit();
@@ -25,13 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $assignableEmployees = getAssignableEmployees($pdo, $current_user);
     $validAssignee = false;
     
-    foreach ($assignableEmployees as $group) {
-        foreach ($group as $emp) {
-            if ($emp['emp_id'] == $assigned_to) {
-                $validAssignee = true;
-                break 2;
-            }
-        }
+    foreach ($assignableEmployees as $emp) {
+        if ((string)$emp['emp_id'] === (string)$assigned_to) { $validAssignee = true; break; }
     }
     
     if (!$validAssignee) {

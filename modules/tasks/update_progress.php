@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $progress = intval($_POST['progress'] ?? 0);
     $status = $_POST['status'] ?? null;
     $notes = trim($_POST['update_notes'] ?? '');
+    $redirectTo = trim($_POST['redirect_to'] ?? '');
     
     // Validate progress
     if ($progress < 0 || $progress > 100) {
@@ -53,7 +54,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['error'] = "An error occurred while updating the task.";
     }
     
-    header("Location: view_task.php?id=" . $taskId);
+    // Safe redirect: allow only whitelisted pages in this folder
+    $allowedRedirects = ['my-tasks.php', 'index.php', 'all-tasks.php'];
+    if ($redirectTo && in_array(basename($redirectTo), $allowedRedirects, true)) {
+        header("Location: " . basename($redirectTo));
+    } else {
+        header("Location: view_task.php?id=" . $taskId);
+    }
     exit();
 } else {
     header("Location: index.php");

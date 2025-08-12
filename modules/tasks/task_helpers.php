@@ -4,11 +4,7 @@
  */
 
 require_once __DIR__ . '/../../includes/db_connection.php';
-
-// Try to include hierarchy_helpers, but don't fail if it doesn't exist
-if (file_exists(__DIR__ . '/../../includes/hierarchy_helpers.php')) {
-    require_once __DIR__ . '/../../includes/hierarchy_helpers.php';
-}
+require_once __DIR__ . '/../../includes/hierarchy_helpers.php';
 
 /**
  * Get priority color for badges
