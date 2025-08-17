@@ -107,7 +107,7 @@ $stats_sql = "SELECT
 $stats = $pdo->query($stats_sql)->fetch();
 
 // Get employees for filter dropdown
-$employees_sql = "SELECT id, first_name, last_name, emp_id FROM employees ORDER BY first_name, last_name";
+$employees_sql = "SELECT emp_id, first_name, last_name FROM employees ORDER BY first_name, last_name";
 $employees_result = $pdo->query($employees_sql)->fetchAll();
 
 // Get leave types for filter dropdown
@@ -130,9 +130,9 @@ include '../../includes/header.php';
             <a href="index.php" class="btn btn-outline-success">
                 <i class="fas fa-tachometer-alt me-1"></i>Dashboard
             </a>
-            <a href="request.php" class="btn btn-primary">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                 <i class="fas fa-plus me-1"></i>New Request
-            </a>
+            </button>
             <a href="reports.php" class="btn btn-outline-info">
                 <i class="fas fa-chart-bar me-1"></i>Reports
             </a>
@@ -436,45 +436,144 @@ include '../../includes/header.php';
 </style>
 
 <script>
-$(document).ready(function() {
-    // Initialize DataTable
-    $('#leaveRequestsTable').DataTable({
-        "responsive": true,
-        "autoWidth": false,
-        "order": [[8, "desc"]], // Sort by Applied Date descending
-        "pageLength": 25,
-        "columnDefs": [
-            { "orderable": false, "targets": [0, 9] } // Disable sorting for checkbox and actions columns
-        ]
-    });
+(function setupRequestsTable(){
+    function initWithJQ(){
+        var $ = window.jQuery;
+        // Initialize DataTable and keep a reference
+        var table = $('#leaveRequestsTable').DataTable({
+                responsive: true,
+                autoWidth: false,
+                order: [[8, 'desc']], // Sort by Applied Date descending
+                pageLength: 25,
+                columnDefs: [
+                        { orderable: false, targets: [0, 9] } // Disable sorting for checkbox and actions columns
+                ]
+        });
 
-    // Handle select all checkbox
-    $('#selectAll').change(function() {
-        $('.request-checkbox').prop('checked', $(this).is(':checked'));
-        updateSelectedCount();
-    });
+        // Delegated handler for Select All to survive DataTables redraws
+        $(document).on('change', '#selectAll', function() {
+                var checked = $(this).is(':checked');
+                // Only toggle checkboxes on the current page
+                var nodes = table.rows({ page: 'current' }).nodes();
+                $(nodes).find('.request-checkbox').prop('checked', checked);
+                updateSelectedCount();
+                syncSelectAllState(table);
+        });
 
-    // Handle individual checkboxes
-    $(document).on('change', '.request-checkbox', function() {
-        updateSelectedCount();
-        
-        // Update select all checkbox
-        var totalCheckboxes = $('.request-checkbox').length;
-        var checkedCheckboxes = $('.request-checkbox:checked').length;
-        
-        if (checkedCheckboxes === 0) {
-            $('#selectAll').prop('indeterminate', false).prop('checked', false);
-        } else if (checkedCheckboxes === totalCheckboxes) {
-            $('#selectAll').prop('indeterminate', false).prop('checked', true);
-        } else {
-            $('#selectAll').prop('indeterminate', true);
+        // Delegated handler for individual checkboxes
+        $(document).on('change', '.request-checkbox', function() {
+                updateSelectedCount();
+                syncSelectAllState(table);
+        });
+
+        // On table draw, resync header selectAll state for current page
+        table.on('draw', function() {
+                syncSelectAllState(table);
+        });
+    }
+
+    function waitForJQ(){
+        if (window.jQuery && window.jQuery.fn && window.jQuery.fn.DataTable){
+            try { initWithJQ(); return; } catch(e) { /* fallback continues */ }
         }
-    });
+        setTimeout(waitForJQ, 60);
+    }
+
+    // Start waiting for jQuery/DataTables; vanilla fallbacks below are also wired
+    waitForJQ();
+})();
+
+// Vanilla helpers to work even if jQuery/DataTables aren’t available
+function getDT() {
+    if (window.jQuery && $.fn && typeof $.fn.DataTable === 'function') {
+        var tbl = $('#leaveRequestsTable').DataTable();
+        return tbl || null;
+    }
+    return null;
+}
+
+function getPageNodes() {
+    var dt = getDT();
+    if (dt) { return dt.rows({ page: 'current' }).nodes(); }
+    // Fallback: use tbody rows
+    var tbody = document.querySelector('#leaveRequestsTable tbody');
+    return tbody ? tbody.querySelectorAll('tr') : [];
+}
+
+function togglePageCheckboxes(checked) {
+    var nodes = getPageNodes();
+    if (nodes && nodes.length !== undefined) {
+        $(nodes).find('.request-checkbox').prop('checked', checked);
+    } else if (nodes && nodes.forEach) {
+        nodes.forEach(function(tr){
+            tr.querySelectorAll('.request-checkbox').forEach(function(cb){ cb.checked = checked; });
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+    var selectAll = document.getElementById('selectAll');
+    if (selectAll) {
+        selectAll.addEventListener('change', function(){
+            var checked = !!this.checked;
+            togglePageCheckboxes(checked);
+            if (window.jQuery) { updateSelectedCount(); var dt = getDT(); if (dt) syncSelectAllState(dt); }
+            else { updateSelectedCountVanilla(); }
+        });
+    }
+    // Delegate row checkbox changes (vanilla)
+    var tbody = document.querySelector('#leaveRequestsTable tbody');
+    if (tbody) {
+        tbody.addEventListener('change', function(e){
+            if (e.target && e.target.classList && e.target.classList.contains('request-checkbox')){
+                if (window.jQuery) { updateSelectedCount(); var dt = getDT(); if (dt) syncSelectAllState(dt); }
+                else { updateSelectedCountVanilla(); syncSelectAllStateVanilla(); }
+            }
+        });
+    }
 });
 
+function updateSelectedCountVanilla(){
+    var tbody = document.querySelector('#leaveRequestsTable tbody');
+    var count = 0;
+    if (tbody){ count = tbody.querySelectorAll('.request-checkbox:checked').length; }
+    var el = document.getElementById('selectedCount');
+    if (el) el.textContent = count;
+}
+
+function syncSelectAllStateVanilla(){
+    var tbody = document.querySelector('#leaveRequestsTable tbody');
+    var selectAll = document.getElementById('selectAll');
+    if (!tbody || !selectAll) return;
+    var pageCbs = tbody.querySelectorAll('.request-checkbox');
+    if (pageCbs.length === 0) { selectAll.indeterminate = false; selectAll.checked = false; return; }
+    var checkedOnPage = tbody.querySelectorAll('.request-checkbox:checked').length;
+    if (checkedOnPage === 0) { selectAll.indeterminate = false; selectAll.checked = false; }
+    else if (checkedOnPage === pageCbs.length) { selectAll.indeterminate = false; selectAll.checked = true; }
+    else { selectAll.indeterminate = true; }
+}
+
 function updateSelectedCount() {
+    // Count checked checkboxes across the DOM (current page)
     var count = $('.request-checkbox:checked').length;
     $('#selectedCount').text(count);
+}
+
+function syncSelectAllState(table) {
+    var nodes = table.rows({ page: 'current' }).nodes();
+    var $pageCbs = $(nodes).find('.request-checkbox');
+    if ($pageCbs.length === 0) {
+        $('#selectAll').prop('indeterminate', false).prop('checked', false);
+        return;
+    }
+    var checkedOnPage = $pageCbs.filter(':checked').length;
+    if (checkedOnPage === 0) {
+        $('#selectAll').prop('indeterminate', false).prop('checked', false);
+    } else if (checkedOnPage === $pageCbs.length) {
+        $('#selectAll').prop('indeterminate', false).prop('checked', true);
+    } else {
+        $('#selectAll').prop('indeterminate', true);
+    }
 }
 
 function confirmBulkAction() {

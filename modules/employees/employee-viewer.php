@@ -35,8 +35,8 @@ $empId = $_GET['empId'] ?? '';
 if ($empId) {
     $stmt = $pdo->prepare("SELECT e.*, b.name AS branch_name, d.title AS designation_title, r.name AS role_name, dept.name AS department_name
                          FROM employees e 
-                         INNER JOIN branches b ON e.branch = b.id 
-                         LEFT JOIN designations d ON e.designation = d.id 
+                         INNER JOIN branches b ON e.branch_id = b.id 
+                         LEFT JOIN designations d ON e.designation_id = d.id 
                          LEFT JOIN roles r ON e.role_id = r.id 
                          LEFT JOIN departments dept ON e.department_id = dept.id
                          WHERE e.emp_id = :empId");

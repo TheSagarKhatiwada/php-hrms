@@ -7,7 +7,7 @@ $page = 'Task Management';
 $home = '../../';
 
 // Get current user
-$current_user = $_SESSION['emp_id'] ?? null;
+$current_user = $_SESSION['user_id'] ?? null;
 if (!$current_user) {
     header("Location: " . $home . "index.php");
     exit();

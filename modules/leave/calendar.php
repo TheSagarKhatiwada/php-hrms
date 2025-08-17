@@ -150,9 +150,9 @@ include '../../includes/header.php';
                 <i class="fas fa-list me-1"></i>All Requests
             </a>
             <?php if (!$is_admin_user): ?>
-                <a href="request.php" class="btn btn-success">
+                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                     <i class="fas fa-plus me-1"></i>Apply for Leave
-                </a>
+                </button>
             <?php endif; ?>
         </div>
     </div>    <!-- Calendar Stats -->
@@ -244,9 +244,9 @@ include '../../includes/header.php';
                     </a>
                 </div>
                 <?php if (!$is_admin_user): ?>
-                    <a href="request.php" class="btn btn-sm btn-success">
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                         <i class="fas fa-plus me-1"></i>Apply for Leave
-                    </a>
+                    </button>
                 <?php endif; ?>
             </div>
         </div><div class="card-body p-0">

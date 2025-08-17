@@ -2,7 +2,8 @@
 require_once '../../includes/session_config.php';
 require_once '../../includes/db_connection.php';
 require_once '../../includes/utilities.php';
-require_once 'accrual.php'; // Include accrual system
+// Deprecated: modal now posts to /api/leave/submit.php
+require_once 'accrual.php'; // still needed for legacy POSTs
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
@@ -29,6 +30,12 @@ try {
 
 if (!$currentEmployeeId) {
     header("Location: ../../index.php");
+    exit();
+}
+
+// Prevent direct access/rendering as a standalone page (modal uses API route now)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header("Location: my-requests.php");
     exit();
 }
 
@@ -93,14 +100,27 @@ if ($_POST && isset($_POST['submit_request'])) {
             include_once 'notifications.php';
             sendLeaveNotification('submitted', $request_id);
             
-            $_SESSION['success_message'] = "Leave request submitted successfully!";
-            header("Location: my-requests.php");
-            exit();
+            // AJAX support
+            if (isset($_POST['ajax'])) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Leave request submitted successfully!', 'request_id' => $request_id]);
+                exit();
+            } else {
+                $_SESSION['success_message'] = "Leave request submitted successfully!";
+                header("Location: my-requests.php");
+                exit();
+            }
         } else {
             throw new Exception("Error submitting leave request.");
         }
         
     } catch (Exception $e) {
+        // AJAX error response if requested
+        if (isset($_POST['ajax'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit();
+        }
         $error_message = $e->getMessage();
     }
 }
@@ -113,6 +133,7 @@ $leave_types = $leave_types_result->fetchAll();
 // Get employee leave balance using accrual system
 $balance_result = getEmployeeLeaveBalance($currentEmployeeId);
 
+$page = 'Apply for Leave';
 include '../../includes/header.php';
 ?>
 

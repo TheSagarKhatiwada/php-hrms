@@ -21,7 +21,7 @@ if (!isset($_GET['id'])) {
 $emp_id = $_GET['id'];
 
 // Fetch employee details
-$stmt = $pdo->prepare("SELECT e.*, b.name as branch_name FROM employees e LEFT JOIN branches b ON e.branch = b.id WHERE e.emp_id = :emp_id");
+$stmt = $pdo->prepare("SELECT e.*, b.name as branch_name FROM employees e LEFT JOIN branches b ON e.branch_id = b.id WHERE e.emp_id = :emp_id");
 $stmt->execute(['emp_id' => $emp_id]);
 $employee = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -61,14 +61,14 @@ require_once __DIR__ . '/../../includes/header.php';
                 <input type="text" class="form-control" id="machId" name="machId" value="<?php echo htmlspecialchars($employee['mach_id'] ?? ''); ?>">
               </div>
               <div class="col-md-8">
-                <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
-                <select class="form-select" id="empBranch" name="empBranch" required>
+                <label for="empBranchId" class="form-label">Branch <span class="text-danger">*</span></label>
+                <select class="form-select" id="empBranchId" name="empBranchId" required>
                   <option disabled>Select a Branch</option>
                   <?php 
                     $branchQuery = "SELECT id, name FROM branches";
                     $stmt = $pdo->query($branchQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $employee['branch']) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $employee['branch_id']) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
                     }
                   ?>
@@ -160,14 +160,14 @@ require_once __DIR__ . '/../../includes/header.php';
             
             <div class="row mb-3">
               <div class="col-md-6">
-                <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
-                <select class="form-select" id="designation" name="designation" required>
+                <label for="designationId" class="form-label">Designation <span class="text-danger">*</span></label>
+                <select class="form-select" id="designationId" name="designationId" required>
                   <option value="" disabled>Select a Designation</option>
                   <?php 
                     $designationQuery = "SELECT id, title FROM designations ORDER BY title";
                     $stmt = $pdo->query($designationQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $employee['designation']) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $employee['designation_id']) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
                     }
                   ?>
@@ -230,9 +230,9 @@ require_once __DIR__ . '/../../includes/header.php';
                     echo "<!-- DEBUG: Current employee ID being edited: {$employee['emp_id']} -->";
                     
                     // Modified query to exclude employees with exit dates and show designation
-                    $supervisorQuery = "SELECT e.emp_id, CONCAT(e.first_name, ' ', e.last_name, ' (', COALESCE(d.designation_name, 'No Designation'), ')') as supervisor_name 
+                    $supervisorQuery = "SELECT e.emp_id, CONCAT(e.first_name, ' ', e.last_name, ' (', COALESCE(d.title, 'No Designation'), ')') as supervisor_name 
                                        FROM employees e
-                                       LEFT JOIN designations d ON e.designation_id = d.designation_id
+                                       LEFT JOIN designations d ON e.designation_id = d.id
                                        WHERE e.emp_id != :current_emp_id 
                                        AND (e.exit_date IS NULL OR e.exit_date = '' OR e.exit_date = '0000-00-00')
                                        ORDER BY e.first_name, e.last_name";

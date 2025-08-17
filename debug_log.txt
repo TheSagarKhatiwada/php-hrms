@@ -1,1 +1,0 @@
-Attempting database connection at: 2025-06-17 06:36:48Loaded config file successfullyDB Config: {"host":"localhost","name":"hrms","user":"root","pass":"********","charset":"utf8mb4"}Database connection established successfully

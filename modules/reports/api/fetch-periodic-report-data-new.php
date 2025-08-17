@@ -10,6 +10,7 @@ if (session_status() == PHP_SESSION_NONE) {
 // Include necessary files
 require_once '../../../includes/session_config.php';
 require_once '../../../includes/utilities.php';
+require_once '../../../includes/reason_helpers.php';
 include("../../../includes/db_connection.php");
 require_once '../../../includes/report-templates/monthly-attendance.php';
 
@@ -283,11 +284,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 
                 // First record is always check-in
                 $inMethod = $methodsArray[0] ?? '';
-                $inReason = $reasonsArray[0] ?? '';
+                $inReasonRaw = $reasonsArray[0] ?? '';
+                $inReason = hrms_format_reason_for_report($inReasonRaw);
                 
                 // Last record is always check-out (if there's more than one record)
                 $outMethod = ($punchCount > 1) ? end($methodsArray) : '';
-                $outReason = ($punchCount > 1) ? end($reasonsArray) : '';
+                $outReasonRaw = ($punchCount > 1) ? end($reasonsArray) : '';
+                $outReason = hrms_format_reason_for_report($outReasonRaw);
                 
                 // Only show in time and out time data
                 $record['methods'] = "In: " . $inMethod . ($outMethod ? ", Out: " . $outMethod : "");

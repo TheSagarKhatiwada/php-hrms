@@ -946,12 +946,6 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('loadingOverlay').style.display = 'none';
   });
-  
-  // Global configuration for API endpoints
-  window.HRMS_CONFIG = {
-    BASE_URL: <?php echo json_encode(rtrim(isset($home) ? $home : '', '/')); ?>,
-    API_URL: <?php echo json_encode(rtrim(isset($home) ? $home : '', '/') . '/api'); ?>
-  };
   </script>
 
   <!-- App Container Wrapper -->

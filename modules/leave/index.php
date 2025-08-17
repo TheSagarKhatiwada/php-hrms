@@ -177,9 +177,9 @@ require_once '../../includes/header.php';
             <h1 class="fs-2 mb-1"><i class="fas fa-calendar-alt me-2"></i>Leave Dashboard</h1>
         </div>
         <div class="d-flex gap-2">
-            <a href="request.php" class="btn btn-primary">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                 <i class="fas fa-plus me-1"></i>Request Leave
-            </a>
+            </button>
             <a href="<?= $isAdmin ? 'requests.php' : 'my-requests.php' ?>" class="btn btn-outline-success">
                 <i class="fas fa-list me-1"></i><?= $isAdmin ? 'All Requests' : 'My Requests' ?>
             </a>
@@ -391,9 +391,9 @@ require_once '../../includes/header.php';
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <a href="request.php" class="btn btn-primary">
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                             <i class="fas fa-plus me-2"></i>New Leave Request
-                        </a>
+                        </button>
                         <a href="my-requests.php" class="btn btn-outline-secondary">
                             <i class="fas fa-list me-2"></i>My Requests
                         </a>

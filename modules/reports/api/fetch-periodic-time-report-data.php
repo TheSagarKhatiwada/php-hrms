@@ -6,14 +6,10 @@ require_once '../../../includes/cache_control.php';
 require_once '../../../includes/session_config.php';
 require_once '../../../includes/utilities.php';
 
-// Debug: Add logging for permission check
-error_log("Periodic Time Report API Access Attempt - User ID: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'NOT SET') . 
-          ", User Role: " . (isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'NOT SET'), 
-          3, dirname(__DIR__) . '/../../../debug_log.txt');
+// (Removed verbose debug logging previously writing to debug_log.txt)
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
-    error_log("Periodic Time Report API: User not logged in", 3, dirname(__DIR__) . '/../../../debug_log.txt');
     $_SESSION['error'] = "Please log in to access reports.";
     header('Location: ../../../dashboard.php');
     exit();

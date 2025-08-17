@@ -93,6 +93,23 @@ try {
     $employees = [];
 }
 
+// Get task categories
+try {
+    $stmt = $pdo->prepare("SELECT id, name, description FROM task_categories ORDER BY name");
+    $stmt->execute();
+    $task_categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Fallback categories if table doesn't exist
+    $task_categories = [
+        ['id' => 1, 'name' => 'Development', 'description' => 'Software development tasks'],
+        ['id' => 2, 'name' => 'Marketing', 'description' => 'Marketing activities'],
+        ['id' => 3, 'name' => 'HR', 'description' => 'Human resources tasks'],
+        ['id' => 4, 'name' => 'Sales', 'description' => 'Sales activities'],
+        ['id' => 5, 'name' => 'Support', 'description' => 'Customer support'],
+        ['id' => 6, 'name' => 'Management', 'description' => 'Management tasks']
+    ];
+}
+
 require_once '../../includes/header.php';
 ?>
 
@@ -182,13 +199,24 @@ require_once '../../includes/header.php';
                                                    value="<?php echo isset($_POST['due_date']) ? $_POST['due_date'] : ''; ?>"
                                                    min="<?php echo date('Y-m-d'); ?>">
                                         </div>
-                                    </div>
-                                    <div class="col-md-6">
+                                    </div>                                    <div class="col-md-6">
                                         <div class="form-group">
                                             <label for="category">Category</label>
-                                            <input type="text" class="form-control" id="category" name="category" 
-                                                   value="<?php echo isset($_POST['category']) ? htmlspecialchars($_POST['category']) : ''; ?>" 
-                                                   placeholder="e.g., Development, Marketing, HR">
+                                            <select class="form-control" id="category" name="category">
+                                                <option value="">Select a category...</option>
+                                                <?php foreach ($task_categories as $category): ?>
+                                                    <option value="<?php echo htmlspecialchars($category['name']); ?>" 
+                                                            <?php echo (isset($_POST['category']) && $_POST['category'] == $category['name']) ? 'selected' : ''; ?>
+                                                            title="<?php echo htmlspecialchars($category['description'] ?? ''); ?>">
+                                                        <?php echo htmlspecialchars($category['name']); ?>
+                                                        <?php if (!empty($category['description'])): ?>
+                                                            - <?php echo htmlspecialchars(substr($category['description'], 0, 30)); ?>
+                                                            <?php if (strlen($category['description']) > 30): ?>...<?php endif; ?>
+                                                        <?php endif; ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <small class="form-text text-muted">Choose a category to organize your task</small>
                                         </div>
                                     </div>
                                 </div>

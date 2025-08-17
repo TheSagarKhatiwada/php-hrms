@@ -2,15 +2,12 @@
 // Security check and session validation
 require_once '../../../includes/session_config.php';
 require_once '../../../includes/utilities.php';
+require_once '../../../includes/reason_helpers.php';
 
-// Debug: Add logging for permission check
-error_log("Daily Report API Access Attempt - User ID: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'NOT SET') . 
-          ", User Role: " . (isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'NOT SET'), 
-          3, dirname(__DIR__) . '/../../../debug_log.txt');
+// (Removed verbose debug logging previously writing to debug_log.txt)
 
 // Check if user is logged in and has appropriate permissions
 if (!isset($_SESSION['user_id'])) {
-    error_log("Daily Report API: User not logged in", 3, dirname(__DIR__) . '/../../../debug_log.txt');
     http_response_code(403);
     echo json_encode(["error" => "User not logged in."]);
     exit;
@@ -20,12 +17,9 @@ if (!isset($_SESSION['user_id'])) {
 $hasPermission = false;
 if (is_admin()) {
     $hasPermission = true;
-    error_log("Daily Report API: Access granted - Admin user", 3, dirname(__DIR__) . '/../../../debug_log.txt');
 } else {
-    // For now, allow all logged-in users to access reports
-    // TODO: Implement proper permission checking once permission system is verified
+    // For now, allow all logged-in users to access reports (TODO: refine permissions)
     $hasPermission = true;
-    error_log("Daily Report API: Access granted - Logged in user (temporary)", 3, dirname(__DIR__) . '/../../../debug_log.txt');
 }
 
 if (!$hasPermission) {
@@ -47,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $reportdate = $_POST['reportdate'] ?? '';
 $empBranch = $_POST['empBranch'] ?? '';
 
-error_log("Daily Report API: POST params - reportdate: $reportdate, empBranch: $empBranch", 3, dirname(__DIR__) . '/../../../debug_log.txt');
+// (Removed verbose debug logging of POST params)
 
 // Validate required parameters
 if (empty($reportdate)) {
@@ -254,17 +248,19 @@ foreach ($employees as $employee) {
         }
 
         // Include only in time and out time methods/reasons
-        $methodsArray = explode(', ', $attendance['methods_used'] ?? '');
-        $reasonsArray = explode('; ', $attendance['manual_reasons'] ?? '');
+    $methodsArray = explode(', ', $attendance['methods_used'] ?? '');
+    $reasonsArray = explode('; ', $attendance['manual_reasons'] ?? '');
         $punchCount = $attendance['punch_count'] ?? 1;
                                 
         // First record is always check-in
         $inMethod = $methodsArray[0] ?? '';
-        $inReason = $reasonsArray[0] ?? '';
+    $inReasonRaw = $reasonsArray[0] ?? '';
+    $inReason = hrms_format_reason_for_report($inReasonRaw);
         
         // Last record is always check-out (if there's more than one record)
         $outMethod = ($punchCount > 1) ? end($methodsArray) : '';
-        $outReason = ($punchCount > 1) ? end($reasonsArray) : '';
+    $outReasonRaw = ($punchCount > 1) ? end($reasonsArray) : '';
+    $outReason = hrms_format_reason_for_report($outReasonRaw);
         
         // Convert method codes to letters: 0=A (Auto), 1=M (Manual), 2=W (Web)
         $methodMap = ['0' => 'A', '1' => 'M', '2' => 'W'];

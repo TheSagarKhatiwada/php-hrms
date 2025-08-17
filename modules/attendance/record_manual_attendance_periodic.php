@@ -3,9 +3,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Debug: Start of file
-$debug_file = __DIR__ . '/../../debug_log.txt';
-error_log("PERIODIC HANDLER - File started\n", 3, $debug_file);
+// (Removed verbose debug logging)
 
 // Include session configuration first to avoid conflicts
 require_once '../../includes/session_config.php';
@@ -15,32 +13,20 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Debug file path
-$debug_file = __DIR__ . '/../../debug_log.txt';
-
-file_put_contents($debug_file, "PERIODIC HANDLER - Session started\n", FILE_APPEND);
+// (Removed verbose debug logging)
 
 include '../../includes/db_connection.php';
 
-file_put_contents($debug_file, "PERIODIC HANDLER - DB connection included\n", FILE_APPEND);
-
-// Debug: Log session and database status
-file_put_contents($debug_file, "PERIODIC HANDLER ACCESSED - " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
-file_put_contents($debug_file, "Session status: " . session_status() . "\n", FILE_APPEND);
-file_put_contents($debug_file, "User ID: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'not set') . "\n", FILE_APPEND);
-file_put_contents($debug_file, "Database connection: " . (isset($pdo) ? 'yes' : 'no') . "\n", FILE_APPEND);
+// (Removed verbose debug logging)
 
 // Check if user is logged in
-if (!isset($_SESSION['user_id'])) {    // Debug: Log the session failure    file_put_contents($debug_file, "PERIODIC HANDLER - Session check failed. user_id: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'not set') . "\n", FILE_APPEND);
-    file_put_contents($debug_file, "PERIODIC HANDLER - Session data: " . print_r($_SESSION, true) . "\n", FILE_APPEND);
+if (!isset($_SESSION['user_id'])) {    // (Removed verbose debug logging)
     $_SESSION['error'] = "Access denied.";
     header("Location: ../../index.php");
     exit();
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {    // Debug: Log that the form was submitted
-    file_put_contents($debug_file, "PERIODIC HANDLER - Form submitted\n", FILE_APPEND);
-    file_put_contents($debug_file, "PERIODIC HANDLER - POST data: " . print_r($_POST, true) . "\n", FILE_APPEND);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {    // (Removed verbose debug logging)
     
     try {
         // Validate required fields
@@ -114,11 +100,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {    // Debug: Log that the form was 
                 } else {
                     // Insert IN record
                     $inStmt = $pdo->prepare("INSERT INTO attendance_logs (emp_id, date, time, method, manual_reason) VALUES (?, ?, ?, 1, ?)");
-                    $inStmt->execute([$empId, $currentDateStr, $inTime, $reason . ' | ' . $remarks]);
+                    $inStmt->execute([$empId, $currentDateStr, $inTime, trim($reason) . ($remarks !== '' ? ' || ' . trim($remarks) : '')]);
                     
                     // Insert OUT record  
                     $outStmt = $pdo->prepare("INSERT INTO attendance_logs (emp_id, date, time, method, manual_reason) VALUES (?, ?, ?, 1, ?)");
-                    $outStmt->execute([$empId, $currentDateStr, $outTime, $reason . ' | ' . $remarks]);
+                    $outStmt->execute([$empId, $currentDateStr, $outTime, trim($reason) . ($remarks !== '' ? ' || ' . trim($remarks) : '')]);
                     
                     $recordsCreated += 2; // IN and OUT records
                 }

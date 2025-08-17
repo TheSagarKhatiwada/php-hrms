@@ -384,13 +384,35 @@ body.dark-mode .swal2-popup.swal2-toast .swal2-close:hover {
 <!-- REQUIRED SCRIPTS -->
 <!-- jQuery -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>window.jQuery || document.write('<script src="<?php echo isset($home)?$home:''; ?>plugins/jquery/jquery.min.js"><\/script>')</script>
 <!-- Bootstrap 5 Bundle JS (includes Popper) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>if (typeof bootstrap === 'undefined') {document.write('<script src="<?php echo isset($home)?$home:''; ?>plugins/bootstrap/js/bootstrap.bundle.min.js"><\/script>')}</script>
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <!-- DataTables JS -->
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+  if (!$.fn.dataTable) {
+    document.write('<script src="<?php echo isset($home)?$home:''; ?>plugins/datatables/jquery.dataTables.min.js"><\\/script>');
+  }
+  // Bootstrap4 integration as a fallback skin
+  (function(){
+    var needsBootstrap5 = typeof $.fn.dataTable !== 'undefined' && typeof $.fn.dataTable.ext !== 'undefined';
+    if (needsBootstrap5 && typeof $.fn.dataTable.ext.renderer !== 'undefined') {
+      // If bootstrap5 skin didn't load, include bootstrap4 skin to avoid unstyled table
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = '<?php echo isset($home)?$home:''; ?>plugins/datatables-bs4/css/dataTables.bootstrap4.min.css';
+      document.head.appendChild(link);
+    }
+  })();
+  if (!$.fn.dataTable || !$.fn.DataTable) {
+    // final local fallback
+    document.write('<script src="<?php echo isset($home)?$home:''; ?>plugins/datatables/jquery.dataTables.min.js"><\\/script>');
+  }
+</script>
 <!-- SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 

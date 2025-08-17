@@ -2,7 +2,7 @@
 
 ## 🏗️ Architecture Overview
 
-This PHP HRMS (Human Resource Management System) follows a structured MVC-like architecture with the following key principles:
+This PHP HRMS (Human Resource Management System) follows a structured MVC-like architecture with the following key principles which can run smoothly in linux based server;
 
 ### Core Architecture
 - **Frontend**: Vanilla PHP with Bootstrap 5 UI framework

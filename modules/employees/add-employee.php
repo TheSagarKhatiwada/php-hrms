@@ -15,7 +15,7 @@ include '../../includes/db_connection.php'; // Include the database connection f
 
 // Get query parameters for repopulating form after errors
 $machId = $_GET['machId'] ?? '';
-$empBranch = $_GET['empBranch'] ?? '';
+$empBranchId = $_GET['empBranchId'] ?? '';
 $empFirstName = $_GET['empFirstName'] ?? '';
 $empMiddleName = $_GET['empMiddleName'] ?? '';
 $empLastName = $_GET['empLastName'] ?? '';
@@ -24,7 +24,7 @@ $empEmail = $_GET['empEmail'] ?? '';
 $empPhone = $_GET['empPhone'] ?? '';
 $empHireDate = $_GET['empHireDate'] ?? '';
 $empJoinDate = $_GET['empJoinDate'] ?? '';
-$designation = $_GET['designation'] ?? '';
+$designationId = $_GET['designationId'] ?? '';
 $loginAccess = $_GET['login_access'] ?? '';
 $dob = $_GET['dob'] ?? '';
 $role = $_GET['role'] ?? '';
@@ -36,7 +36,7 @@ $department_id = $_GET['department_id'] ?? '';
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
   // Get form data and trim/validate
   $machId = trim($_POST['machId']);
-  $empBranch = trim($_POST['empBranch']);
+  $empBranchId = trim($_POST['empBranchId']);
   $empFirstName = trim($_POST['empFirstName']);
   $empMiddleName = trim($_POST['empMiddleName']);
   $empLastName = trim($_POST['empLastName']);
@@ -45,7 +45,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $empPhone = trim($_POST['empPhone']);
   $empHireDate = trim($_POST['empHireDate']);
   $empJoinDate = trim($_POST['empJoinDate']);
-  $designation = trim($_POST['designation']); 
+  $designationId = trim($_POST['designationId']); 
   $loginAccess = trim($_POST['login_access']); 
   $croppedImage = $_POST['croppedImage'];
   $dob = trim($_POST['dob']);
@@ -89,32 +89,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       $dbPath = "resources/userimg/default-image.jpg";
   }
 
-  // Generate empID based on branch value and finding the next available number
-  $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE branch = ? ORDER BY emp_id DESC LIMIT 1");
-  $stmt->execute([$empBranch]);
+  // Generate empID based on branch_id value and finding the next available number
+  $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE branch_id = ? ORDER BY emp_id DESC LIMIT 1");
+  $stmt->execute([$empBranchId]);
   $lastEmployee = $stmt->fetch();
   
   if ($lastEmployee) {
-      // Extract the number part and increment
       $lastId = $lastEmployee['emp_id'];
-      $numberPart = (int)substr($lastId, strlen($empBranch));
+      $numberPart = (int)substr($lastId, strlen($empBranchId));
       $nextNumber = $numberPart + 1;
-      $empId = $empBranch . str_pad($nextNumber, 2, '0', STR_PAD_LEFT);
+      $empId = $empBranchId . str_pad($nextNumber, 2, '0', STR_PAD_LEFT);
   } else {
-      // First employee for this branch
-      $empId = $empBranch . '01';
+      $empId = $empBranchId . '01';
   }
 
   try {
     // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
-            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
+    $sql = "INSERT INTO employees (emp_id, mach_id, branch_id, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation_id, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
+            VALUES (:empId, :machId, :empBranchId, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designationId, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
     $stmt = $pdo->prepare($sql);
     
     $result = $stmt->execute([
         ':empId' => $empId,
         ':machId' => (int)$machId,
-        ':empBranch' => $empBranch,
+        ':empBranchId' => $empBranchId,
         ':empFirstName' => $empFirstName,
         ':empMiddleName' => $empMiddleName,
         ':empLastName' => $empLastName,
@@ -123,7 +121,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':empPhone' => $empPhone,
         ':hire_date' => $empHireDate,
         ':empJoinDate' => $empJoinDate ?: null,
-        ':designation' => (int)$designation,
+        ':designationId' => (int)$designationId,
         ':loginAccess' => (int)$loginAccess,
         ':userImage' => $dbPath,
         ':date_of_birth' => $dob ?: null,
@@ -236,12 +234,12 @@ require_once __DIR__ . '/../../includes/header.php';
               <div class="col-md-8">
                 <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
                 <select class="form-select" id="empBranch" name="empBranch" required>
-                  <option value="" disabled <?php echo empty($empBranch) ? 'selected' : ''; ?>>Select a Branch</option>
+                  <option value="" disabled <?php echo empty($empBranchId) ? 'selected' : ''; ?>>Select a Branch</option>
                   <?php 
                     $branchQuery = "SELECT DISTINCT id, name FROM branches";
                     $stmt = $pdo->query($branchQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $empBranch) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $empBranchId) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
                     }
                   ?>
@@ -326,12 +324,12 @@ require_once __DIR__ . '/../../includes/header.php';
               <div class="col-md-6">
                 <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
                 <select class="form-select" id="designation" name="designation" required>
-                  <option value="" disabled <?php echo empty($designation) ? 'selected' : ''; ?>>Select a Designation</option>
+                  <option value="" disabled <?php echo empty($designationId) ? 'selected' : ''; ?>>Select a Designation</option>
                   <?php 
                     $designationQuery = "SELECT id, title FROM designations ORDER BY title";
                     $stmt = $pdo->query($designationQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $designation) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $designationId) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
                     }
                   ?>

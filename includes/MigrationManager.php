@@ -58,6 +58,36 @@ class MigrationManager {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
             
             $this->pdo->exec($sql);
+
+            // Self-heal legacy schema if needed
+            try {
+                // Ensure required columns exist on legacy installs
+                $cols = [];
+                $rs = $this->pdo->query("SHOW COLUMNS FROM db_migrations");
+                if ($rs) {
+                    foreach ($rs as $row) { $cols[$row['Field']] = true; }
+                }
+
+                if (empty($cols['migration_name'])) {
+                    // Try to detect legacy column name
+                    $hasLegacy = !empty($cols['name']);
+                    try { $this->pdo->exec("ALTER TABLE db_migrations ADD COLUMN migration_name VARCHAR(255) UNIQUE"); } catch (Throwable $e) {}
+                    if ($hasLegacy) {
+                        try { $this->pdo->exec("UPDATE db_migrations SET migration_name = name WHERE migration_name IS NULL OR migration_name = ''"); } catch (Throwable $e) {}
+                    }
+                    try { $this->pdo->exec("CREATE INDEX idx_migration_name ON db_migrations(migration_name)"); } catch (Throwable $e) {}
+                }
+
+                if (empty($cols['executed_at'])) {
+                    try { $this->pdo->exec("ALTER TABLE db_migrations ADD COLUMN executed_at TIMESTAMP NULL"); } catch (Throwable $e) {}
+                }
+                if (empty($cols['execution_time'])) {
+                    try { $this->pdo->exec("ALTER TABLE db_migrations ADD COLUMN execution_time DECIMAL(10,3) NULL"); } catch (Throwable $e) {}
+                }
+            } catch (Throwable $e) {
+                // Ignore self-heal errors but log for visibility
+                $this->log("Migrations table self-heal check failed: " . $e->getMessage(), 'WARNING');
+            }
         } catch (PDOException $e) {
             $this->log("Failed to create migrations table: " . $e->getMessage(), 'ERROR');
         }
@@ -94,9 +124,37 @@ class MigrationManager {
         }
         
         try {
+            // Detect available columns on db_migrations
+            $cols = [];
+            try {
+                $rs = $this->pdo->query("SHOW COLUMNS FROM db_migrations");
+                if ($rs) {
+                    foreach ($rs as $row) { $cols[$row['Field']] = true; }
+                }
+            } catch (Throwable $e) {}
+
+            if (!empty($cols['migration_name'])) {
+                $orderBy = !empty($cols['executed_at']) ? 'executed_at' : (!empty($cols['id']) ? 'id' : '1');
+                $sql = "SELECT migration_name FROM db_migrations" . ($orderBy !== '1' ? " ORDER BY $orderBy" : '');
+                $stmt = $this->pdo->query($sql);
+                return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+            }
+            if (!empty($cols['migration'])) {
+                $orderBy = !empty($cols['executed_at']) ? 'executed_at' : (!empty($cols['id']) ? 'id' : '1');
+                $sql = "SELECT migration AS migration_name FROM db_migrations" . ($orderBy !== '1' ? " ORDER BY $orderBy" : '');
+                $stmt = $this->pdo->query($sql);
+                return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+            }
+            if (!empty($cols['name'])) {
+                $orderBy = !empty($cols['executed_at']) ? 'executed_at' : (!empty($cols['id']) ? 'id' : '1');
+                $sql = "SELECT name AS migration_name FROM db_migrations" . ($orderBy !== '1' ? " ORDER BY $orderBy" : '');
+                $stmt = $this->pdo->query($sql);
+                return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+            }
+            // Fallback: assume modern schema
             $stmt = $this->pdo->query("SELECT migration_name FROM db_migrations ORDER BY executed_at");
-            return $stmt->fetchAll(PDO::FETCH_COLUMN);
-        } catch (PDOException $e) {
+            return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+        } catch (Throwable $e) {
             $this->log("Failed to get executed migrations: " . $e->getMessage(), 'ERROR');
             return [];
         }
@@ -137,13 +195,16 @@ class MigrationManager {
             
             // Execute the up() method if it exists
             if (is_array($migration) && isset($migration['up']) && is_callable($migration['up'])) {
-                $this->pdo->beginTransaction();
+                // Some MySQL DDL operations perform implicit commits; guard commit/rollback
+                try { $this->pdo->beginTransaction(); } catch (Throwable $e) { /* ignore */ }
                 
                 try {
                     call_user_func($migration['up'], $this->pdo);
-                    $this->pdo->commit();
+                    if ($this->pdo->inTransaction()) {
+                        $this->pdo->commit();
+                    }
                 } catch (Exception $e) {
-                    $this->pdo->rollBack();
+                    try { if ($this->pdo->inTransaction()) { $this->pdo->rollBack(); } } catch (Throwable $rb) {}
                     throw $e;
                 }
             } else {
@@ -153,67 +214,53 @@ class MigrationManager {
             
             $executionTime = round((microtime(true) - $startTime) * 1000, 3);
             
-            // Record the migration
-            $stmt = $this->pdo->prepare("
-                INSERT INTO db_migrations (migration_name, executed_at, execution_time) 
-                VALUES (?, NOW(), ?)
-            ");
-            $stmt->execute([$migrationFile, $executionTime]);
-            
+            // Record the migration (handle legacy schemas)
+            $cols = [];
+            try {
+                $rs = $this->pdo->query("SHOW COLUMNS FROM db_migrations");
+                if ($rs) { foreach ($rs as $row) { $cols[$row['Field']] = true; } }
+            } catch (Throwable $e) {}
+
+            $fields = [];
+            $values = [];
+            $placeholders = [];
+            $hasNameCol = !empty($cols['migration_name']);
+            $hasLegacyCol = !empty($cols['migration']);
+            $hasAltCol = !empty($cols['name']);
+            if ($hasNameCol && $hasLegacyCol) {
+                // Some legacy tables have both columns and may have NOT NULL on 'migration'
+                $fields[] = 'migration_name'; $values[] = $migrationFile; $placeholders[] = '?';
+                $fields[] = 'migration'; $values[] = $migrationFile; $placeholders[] = '?';
+            } elseif ($hasNameCol) {
+                $fields[] = 'migration_name'; $values[] = $migrationFile; $placeholders[] = '?';
+            } elseif ($hasLegacyCol) {
+                $fields[] = 'migration'; $values[] = $migrationFile; $placeholders[] = '?';
+            } elseif ($hasAltCol) {
+                $fields[] = 'name'; $values[] = $migrationFile; $placeholders[] = '?';
+            } else {
+                $fields[] = 'migration_name'; $values[] = $migrationFile; $placeholders[] = '?';
+            }
+            if (!empty($cols['executed_at'])) { $fields[] = 'executed_at'; $placeholders[] = 'NOW()'; }
+            if (!empty($cols['batch'])) {
+                $batch = 1;
+                try { $r = $this->pdo->query('SELECT MAX(batch) AS m FROM db_migrations'); if ($r) { $m = $r->fetchColumn(); if (is_numeric($m)) { $batch = (int)$m + 1; } } } catch (Throwable $e) {}
+                $fields[] = 'batch'; $values[] = $batch; $placeholders[] = '?';
+            }
+            if (!empty($cols['execution_time'])) { $fields[] = 'execution_time'; $values[] = $executionTime; $placeholders[] = '?'; }
+
+            $sql = 'INSERT INTO db_migrations (' . implode(',', $fields) . ') VALUES (' . implode(',', $placeholders) . ')';
+            try {
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute($values);
+            } catch (PDOException $e) {
+                // Ignore duplicate key errors
+                if ($e->getCode() !== '23000') { throw $e; }
+            }
+
             $this->log("Migration completed successfully: $migrationFile ({$executionTime}ms)");
             return true;
         } catch (Exception $e) {
             $this->log("Migration failed: $migrationFile - " . $e->getMessage(), 'ERROR');
-            return false;
-        }
-    }
-    
-    /**
-     * Rollback a migration
-     */
-    public function rollbackMigration($migrationFile) {
-        if (!$this->pdo) {
-            $this->log("No database connection available", 'ERROR');
-            return false;
-        }
-        
-        $migrationPath = $this->migrationPath . '/' . $migrationFile;
-        
-        if (!file_exists($migrationPath)) {
-            $this->log("Migration file not found: $migrationFile", 'ERROR');
-            return false;
-        }
-        
-        try {
-            $this->log("Rolling back migration: $migrationFile");
-            
-            // Include the migration file
-            $migration = include $migrationPath;
-            
-            // Execute the down() method if it exists
-            if (is_array($migration) && isset($migration['down']) && is_callable($migration['down'])) {
-                $this->pdo->beginTransaction();
-                
-                try {
-                    call_user_func($migration['down'], $this->pdo);
-                    $this->pdo->commit();
-                } catch (Exception $e) {
-                    $this->pdo->rollBack();
-                    throw $e;
-                }
-            } else {
-                $this->log("No rollback method found for migration: $migrationFile", 'WARNING');
-                return false;
-            }
-            
-            // Remove from migrations table
-            $stmt = $this->pdo->prepare("DELETE FROM db_migrations WHERE migration_name = ?");
-            $stmt->execute([$migrationFile]);
-            
-            $this->log("Migration rolled back successfully: $migrationFile");
-            return true;
-        } catch (Exception $e) {
-            $this->log("Migration rollback failed: $migrationFile - " . $e->getMessage(), 'ERROR');
             return false;
         }
     }
@@ -291,12 +338,11 @@ class MigrationManager {
      * Get migration template
      */
     private function getMigrationTemplate($name, $description) {
-        $className = $this->toCamelCase($name);
-        
+        $desc = $description !== '' ? $description : 'Add description here';
         return "<?php
 /**
  * Migration: $name
- * Description: $description
+ * Description: $desc
  * Created: " . date('Y-m-d H:i:s') . "
  */
 
@@ -304,26 +350,26 @@ return [
     'up' => function(\$pdo) {
         // Add your migration logic here
         // Example:
-        // \$pdo->exec(\"CREATE TABLE example (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(255))\");
-        
+        // \\$pdo->exec(\"CREATE TABLE example (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(255))\");
+
         // For schema changes:
-        // \$pdo->exec(\"ALTER TABLE table_name ADD COLUMN new_column VARCHAR(255)\");
-        
+        // \\$pdo->exec(\"ALTER TABLE table_name ADD COLUMN new_column VARCHAR(255)\");
+
         // For data migrations:
-        // \$stmt = \$pdo->prepare(\"INSERT INTO table_name (column) VALUES (?)\");
-        // \$stmt->execute(['value']);
+        // \\$stmt = \\$pdo->prepare(\"INSERT INTO table_name (column) VALUES (?)\");
+        // \\$stmt->execute(['value']);
     },
-    
+
     'down' => function(\$pdo) {
         // Add your rollback logic here
         // Example:
-        // \$pdo->exec(\"DROP TABLE IF EXISTS example\");
-        
+        // \\$pdo->exec(\"DROP TABLE IF EXISTS example\");
+
         // For schema rollbacks:
-        // \$pdo->exec(\"ALTER TABLE table_name DROP COLUMN new_column\");
-        
+        // \\$pdo->exec(\"ALTER TABLE table_name DROP COLUMN new_column\");
+
         // For data rollbacks:
-        // \$pdo->exec(\"DELETE FROM table_name WHERE condition\");
+        // \\$pdo->exec(\"DELETE FROM table_name WHERE condition\");
     }
 ];
 ";

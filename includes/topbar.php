@@ -41,6 +41,7 @@
           </a>
         </div>
         
+        
         <!-- Mobile Notifications Dropdown -->
         <div class="nav-item dropdown ms-2">
           <a class="nav-link p-0 position-relative" href="#" id="mobileNotificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -95,7 +96,7 @@
           $companyLogo = defined('COMPANY_LOGO') ? COMPANY_LOGO : 'company_logo.png';
           ?>
           <a class="nav-link p-0" href="#" id="mobileMenuToggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-            <img src="<?php echo htmlspecialchars($user['user_image'] ?: $homeDir.'resources/userimg/default-image.jpg'); ?>" 
+            <img src="<?php echo htmlspecialchars(($user['user_image'] ?? '') !== '' ? $user['user_image'] : $homeDir.'resources/userimg/default-image.jpg'); ?>" 
                 alt="User" class="rounded-circle border" width="32" height="32" style="object-fit: cover;">
           </a>
           
@@ -103,11 +104,11 @@
             <!-- Mobile Menu Items -->
             <div class="mobile-menu-header">
               <div class="d-flex align-items-center p-2 border-bottom">
-                <img src="<?php echo htmlspecialchars($user['user_image'] ?: $homeDir.'resources/userimg/default-image.jpg'); ?>" 
+                <img src="<?php echo htmlspecialchars(($user['user_image'] ?? '') !== '' ? $user['user_image'] : $homeDir.'resources/userimg/default-image.jpg'); ?>" 
                     alt="User" class="rounded-circle me-2 border" width="40" height="40" style="object-fit: cover;">
                 <div>
                   <h6 class="mb-0"><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name']); ?></h6>
-                  <small class="text-muted"><?php echo htmlspecialchars($user['designation'] ?: 'Not Assigned'); ?></small>
+                  <small class="text-muted"><?php echo htmlspecialchars(($user['designation'] ?? '') !== '' ? $user['designation'] : 'Not Assigned'); ?></small>
                 </div>
               </div>
             </div>
@@ -155,6 +156,46 @@
 
       <!-- Right navbar items - Only visible on medium screens and larger -->
       <ul class="navbar-nav ms-auto align-items-center mobile-nav-icons d-none d-md-flex">
+        <?php
+          // Ensure DB and settings available
+          if (!isset($pdo)) {
+            include_once __DIR__ . '/../includes/db_connection.php';
+          }
+          if (!function_exists('get_setting')) {
+            include_once __DIR__ . '/../includes/settings.php';
+          }
+          // Determine today's attendance state for logged-in user
+          $isClockedInTop = false;
+          $empIdTop = null;
+          $attendanceUrl = (isset($home) ? $home : './') . 'modules/attendance/record_attendance.php';
+          try {
+            if (isset($_SESSION['user_id'])) {
+              $empIdTop = $_SESSION['user_id'];
+              $tzTop = get_setting('timezone', 'UTC');
+              date_default_timezone_set($tzTop);
+              $todayTop = date('Y-m-d');
+              $stmtTop = $pdo->prepare("SELECT COUNT(*) FROM attendance_logs WHERE emp_id = ? AND date = ?");
+              $stmtTop->execute([$empIdTop, $todayTop]);
+              $isClockedInTop = ((int)$stmtTop->fetchColumn()) > 0;
+            }
+          } catch (Throwable $e) { /* ignore */ }
+        ?>
+        <!-- Topbar Clock In/Out Button -->
+        <li class="nav-item me-1">
+          <button
+            id="topbarAttendanceBtn"
+            class="nav-link btn-icon btn-icon-auto rounded-pill px-3"
+            title="<?php echo $isClockedInTop ? 'Clock Out' : 'Clock In'; ?>"
+            aria-label="<?php echo $isClockedInTop ? 'Clock Out' : 'Clock In'; ?>"
+            data-action="<?php echo $isClockedInTop ? 'CO' : 'CI'; ?>"
+            data-emp-id="<?php echo htmlspecialchars((string)$empIdTop); ?>"
+            data-url="<?php echo htmlspecialchars($attendanceUrl); ?>">
+            <i class="fas <?php echo $isClockedInTop ? 'fa-sign-out-alt text-primary' : 'fa-sign-in-alt text-success'; ?>"></i>
+            <span class="d-none d-lg-inline ms-2 <?php echo $isClockedInTop ? 'text-primary' : 'text-success'; ?>"><?php echo $isClockedInTop ? 'Clock Out' : 'Clock In'; ?></span>
+          </button>
+        </li>
+
+        
         
         <!-- Theme Toggle - Enhanced for better visibility and accessibility -->
         <li class="nav-item me-1">
@@ -288,6 +329,16 @@
   .btn-icon:hover {
     background-color: rgba(108, 117, 125, 0.1);
     color: #495057;
+  }
+
+  /* Allow icon buttons that need text to auto-size and keep text on one line */
+  .btn-icon-auto {
+    width: auto;
+    min-width: 38px; /* keep at least the icon size */
+    height: 38px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    white-space: nowrap;
   }
 
   body.dark-mode .btn-icon {
@@ -833,6 +884,49 @@ document.addEventListener('DOMContentLoaded', function() {
       lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
     }, { passive: true });
   }
+});
+</script>
+
+<!-- Topbar Attendance Script -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var btn = document.getElementById('topbarAttendanceBtn');
+  if (!btn) return;
+  var submitting = false;
+  var hasSwal = typeof window.Swal !== 'undefined';
+  var empId = btn.getAttribute('data-emp-id') || '';
+  var url = btn.getAttribute('data-url') || 'modules/attendance/record_attendance.php';
+  function showLoading(msg){ if(hasSwal){ Swal.fire({title:'Processing...',text:msg,allowOutsideClick:false,showConfirmButton:false,willOpen:()=>{Swal.showLoading();}});} }
+  function showSuccess(title,text,cb){ if(hasSwal){ Swal.fire({icon:'success',title:title,text:text,showConfirmButton:false,timer:1600}).then(cb);} else { alert(title+(text?'\n'+text:'')); if(cb) cb(); } }
+  function showError(title,html,retry){ if(hasSwal){ Swal.fire({icon:'error',title:title,html:html,showConfirmButton:true,confirmButtonText:'Try Again',showCancelButton:true,cancelButtonText:'Cancel'}).then(r=>{ if(r.isConfirmed&&retry) retry();}); } else { var again=confirm(title); if(again&&retry) retry(); } }
+  btn.addEventListener('click', function(e){
+    e.preventDefault();
+    if (submitting) return;
+    submitting = true;
+    btn.disabled = true;
+    var isCI = (btn.getAttribute('data-action') === 'CI');
+    showLoading(isCI ? 'Recording clock in...' : 'Recording clock out...');
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+      body: 'action=record_attendance&emp_id=' + encodeURIComponent(empId)
+    }).then(async function(res){
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      var text = await res.text(); var data;
+      try { data = JSON.parse(text); } catch(e){ if(text && text.indexOf('success') !== -1){ return {success:true, action:(isCI?'CI':'CO'), message:'Attendance recorded'}; } throw e; }
+      return data;
+    }).then(function(data){
+      if (data && data.success) {
+        showSuccess(data.action==='CI'?'Clocked In!':'Clocked Out!', data.message||'', function(){ location.reload(); });
+      } else {
+        showError('Error', (data && data.message) || 'Failed to record attendance.', function(){ btn.click(); });
+      }
+    }).catch(function(err){
+      console.error('Topbar attendance error', err);
+      showError('Network Error', 'Please try again.', function(){ btn.click(); });
+    }).finally(function(){ submitting = false; btn.disabled = false; });
+  });
 });
 </script>
 

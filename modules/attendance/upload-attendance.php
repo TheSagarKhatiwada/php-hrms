@@ -73,8 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
                     $updated++;
                 }
             } else {
-                // Insert new record with temporary emp_id of 1 (will be updated later)
-                $insertQuery = "INSERT INTO attendance_logs (mach_sn, mach_id, emp_id, date, time, method) VALUES (?, ?, 1, ?, ?, 0)";
+                // Insert new record with NULL emp_id (will be updated later based on machine mapping)
+                $insertQuery = "INSERT INTO attendance_logs (mach_sn, mach_id, emp_id, date, time, method) VALUES (?, ?, NULL, ?, ?, 0)";
                 $stmt = $pdo->prepare($insertQuery);
                 if ($stmt->execute([$mach_sn, $mach_id, $date, $time])) {
                     $inserted++;
@@ -88,12 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['attendanceFile'])) {
             'content' => "$inserted records inserted, $updated updated, $skipped skipped (invalid data)."
         ];
 
-        // Update attendance_logs with emp_Id from employees based on machine_id
-        // SQL query to update attendance_log with emp_Id from employees based on machine_id, excluding manual method entries
-        $sql = "UPDATE attendance_logs a 
-                JOIN employees e ON a.mach_id = e.mach_id 
-                SET a.emp_Id = e.emp_id 
-                WHERE a.method = 0;";
+    // Update attendance_logs with emp_id from employees based on machine_id
+    // Exclude manual method entries (method != 0) if needed
+    $sql = "UPDATE attendance_logs a 
+        JOIN employees e ON a.mach_id = e.mach_id 
+        SET a.emp_id = e.emp_id 
+        WHERE a.method = 0;";
     
         // Prepare and execute the statement
         $stmt = $pdo->prepare($sql);

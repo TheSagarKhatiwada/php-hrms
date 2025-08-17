@@ -20,22 +20,58 @@ $openManualModal = isset($_GET['action']) && $_GET['action'] === 'manual';
 
 // Fetching attendance data
 try {
-    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, e.designation, b.name , d.title AS designation
-                           FROM attendance_logs a 
-                           INNER JOIN employees e ON a.emp_Id = e.emp_id 
-                           INNER JOIN branches b ON e.branch = b.id 
-                           LEFT JOIN designations d ON e.designation = d.id
-                           WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                           ORDER BY a.date DESC, a.time DESC 
-                           LIMIT 200");
-    $stmt->execute();
-    $attendanceRecords = $stmt->fetchAll();
-    
-    // Debug: Log the number of attendance records fetched
-    error_log("Fetched " . count($attendanceRecords) . " attendance records from database", 3, dirname(__DIR__) . '/../../debug_log.txt');
-    
+  // Read filters from query params
+  $selectedBranch = isset($_GET['branch']) && $_GET['branch'] !== '' ? (int)$_GET['branch'] : null;
+  $dateFrom = isset($_GET['date_from']) && $_GET['date_from'] !== '' ? $_GET['date_from'] : null;
+  $dateTo = isset($_GET['date_to']) && $_GET['date_to'] !== '' ? $_GET['date_to'] : null;
+  $allowedLimits = [50, 100, 200, 500, 1000];
+  $limit = isset($_GET['limit']) && in_array((int)$_GET['limit'], $allowedLimits, true) ? (int)$_GET['limit'] : 200;
+
+  // Build dynamic SQL with filters
+  $sql = "SELECT a.*, 
+                  e.first_name, e.last_name, e.middle_name, e.branch, e.emp_id, e.user_image, 
+                  b.name, 
+                  d.title AS designation
+           FROM attendance_logs a 
+           LEFT JOIN employees e ON a.emp_id = e.emp_id
+           LEFT JOIN branches b ON e.branch = b.id 
+           LEFT JOIN designations d ON e.designation = d.id";
+
+  $conditions = [];
+  $params = [];
+  if ($selectedBranch) {
+    $conditions[] = 'e.branch = :branch';
+    $params[':branch'] = $selectedBranch;
+  }
+  if ($dateFrom && $dateTo) {
+    $conditions[] = 'a.date BETWEEN :date_from AND :date_to';
+    $params[':date_from'] = $dateFrom;
+    $params[':date_to'] = $dateTo;
+  } elseif ($dateFrom) {
+    $conditions[] = 'a.date >= :date_from';
+    $params[':date_from'] = $dateFrom;
+  } elseif ($dateTo) {
+    $conditions[] = 'a.date <= :date_to';
+    $params[':date_to'] = $dateTo;
+  }
+  if (!empty($conditions)) {
+    $sql .= ' WHERE ' . implode(' AND ', $conditions);
+  }
+  $sql .= ' ORDER BY a.date DESC, a.time DESC ';
+  // LIMIT must be a literal integer (not a bound param) for MySQL
+  $sql .= ' LIMIT ' . $limit;
+
+  $stmt = $pdo->prepare($sql);
+  foreach ($params as $k => $v) {
+    $stmt->bindValue($k, $v);
+  }
+  $stmt->execute();
+  $attendanceRecords = $stmt->fetchAll();
+
+  // (Removed verbose debug logging previously writing to debug_log.txt)
+  
 } catch (PDOException $e) {
-    error_log("Error fetching attendance data: " . $e->getMessage(), 3, dirname(__DIR__) . '/../../debug_log.txt');
+  // (Removed debug_log.txt logging; rely on standard PHP error log if configured)
     $attendanceRecords = []; // Set empty array to prevent errors in the view
     $_SESSION['error'] = "Error fetching attendance data: " . $e->getMessage();
 }
@@ -43,13 +79,18 @@ try {
 // Force fresh load by checking for cache-busting parameter
 // Only redirect if not already redirected and no POST data
 if (!isset($_GET['_nocache']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-    // Ensure no output has been sent before redirect
-    if (!headers_sent()) {
-        // Clean any output buffer before redirect
-        ob_clean();
-        header("Location: attendance.php?_nocache=" . time());
-        exit();
-    }
+  // Ensure no output has been sent before redirect
+  if (!headers_sent()) {
+    // Preserve existing query params and add cache-buster
+    $qs = $_GET;
+    $qs['_nocache'] = time();
+    $target = 'attendance.php';
+    $queryString = http_build_query($qs);
+    // Clean any output buffer before redirect
+    ob_clean();
+  header('Location: ' . $target . '?' . $queryString);
+    exit();
+  }
 }
 
 // Clean the output buffer and start fresh for HTML output
@@ -112,9 +153,52 @@ require_once __DIR__ . '/../../includes/header.php';
         </button>
       </div>
       
-      <!-- Attendance Table Card -->
+      <!-- Attendance Filters + Table Card -->
       <div class="card border-0 shadow-sm">
         <div class="card-body">
+          <!-- Filters -->
+          <form method="get" class="row g-3 mb-3 align-items-end">
+            <div class="col-md-3">
+              <label for="filter_branch" class="form-label">Branch</label>
+              <select id="filter_branch" name="branch" class="form-select">
+                <option value="">All Branches</option>
+                <?php 
+                  // populate branches
+                  try {
+                    $branchesStmt = $pdo->query("SELECT id, name FROM branches ORDER BY name");
+                    while ($br = $branchesStmt->fetch(PDO::FETCH_ASSOC)) {
+                      $sel = (isset($_GET['branch']) && $_GET['branch'] !== '' && (int)$_GET['branch'] === (int)$br['id']) ? 'selected' : '';
+                      echo '<option value="' . (int)$br['id'] . '" ' . $sel . '>' . htmlspecialchars($br['name'] ?? '') . '</option>';
+                    }
+                  } catch (Exception $ex) { /* ignore */ }
+                ?>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label for="filter_date_from" class="form-label">From Date</label>
+              <input type="date" id="filter_date_from" name="date_from" class="form-control" value="<?php echo isset($_GET['date_from']) ? htmlspecialchars($_GET['date_from']) : ''; ?>">
+            </div>
+            <div class="col-md-3">
+              <label for="filter_date_to" class="form-label">To Date</label>
+              <input type="date" id="filter_date_to" name="date_to" class="form-control" value="<?php echo isset($_GET['date_to']) ? htmlspecialchars($_GET['date_to']) : ''; ?>">
+            </div>
+            <div class="col-md-2">
+              <label for="filter_limit" class="form-label">Limit</label>
+              <select id="filter_limit" name="limit" class="form-select">
+                <?php 
+                  $limits = [50,100,200,500,1000];
+                  $selLimit = isset($_GET['limit']) ? (int)$_GET['limit'] : 200;
+                  foreach ($limits as $l) {
+                    $sel = $selLimit === $l ? 'selected' : '';
+                    echo '<option value="' . $l . '" ' . $sel . '>' . $l . '</option>';
+                  }
+                ?>
+              </select>
+            </div>
+            <div class="col-md-1 d-grid">
+              <button type="submit" class="btn btn-outline-primary">Apply</button>
+            </div>
+          </form>
           <div class="table-responsive">
             <table id="attendance-table" class="table table-hover">
               <thead>
@@ -139,7 +223,7 @@ require_once __DIR__ . '/../../includes/header.php';
                 if (!empty($attendanceRecords)) {
                     foreach ($attendanceRecords as $record): ?>
                 <tr>
-                  <td class="text-center align-middle"><?php echo htmlspecialchars($record['emp_id']); ?></td>
+                  <td class="text-center align-middle"><?php echo htmlspecialchars($record['emp_id'] ?? ''); ?></td>
                   <td>
                     <div class="d-flex align-items-center">
                       <img src="<?php 
@@ -148,21 +232,21 @@ require_once __DIR__ . '/../../includes/header.php';
                         if (!empty($record['user_image']) && strpos($record['user_image'], '../') !== 0 && strpos($record['user_image'], 'http') !== 0) {
                           $imagePath = '../../' . $record['user_image'];
                         }
-                        echo htmlspecialchars($imagePath);
+                        echo htmlspecialchars($imagePath ?? '');
                       ?>" 
                            alt="Employee" 
                            class="rounded-circle me-3" 
                            style="width: 40px; height: 40px; object-fit: cover;"
                            onerror="this.src='../../resources/userimg/default-image.jpg'">
                       <div>
-                        <div class="fw-bold"><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['middle_name'] . ' ' . $record['last_name']); ?></div>
-                        <small class="text-muted"><?php echo htmlspecialchars($record['designation'] ?: 'Not Assigned'); ?></small>
+                        <div class="fw-bold"><?php echo htmlspecialchars(trim(($record['first_name'] ?? '') . ' ' . ($record['middle_name'] ?? '') . ' ' . ($record['last_name'] ?? ''))); ?></div>
+                        <small class="text-muted"><?php echo htmlspecialchars(($record['designation'] ?? '') !== '' ? $record['designation'] : 'Not Assigned'); ?></small>
                       </div>
                     </div>
                   </td>
-                  <td class="text-center align-middle"><?php echo htmlspecialchars($record['name']); ?></td>
-                  <td class="text-center align-middle"><?php echo date('M d, Y', strtotime($record['date'])); ?></td>
-                  <td class="text-center align-middle"><?php echo htmlspecialchars($record['time']); ?></td>
+                  <td class="text-center align-middle"><?php echo htmlspecialchars($record['name'] ?? ''); ?></td>
+                  <td class="text-center align-middle"><?php echo !empty($record['date']) ? date('M d, Y', strtotime($record['date'])) : '-'; ?></td>
+                  <td class="text-center align-middle"><?php echo htmlspecialchars($record['time'] ?? ''); ?></td>
                   <td class="text-center align-middle">
                     <?php 
                     $methodText = '<span class="badge bg-secondary">Unknown</span>'; // Default
@@ -184,21 +268,35 @@ require_once __DIR__ . '/../../includes/header.php';
                   </td>
                   <td>
                     <?php 
-                    if ($record['manual_reason']) {
-                      $parts = explode(' || ', $record['manual_reason']);
-                      $reasonId = trim($parts[0]);
-                      $remarks = isset($parts[1]) ? trim($parts[1]) : '';
-                      
-                      switch($reasonId) {
-                        case '1': echo 'Card Forgot'; break;
-                        case '2': echo 'Card Lost'; break;
-                        case '3': echo 'Forgot to Punch'; break;
-                        case '4': echo 'Office Work Delay'; break;
-                        case '5': echo 'Field Visit'; break;
-                        default: echo "-" . $reasonId;
+                    // Map reason code to label
+                    $reasonMap = [
+                      '1' => 'Card Forgot',
+                      '2' => 'Card Lost',
+                      '3' => 'Forgot to Punch',
+                      '4' => 'Office Work Delay',
+                      '5' => 'Field Visit',
+                    ];
+
+                    if (!empty($record['manual_reason'])) {
+                      $raw = (string)$record['manual_reason'];
+                      $reasonId = trim($raw);
+                      $remarks = '';
+                      if (strpos($raw, '||') !== false) {
+                        [$reasonId, $remarks] = array_map('trim', explode('||', $raw, 2));
+                      } elseif (strpos($raw, '|') !== false) {
+                        [$reasonId, $remarks] = array_map('trim', explode('|', $raw, 2));
                       }
-                      
-                      if (!empty($remarks)) {
+
+                      // If numeric and mapped, use label; otherwise show the raw text (sanitized)
+                      if (is_numeric($reasonId) && isset($reasonMap[$reasonId])) {
+                        echo htmlspecialchars($reasonMap[$reasonId]);
+                      } elseif ($reasonId !== '') {
+                        echo htmlspecialchars($reasonId);
+                      } else {
+                        echo '<span class="text-muted">-</span>';
+                      }
+
+                      if ($remarks !== '') {
                         echo "<br><small class='text-muted'>-" . htmlspecialchars($remarks) . "</small>";
                       }
                     } else {
@@ -246,14 +344,11 @@ require_once __DIR__ . '/../../includes/header.php';
                     <?php endif; ?>
                   </td>
                 </tr>
-                <?php 
-                    endforeach; 
-                } else { 
-                ?>
-                <tr>
-                    <td colspan="7" class="text-center">No attendance records found.</td>
-                </tr>
-                <?php } ?>
+        <?php 
+          endforeach; 
+        }
+        // Note: Do not render a colspan row here; DataTables does not support colspan in tbody.
+        ?>
               </tbody>
             </table>
           </div>
@@ -575,6 +670,7 @@ document.addEventListener('DOMContentLoaded', function() {
     order: [[3, 'desc'], [4, 'desc']], // Sort by date and time
     pageLength: 10,
     language: {
+  emptyTable: 'No attendance records found.',
       paginate: {
         previous: '<i class="fas fa-chevron-left"></i>',
         next: '<i class="fas fa-chevron-right"></i>'

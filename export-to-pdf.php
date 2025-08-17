@@ -6,8 +6,7 @@ require_once("plugins/tcpdf/tcpdf.php"); // Include TCPDF library from plugins f
 error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE);
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Debugging: Log received POST data
-    file_put_contents('debug_log.txt', print_r($_POST, true), FILE_APPEND);
+    // (Removed debug logging of POST data)
 
     if (!isset($_POST['reportDateRange']) || empty($_POST['reportDateRange'])) {
         echo json_encode(["error" => "Date range not received."]);

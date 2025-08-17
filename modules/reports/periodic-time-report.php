@@ -5,14 +5,10 @@ $home = '../../'; // Set proper path to project root for asset loading
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
-// Debug: Add logging for permission check
-error_log("Periodic Time Report Access Attempt - User ID: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'NOT SET') . 
-          ", User Role: " . (isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'NOT SET'), 
-          3, dirname(__DIR__) . '/../../debug_log.txt');
+// (Removed verbose debug logging previously writing to debug_log.txt)
 
 // Check if user is logged in first
 if (!isset($_SESSION['user_id'])) {
-    error_log("Periodic Time Report: User not logged in", 3, dirname(__DIR__) . '/../../debug_log.txt');
     $_SESSION['error'] = "Please log in to access Reports.";
     header('Location: ../../dashboard.php');
     exit();
@@ -22,16 +18,12 @@ if (!isset($_SESSION['user_id'])) {
 $hasPermission = false;
 if (is_admin()) {
     $hasPermission = true;
-    error_log("Periodic Time Report: Access granted - Admin user", 3, dirname(__DIR__) . '/../../debug_log.txt');
 } else {
-    // For now, allow all logged-in users to access reports
-    // TODO: Implement proper permission checking once permission system is verified
+    // For now, allow all logged-in users to access reports (TODO: refine permissions)
     $hasPermission = true;
-    error_log("Periodic Time Report: Access granted - Logged in user (temporary)", 3, dirname(__DIR__) . '/../../debug_log.txt');
 }
 
 if (!$hasPermission) {
-    error_log("Periodic Time Report: Access denied - No permission", 3, dirname(__DIR__) . '/../../debug_log.txt');
     $_SESSION['error'] = "You don't have permission to access Reports.";
     header('Location: ../../dashboard.php');
     exit();
@@ -628,24 +620,93 @@ $(function() {
             return;
         }
         
-        $('#reportDateRange').daterangepicker({
-            locale: {
-                format: 'DD/MM/YYYY'
-            },
+                const MAX_RANGE_DAYS = 32; // inclusive
+                $('#reportDateRange').daterangepicker({
+            locale: { format: 'DD/MM/YYYY' },
             opens: 'auto',
             alwaysShowCalendars: false,
             startDate: moment().subtract(1, 'months').startOf('month'),
             endDate: moment().subtract(1, 'months').endOf('month'),
             maxDate: moment(),
             autoApply: false,
+            // Disable dates that would create a span > 32 days when picking the second date
+            isInvalidDate: function(date){
+                var dr = $('#reportDateRange').data('daterangepicker');
+                if(!dr) return false;
+                if(dr.startDate && !dr.endDate){
+                    var diff = Math.abs(date.startOf('day').diff(dr.startDate.startOf('day'),'days')) + 1; // inclusive
+                    if(diff > MAX_RANGE_DAYS) return true;
+                }
+                return false;
+            },
+            // Remove very long preset ranges that exceed the cap (quarters)
             ranges: {
                 'This Month': [moment().startOf('month'), moment().endOf('month')],
                 'Last Month': [moment().subtract(1, 'months').startOf('month'), moment().subtract(1, 'months').endOf('month')],
-                'Last 30 Days': [moment().subtract(29, 'days'), moment()],
-                'This Quarter': [moment().startOf('quarter'), moment().endOf('quarter')],
-                'Last Quarter': [moment().subtract(1, 'quarter').startOf('quarter'), moment().subtract(1, 'quarter').endOf('quarter')]
+                'Last 30 Days': [moment().subtract(29, 'days'), moment()]
             }
         });
+                // Enforce max 32 days after selection changes
+                $('#reportDateRange').on('apply.daterangepicker', function(ev, picker){
+                        var start=picker.startDate.clone();
+                        var end=picker.endDate.clone();
+                        var diff=end.diff(start,'days')+1; // inclusive
+                        if(diff>MAX_RANGE_DAYS){
+                             end=start.clone().add(MAX_RANGE_DAYS-1,'days');
+                             picker.setEndDate(end);
+                             $(this).val(start.format('DD/MM/YYYY')+' - '+end.format('DD/MM/YYYY'));
+                             if(window.Swal){ Swal.fire({icon:'info',title:'Range trimmed',text:'Maximum 32 days allowed. Selection adjusted.'}); }
+                        }
+                });
+                // While hovering/selecting second date, block highlighting beyond 32 days
+                $('#reportDateRange').on('show.daterangepicker', function(ev, picker){
+                    var dr=picker;
+                    // Attach click guard to enforce cap immediately
+                    dr.container.off('mousedown.enforceRange').on('mousedown.enforceRange','td.available',function(){
+                        setTimeout(function(){
+                            try{
+                                if(dr.startDate && dr.endDate){
+                                    var diff = Math.abs(dr.endDate.startOf('day').diff(dr.startDate.startOf('day'),'days')) + 1;
+                                    if(diff > MAX_RANGE_DAYS){
+                                        var newEnd = dr.startDate.clone().add(MAX_RANGE_DAYS-1,'days');
+                                        // If user picked earlier date, adjust start instead
+                                        if(dr.endDate.isBefore(dr.startDate)){
+                                            var newStart = dr.endDate.clone().subtract(MAX_RANGE_DAYS-1,'days');
+                                            dr.setStartDate(newStart);
+                                            dr.setEndDate(dr.endDate);
+                                        }else{
+                                            dr.setEndDate(newEnd);
+                                        }
+                                        dr.updateCalendars();
+                                        var displayStart = dr.startDate.format('DD/MM/YYYY');
+                                        var displayEnd = dr.endDate.format('DD/MM/YYYY');
+                                        $('#reportDateRange').val(displayStart+' - '+displayEnd);
+                                        if(window.Swal){ Swal.fire({icon:'info',title:'Limit',text:'Maximum 32 days allowed.'}); }
+                                    }
+                                }
+                            }catch(e){ console.warn('Range enforcement error', e); }
+                        },0);
+                    });
+                });
+                // Manual input guard (if user types directly)
+                $('#reportDateRange').on('change', function(){
+                    var val=$(this).val();
+                    var parts=val.split('-');
+                    if(parts.length===2){
+                        var s=moment(parts[0].trim(),'DD/MM/YYYY',true);
+                        var e=moment(parts[1].trim(),'DD/MM/YYYY',true);
+                        if(s.isValid() && e.isValid()){
+                            var diff=Math.abs(e.diff(s,'days'))+1;
+                            if(diff>MAX_RANGE_DAYS){
+                                if(e.isAfter(s)) e=s.clone().add(MAX_RANGE_DAYS-1,'days'); else s=e.clone().add(MAX_RANGE_DAYS-1,'days');
+                                $(this).val(s.format('DD/MM/YYYY')+' - '+e.format('DD/MM/YYYY'));
+                                var dr=$('#reportDateRange').data('daterangepicker');
+                                if(dr){ dr.setStartDate(s); dr.setEndDate(e); }
+                                if(window.Swal){ Swal.fire({icon:'info',title:'Adjusted',text:'Maximum 32 days allowed.'}); }
+                            }
+                        }
+                    }
+                });
         
         console.log('DateRangePicker initialized successfully');
     } catch (error) {
@@ -707,10 +768,16 @@ $(function() {
     });
 
     // Handle date range changes
-    $('#reportDateRange').on('change', function() {
-        const selectedDateRange = $(this).val();
-        $('#hiddenReportDateRange').val(selectedDateRange);
-    });
+        $('#reportDateRange').on('change', function() {
+                const selectedDateRange = $(this).val();
+                // Re-validate in case manual edit
+                if(selectedDateRange.indexOf(' - ')>-1){
+                    var parts=selectedDateRange.split(' - '); if(parts.length===2){
+                        var s=moment(parts[0],'DD/MM/YYYY'); var e=moment(parts[1],'DD/MM/YYYY'); if(s.isValid()&&e.isValid()){ var diff=e.diff(s,'days')+1; if(diff>32){ e=s.clone().add(31,'days'); $(this).val(s.format('DD/MM/YYYY')+' - '+e.format('DD/MM/YYYY')); if(window.Swal){ Swal.fire({icon:'info',title:'Range trimmed',text:'Maximum 32 days allowed.'}); } } }
+                    }
+                }
+                $('#hiddenReportDateRange').val($(this).val());
+        });
 
     // Set the initial value of hiddenReportDateRange
     const initialDateRange = $('#reportDateRange').val();

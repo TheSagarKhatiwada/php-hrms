@@ -81,9 +81,9 @@ include '../../includes/header.php';
                 <a href="my-requests.php" class="btn btn-outline-secondary">
                     <i class="fas fa-arrow-left me-1"></i>Back to My Requests
                 </a>
-                <a href="request.php" class="btn btn-outline-primary">
+                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                     <i class="fas fa-plus me-1"></i>New Request
-                </a>
+                </button>
             <?php else: ?>
                 <a href="requests.php" class="btn btn-outline-secondary">
                     <i class="fas fa-arrow-left me-1"></i>Back to All Requests

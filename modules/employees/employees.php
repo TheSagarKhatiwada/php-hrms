@@ -85,17 +85,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['joinDate'])) {
 try {
     $stmt = $pdo->prepare("SELECT e.*, b.name, d.title AS designation_title 
                     FROM employees e 
-                    JOIN branches b ON e.branch = b.id 
-                    LEFT JOIN designations d ON e.designation = d.id 
+                    JOIN branches b ON e.branch_id = b.id 
+                    LEFT JOIN designations d ON e.designation_id = d.id 
                     ORDER BY e.join_date DESC");
     $stmt->execute();
     $employees = $stmt->fetchAll();
     
-    // Debug: Log the number of employees fetched
-    error_log("Fetched " . count($employees) . " employees from database", 3, dirname(__DIR__) . '/../../debug_log.txt');
+  // (Removed verbose debug logging)
     
 } catch (PDOException $e) {
-    error_log("Error fetching employees: " . $e->getMessage(), 3, dirname(__DIR__) . '/../../debug_log.txt');
+  // (Removed verbose debug logging)
     $employees = []; // Set empty array to prevent errors in the view
     $_SESSION['error'] = "Error loading employees: " . $e->getMessage();
 }

@@ -22,9 +22,7 @@ function redirectToSetup($reason = '') {
     }
     
     // Log the reason for redirection
-    if ($reason) {
-        error_log("Redirecting to setup.php: " . $reason, 3, dirname(__DIR__) . '/debug_log.txt');
-    }
+    // Intentionally minimal logging; removed file-specific debug logging
     
     // Build correct redirect URL for localhost/php-hrms structure
     $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
@@ -52,18 +50,16 @@ function redirectToSetup($reason = '') {
 }
 
 // Log connection attempt for debugging - to a file, not to screen
-error_log("Attempting database connection at: " . date('Y-m-d H:i:s'), 3, dirname(__DIR__) . '/debug_log.txt');
+// (Removed verbose connection attempt logging to debug_log.txt)
 
 // Load configuration from config.php - this file is required
 $config_file = __DIR__ . '/config.php';
 if (!file_exists($config_file)) {
-    error_log("CRITICAL ERROR: Config file not found at: " . $config_file, 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
     redirectToSetup("Configuration file not found");
     die("Configuration error: Database configuration file not found. Please run setup.");
 }
 
 require_once $config_file;
-error_log("Loaded config file successfully", 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
 
 // Include database health check utilities
 require_once __DIR__ . '/database_health.php';
@@ -71,11 +67,10 @@ require_once __DIR__ . '/database_health.php';
 // Log the configuration being used (except password)
 $logConfig = $DB_CONFIG;
 $logConfig['pass'] = '********'; // Mask password in logs
-error_log("DB Config: " . json_encode($logConfig), 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
+// (Removed verbose DB config logging)
 
 // Check for PDO MySQL extension
 if (!extension_loaded('pdo_mysql')) {
-    error_log("CRITICAL ERROR: PDO MySQL extension is not installed or enabled", 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
     die("Database connection error: PDO MySQL extension is not installed. Please contact your server administrator.");
 }
 
@@ -98,22 +93,18 @@ try {
     
     // Test the connection with a simple query
     $pdo->query("SELECT 1");
-    error_log("Database connection established successfully", 3, dirname(__DIR__) . '/debug_log.txt');
+    // (Removed success log)
 
 } catch (PDOException $e) {
     // Log the error message with detailed information
     $error_message = 'Database connection error: ' . $e->getMessage();
-    error_log($error_message, 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
     
     // Check for common connection issues and redirect to setup
     if (strpos($e->getMessage(), "Access denied") !== false) {
-        error_log("This appears to be an authentication issue. Please verify username and password.", 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
         redirectToSetup("Database authentication failed");
     } elseif (strpos($e->getMessage(), "Unknown database") !== false) {
-        error_log("The specified database '{$DB_CONFIG['name']}' does not exist.", 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
         redirectToSetup("Database '{$DB_CONFIG['name']}' not found");
     } elseif (strpos($e->getMessage(), "Connection refused") !== false) {
-        error_log("Connection to database server was refused. Please verify server is running and accessible.", 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
         redirectToSetup("Database server connection refused");
     } else {
         // Any other database error should also redirect to setup
@@ -128,7 +119,6 @@ try {
     }
 } catch (Exception $e) {
     $error_message = 'System error: ' . $e->getMessage();
-    error_log($error_message, 3, 'd:\\wwwroot\\php-hrms\\debug_log.txt');
     
     // Redirect to setup for any system errors
     redirectToSetup("System error: " . $e->getMessage());
@@ -156,8 +146,7 @@ function checkDatabaseHealth() {
         return $stmt !== false;
         
     } catch (PDOException $e) {
-        error_log("Database health check failed: " . $e->getMessage(), 3, dirname(__DIR__) . '/debug_log.txt');
-        return false;
+        return false; // (Removed verbose debug logging)
     }
 }
 }

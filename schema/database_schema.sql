@@ -248,12 +248,15 @@ CREATE TABLE `holidays` (
   `date` date NOT NULL,
   `type` enum('national','religious','company') NOT NULL DEFAULT 'national',
   `description` text,
+  `recurring_type` enum('none','weekly','monthly','quarterly','annually') NOT NULL DEFAULT 'none',
+  `recurring_day_of_week` tinyint DEFAULT NULL COMMENT '1=Mon..7=Sun',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `date` (`date`),
-  KEY `type` (`type`)
+  KEY `type` (`type`),
+  KEY `recurring_type` (`recurring_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =====================================================

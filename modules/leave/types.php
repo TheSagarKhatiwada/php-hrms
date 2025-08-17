@@ -97,12 +97,12 @@ if ($_POST) {
 
 // Get all leave types
 $sql = "SELECT lt.*, 
-        COUNT(lr.id) as usage_count,
-        SUM(CASE WHEN lr.status = 'approved' THEN lr.days_requested ELSE 0 END) as total_days_used
-        FROM leave_types lt
-        LEFT JOIN leave_requests lr ON lt.id = lr.leave_type_id
-        GROUP BY lt.id
-        ORDER BY lt.name";
+    COALESCE(COUNT(lr.id), 0) as usage_count,
+    COALESCE(SUM(CASE WHEN lr.status = 'approved' THEN lr.days_requested ELSE 0 END), 0) as total_days_used
+    FROM leave_types lt
+    LEFT JOIN leave_requests lr ON lt.id = lr.leave_type_id
+    GROUP BY lt.id
+    ORDER BY lt.name";
 $leave_types_result = $pdo->query($sql);
 $leave_types = $leave_types_result->fetchAll();
 
@@ -230,8 +230,8 @@ include '../../includes/header.php';
                                                     </td>
                                                     <td>
                                                         <small class="text-muted">
-                                                            <?php echo $type['usage_count']; ?> requests<br>
-                                                            <?php echo $type['total_days_used']; ?> days used
+                                                            <?php echo isset($type['usage_count']) ? (int)$type['usage_count'] : 0; ?> requests<br>
+                                                            <?php echo isset($type['total_days_used']) ? (int)$type['total_days_used'] : 0; ?> days used
                                                         </small>
                                                     </td>
                                                     <td>
@@ -252,7 +252,7 @@ include '../../includes/header.php';
                                                                     title="Edit">
                                                                 <i class="fas fa-edit"></i>
                                                             </button>
-                                                            <?php if ($type['usage_count'] == 0): ?>
+                                                            <?php if ((isset($type['usage_count']) ? (int)$type['usage_count'] : 0) == 0): ?>
                                                                 <button type="button" class="btn btn-sm btn-danger delete-btn" 
                                                                         data-id="<?php echo $type['id']; ?>"
                                                                         data-name="<?php echo htmlspecialchars($type['name']); ?>"
@@ -280,12 +280,12 @@ include '../../includes/header.php';
     </div>
 
 <!-- Edit Leave Type Modal -->
-<div class="modal fade" id="editModal" tabindex="-1" role="dialog">
+<div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <h4 class="modal-title">Edit Leave Type</h4>
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" id="editLeaveTypeForm">
                 <div class="modal-body">
@@ -318,8 +318,8 @@ include '../../includes/header.php';
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                                <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" name="edit_type" class="btn btn-primary">
                         <i class="fas fa-save"></i> Update
                     </button>
@@ -330,12 +330,12 @@ include '../../includes/header.php';
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog" role="document">
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <h4 class="modal-title">Delete Leave Type</h4>
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST">
                 <div class="modal-body">
@@ -344,7 +344,7 @@ include '../../includes/header.php';
                     <p class="text-danger"><strong>Warning:</strong> This action cannot be undone.</p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" name="delete_type" class="btn btn-danger">
                         <i class="fas fa-trash"></i> Delete
                     </button>
@@ -355,52 +355,65 @@ include '../../includes/header.php';
 </div>
 
 <script>
-$(document).ready(function() {
-    // Initialize DataTable
-    $('#leaveTypesTable').DataTable({
-        "responsive": true,
-        "autoWidth": false,
-        "columnDefs": [
-            { "orderable": false, "targets": [4] } // Disable sorting for actions column
-        ]
-    });
+// Robust init supporting Bootstrap 5 (no jQuery plugin) with jQuery fallback
+(function() {
+    function onReady(fn){ if (document.readyState !== 'loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
+    onReady(function() {
+        try {
+            if (window.jQuery && $.fn.DataTable) {
+                $('#leaveTypesTable').DataTable({
+                    responsive: true,
+                    autoWidth: false,
+                    columnDefs: [{ orderable: false, targets: [4] }]
+                });
+            }
+        } catch (e) { /* ignore */ }
 
-    // Edit button click
-    $('.edit-btn').click(function() {
-        $('#edit_id').val($(this).data('id'));
-        $('#edit_name').val($(this).data('name'));
-        $('#edit_description').val($(this).data('description'));
-        $('#edit_default_days').val($(this).data('days'));
-        $('#edit_color').val($(this).data('color'));
-        $('#edit_is_active').prop('checked', $(this).data('active') == 1);
-        $('#editModal').modal('show');
-    });
+        // Prepare Bootstrap 5 modals
+        var editEl = document.getElementById('editModal');
+        var delEl = document.getElementById('deleteModal');
+        var bsEdit = (window.bootstrap && editEl) ? new bootstrap.Modal(editEl) : null;
+        var bsDel = (window.bootstrap && delEl) ? new bootstrap.Modal(delEl) : null;
 
-    // Delete button click
-    $('.delete-btn').click(function() {
-        $('#delete_id').val($(this).data('id'));
-        $('#delete_name').text($(this).data('name'));
-        $('#deleteModal').modal('show');
-    });
+        // Delegated click handlers (works after DataTables redraws)
+        document.addEventListener('click', function(ev){
+            var btn = ev.target.closest('.edit-btn');
+            if (!btn) return;
+            // Populate form fields
+            document.getElementById('edit_id').value = btn.getAttribute('data-id');
+            document.getElementById('edit_name').value = btn.getAttribute('data-name') || '';
+            document.getElementById('edit_description').value = btn.getAttribute('data-description') || '';
+            document.getElementById('edit_default_days').value = btn.getAttribute('data-days') || '';
+            document.getElementById('edit_color').value = btn.getAttribute('data-color') || '#007bff';
+            document.getElementById('edit_is_active').checked = (btn.getAttribute('data-active') == '1');
+            // Show modal
+            if (bsEdit) bsEdit.show();
+            else if (window.jQuery && $('#editModal').modal) { $('#editModal').modal('show'); }
+        });
 
-    // Form validation
-    $('#addLeaveTypeForm, #editLeaveTypeForm').submit(function(e) {
-        var name = $(this).find('input[name="name"]').val().trim();
-        var days = parseInt($(this).find('input[name="default_days"]').val());
+        document.addEventListener('click', function(ev){
+            var btn = ev.target.closest('.delete-btn');
+            if (!btn) return;
+            document.getElementById('delete_id').value = btn.getAttribute('data-id');
+            document.getElementById('delete_name').textContent = btn.getAttribute('data-name') || '';
+            if (bsDel) bsDel.show();
+            else if (window.jQuery && $('#deleteModal').modal) { $('#deleteModal').modal('show'); }
+        });
 
-        if (name.length < 2) {
-            e.preventDefault();
-            alert('Leave type name must be at least 2 characters long.');
-            return false;
+        // Form validation (works with/without jQuery)
+        function attachValidation(form){
+            if (!form) return;
+            form.addEventListener('submit', function(e){
+                var name = (form.querySelector('input[name="name"]').value || '').trim();
+                var days = parseInt(form.querySelector('input[name="default_days"]').value || '0', 10);
+                if (name.length < 2) { e.preventDefault(); alert('Leave type name must be at least 2 characters long.'); return false; }
+                if (isNaN(days) || days < 0 || days > 365) { e.preventDefault(); alert('Default days must be between 0 and 365.'); return false; }
+            });
         }
-
-        if (days < 0 || days > 365) {
-            e.preventDefault();
-            alert('Default days must be between 0 and 365.');
-            return false;
-        }
+        attachValidation(document.getElementById('addLeaveTypeForm'));
+        attachValidation(document.getElementById('editLeaveTypeForm'));
     });
-});
+})();
 </script>
 
 <?php include '../../includes/footer.php'; ?>

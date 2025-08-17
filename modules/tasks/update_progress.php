@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Safe redirect: allow only whitelisted pages in this folder
-    $allowedRedirects = ['my-tasks.php', 'index.php', 'all-tasks.php'];
+    $allowedRedirects = ['my-tasks.php', 'index.php', 'team-tasks.php', 'all-tasks.php'];
     if ($redirectTo && in_array(basename($redirectTo), $allowedRedirects, true)) {
         header("Location: " . basename($redirectTo));
     } else {

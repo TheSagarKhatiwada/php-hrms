@@ -60,9 +60,9 @@ include '../../includes/header.php';
             <a href="calendar.php" class="btn btn-outline-info">
                 <i class="fas fa-calendar me-1"></i>Calendar
             </a>
-            <a href="request.php" class="btn btn-success">
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                 <i class="fas fa-plus me-1"></i>Apply for Leave
-            </a>
+            </button>
         </div>
     </div>
 
@@ -235,9 +235,9 @@ include '../../includes/header.php';
                     <i class="fas fa-calendar-times fa-3x mb-3"></i>
                     <h5 class="text-muted">No Leave Requests Found</h5>
                     <p class="text-muted">You haven't submitted any leave requests yet.</p>
-                    <a href="request.php" class="btn btn-primary">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                         <i class="fas fa-plus me-1"></i>Apply for Leave
-                    </a>
+                    </button>
                 </div>
             <?php endif; ?>
         </div>
@@ -264,92 +264,84 @@ include '../../includes/header.php';
 </div>
 
 <script>
-$(document).ready(function() {
-    // Initialize DataTable
-    $('#leaveRequestsTable').DataTable({
-        "responsive": true,
-        "autoWidth": false,
-        "order": [[6, "desc"]], // Sort by Applied Date descending
-        "pageLength": 10,
-        "language": {
-            "emptyTable": "No leave requests found",
-            "zeroRecords": "No matching leave requests found"
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize DataTable if jQuery and DataTables are available
+    try {
+        if (window.jQuery && $.fn && typeof $.fn.DataTable === 'function') {
+            $('#leaveRequestsTable').DataTable({
+                responsive: true,
+                autoWidth: false,
+                order: [[6, 'desc']], // Sort by Applied Date descending
+                pageLength: 10,
+                language: {
+                    emptyTable: 'No leave requests found',
+                    zeroRecords: 'No matching leave requests found'
+                }
+            });
         }
-    });
+    } catch (e) {
+        // Fail silently; table will remain plain HTML
+        console.warn('DataTable init skipped:', e);
+    }
 });
 
 let requestToCancel = null;
+let cancelModalInstance = null;
+
+document.addEventListener('DOMContentLoaded', function(){
+    const modalEl = document.getElementById('cancelModal');
+    if (modalEl && window.bootstrap && bootstrap.Modal){
+        cancelModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    }
+});
 
 function cancelRequest(requestId) {
     requestToCancel = requestId;
-    $('#cancelModal').modal('show');
+    if (cancelModalInstance) { cancelModalInstance.show(); }
+    else if (window.$ && typeof $('#cancelModal').modal === 'function') { $('#cancelModal').modal('show'); }
 }
 
-$('#confirmCancel').click(function() {
-    if (requestToCancel) {
-        // Send AJAX request to cancel the leave request
-        $.ajax({
-            url: 'cancel-request.php',
-            type: 'POST',
-            data: { request_id: requestToCancel },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    // Show success message and reload page
-                    alert('Leave request cancelled successfully!');
-                    location.reload();
-                } else {
-                    alert('Error: ' + response.message);
-                }
-            },
-            error: function() {
-                alert('An error occurred while cancelling the request.');
-            }
-        });
-    }
-    $('#cancelModal').modal('hide');
-});
-</script>
-
-<?php include '../../includes/footer.php'; ?>
-        "language": {
-            "emptyTable": "No leave requests found",
-            "zeroRecords": "No matching leave requests found"
-        }
-    });
-});
-
-let requestToCancel = null;
-
-function cancelRequest(requestId) {
-    requestToCancel = requestId;
-    $('#cancelModal').modal('show');
+function getCancelEndpoint(){
+    const root = window.location.origin;
+    return root + '/modules/leave/cancel-request.php';
 }
 
-$('#confirmCancel').click(function() {
+function onConfirmCancel(){
     if (requestToCancel) {
-        // Send AJAX request to cancel the leave request
-        $.ajax({
-            url: 'cancel-request.php',
-            type: 'POST',
-            data: { request_id: requestToCancel },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    // Show success message and reload page
-                    alert('Leave request cancelled successfully!');
-                    location.reload();
+        // Send POST using fetch to cancel the leave request
+        const url = getCancelEndpoint();
+        const fd = new FormData();
+        fd.append('request_id', requestToCancel);
+        fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(res => res.json().catch(() => ({ success: false, message: 'Invalid server response' })))
+            .then(response => {
+                if (response && response.success) {
+                    if (window.Swal) {
+                        Swal.fire({ title: 'Cancelled', text: 'Leave request cancelled successfully!', icon: 'success', timer: 1200, showConfirmButton: false })
+                            .then(() => location.reload());
+                    } else {
+                        alert('Leave request cancelled successfully!');
+                        location.reload();
+                    }
                 } else {
-                    alert('Error: ' + response.message);
+                    const msg = (response && response.message) ? response.message : 'Failed to cancel request';
+                    if (window.Swal) { Swal.fire('Error', msg, 'error'); }
+                    else { alert('Error: ' + msg); }
                 }
-            },
-            error: function() {
-                alert('An error occurred while cancelling the request.');
-            }
-        });
+            })
+            .catch(err => {
+                const msg = (err && err.message) ? err.message : 'An error occurred while cancelling the request.';
+                if (window.Swal) { Swal.fire('Error', msg, 'error'); }
+                else { alert(msg); }
+            });
     }
-    $('#cancelModal').modal('hide');
-});
+    if (cancelModalInstance) { cancelModalInstance.hide(); }
+    else if (window.$ && typeof $('#cancelModal').modal === 'function') { $('#cancelModal').modal('hide'); }
+}
+
+if (window.$) { $('#confirmCancel').click(onConfirmCancel); }
+const confirmBtn = document.getElementById('confirmCancel');
+if (confirmBtn) { confirmBtn.addEventListener('click', onConfirmCancel); }
 </script>
 
 <?php include '../../includes/footer.php'; ?>
