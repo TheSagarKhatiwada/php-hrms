@@ -166,42 +166,12 @@ $isLeaveSection = (strpos($_SERVER['REQUEST_URI'] ?? '', 'modules/leave/') !== f
           </a>
         </li>
         
+        <!-- Simplified Reports: only Attendance Reports Hub retained -->
         <li class="nav-item">
-          <a href="#reportsSubmenu" data-bs-toggle="collapse" 
-             class="nav-link <?php if($page == 'daily-report' || $page == 'periodic-report' || $page == 'periodic-time-report'){echo 'active';}?>
-                    <?php if(!($page == 'daily-report' || $page == 'periodic-report' || $page == 'periodic-time-report')){echo 'collapsed';}?>">
+          <a href="<?php echo append_sid($home . 'modules/reports/attendance-reports.php'); ?>" class="nav-link <?php if($page == 'attendance-reports'){echo 'active';}?>">
             <i class="nav-icon fas fa-chart-bar"></i>
-            <span>Reports</span>
-            <i class="nav-arrow fas fa-chevron-right"></i>
+            <span>Attendance Reports</span>
           </a>
-          <div class="collapse <?php if($page == 'daily-report' || $page == 'periodic-report' || $page == 'periodic-time-report' || $page == 'attendance-reports'){echo 'show';}?>" id="reportsSubmenu" data-bs-parent="#sidebarAccordion">
-            <ul class="nav nav-sub flex-column">
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'modules/reports/attendance-reports.php'); ?>" class="nav-link <?php if($page == 'attendance-reports'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-layer-group"></i>
-                  <span>Attendance Reports (Hub)</span>
-                </a>
-              </li>
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'modules/reports/daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-file-alt"></i>
-                  <span>Daily Report</span>
-                </a>
-              </li>
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'modules/reports/periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-calendar"></i>
-                  <span>Periodic Report</span>
-                </a>
-              </li>
-              <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'modules/reports/periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-clock"></i>
-                  <span>Periodic Time Report</span>
-                </a>
-              </li>
-            </ul>
-          </div>
         </li>
         
         <li class="nav-item">
@@ -430,23 +400,11 @@ $isLeaveSection = (strpos($_SERVER['REQUEST_URI'] ?? '', 'modules/leave/') !== f
           </a>
         </li>
         
-        <!-- Individual Manager Reports -->
+        <!-- Manager Reports simplified to unified Attendance Reports Hub -->
         <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'daily-report.php'); ?>" class="nav-link <?php if($page == 'daily-report'){echo 'active';}?>">
-            <i class="nav-icon fas fa-file-alt"></i>
-            <span>Daily Report</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'periodic-report.php'); ?>" class="nav-link <?php if($page == 'periodic-report'){echo 'active';}?>">
-            <i class="nav-icon fas fa-calendar"></i>
-            <span>Periodic Report</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="<?php echo append_sid($home . 'periodic-time-report.php'); ?>" class="nav-link <?php if($page == 'periodic-time-report'){echo 'active';}?>">
-            <i class="nav-icon fas fa-clock"></i>
-            <span>Periodic Entry Time Report</span>
+          <a href="<?php echo append_sid($home . 'modules/reports/attendance-reports.php'); ?>" class="nav-link <?php if($page == 'attendance-reports'){echo 'active';}?>">
+            <i class="nav-icon fas fa-chart-bar"></i>
+            <span>Attendance Reports</span>
           </a>
         </li>
         

@@ -919,9 +919,9 @@ document.addEventListener('DOMContentLoaded', function() {
       const timeSinceActivity = Date.now() - lastActivity;
       if (timeSinceActivity > inactivityThreshold) {
         // Only reload data-sensitive pages
-        const dataSensitivePages = ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 
-                                   'daily-report.php', 'periodic-report.php', 'employees.php',
-                                   'modules/assets/assets.php', 'modules/assets/manage_assets.php'];
+  const dataSensitivePages = ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 
+           'attendance-reports.php', 'employees.php',
+           'modules/assets/assets.php', 'modules/assets/manage_assets.php'];
         
         const currentPage = window.location.pathname.split('/').pop();
         if (dataSensitivePages.includes(currentPage)) {

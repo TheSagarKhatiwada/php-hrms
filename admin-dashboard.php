@@ -478,7 +478,7 @@ try {
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="periodic-report.php" class="btn btn-warning w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-dark">
+                            <a href="modules/reports/attendance-reports.php" class="btn btn-warning w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-dark">
                                 <i class="fas fa-chart-bar fs-4 mb-2"></i>
                                 <span>Reports</span>
                             </a>

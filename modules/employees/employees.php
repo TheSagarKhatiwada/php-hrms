@@ -83,11 +83,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['joinDate'])) {
 
 // Fetch data from the database
 try {
-    $stmt = $pdo->prepare("SELECT e.*, b.name, d.title AS designation_title 
-                    FROM employees e 
-                    JOIN branches b ON e.branch_id = b.id 
-                    LEFT JOIN designations d ON e.designation_id = d.id 
-                    ORDER BY e.join_date DESC");
+  // NOTE: Using e.branch and e.designation (legacy column names) instead of branch_id/designation_id
+  // Other modules reference these columns, so align here to actually fetch employees.
+  // Use LEFT JOIN for branches too so employees without a branch still appear.
+  $stmt = $pdo->prepare("SELECT e.*, b.name, d.title AS designation_title 
+          FROM employees e 
+          LEFT JOIN branches b ON e.branch = b.id 
+          LEFT JOIN designations d ON e.designation_id = d.id 
+          ORDER BY e.join_date DESC");
     $stmt->execute();
     $employees = $stmt->fetchAll();
     
@@ -147,6 +150,16 @@ require_once __DIR__ . '/../../includes/header.php';
       <div class="card border-0 shadow-sm">
         <div class="card-body">
           <div class="table-responsive">
+            <!-- Unified controls: entries length, show exited toggle, search -->
+              <div id="employee-controls" class="d-flex align-items-center flex-wrap p-2 rounded small gap-2">
+              <div id="dt-length-holder" class="d-flex align-items-center"></div>
+              <div class="ms-auto d-flex align-items-center gap-2" id="right-control-cluster">
+                <button id="toggleExited" type="button" class="btn btn-outline-secondary btn-sm" data-show="0">
+                  <i class="fas fa-user-slash me-1"></i> Show Exited
+                </button>
+                <div id="dt-search-holder"></div>
+              </div>
+            </div>
             <table id="employees-table" class="table table-hover">
               <thead>
                 <tr>
@@ -167,7 +180,7 @@ require_once __DIR__ . '/../../includes/header.php';
                 }
                 
                 foreach ($employees as $employee): ?>
-                <tr>
+                <tr class="<?php echo $employee['exit_date'] ? 'exited-row' : ''; ?>">
                   <td class="text-center align-middle"><?php echo htmlspecialchars($employee['emp_id']); ?></td>
                   <td>
                     <div class="d-flex align-items-center">
@@ -367,6 +380,75 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
   });
+
+  // Move built-in DataTables controls (length + search) into unified control box
+  const wrapper = document.getElementById('employee-controls');
+  const dtWrapper = document.getElementById('employees-table_wrapper');
+  if (wrapper && dtWrapper) {
+    const lengthDiv = dtWrapper.querySelector('.dataTables_length');
+    const filterDiv = dtWrapper.querySelector('.dataTables_filter');
+    const lengthHolder = document.getElementById('dt-length-holder');
+    const searchHolder = document.getElementById('dt-search-holder');
+    if (lengthDiv && lengthHolder) {
+      // Simplify label text
+      const label = lengthDiv.querySelector('label');
+      if (label) {
+        const select = label.querySelector('select');
+        if (select) {
+          select.classList.add('form-select', 'form-select-sm', 'w-auto');
+          lengthHolder.appendChild(select);
+          const span = document.createElement('span');
+          span.className = 'ms-2 text-muted';
+          span.textContent = 'entries';
+          lengthHolder.appendChild(span);
+        }
+      }
+      lengthDiv.remove();
+    }
+    if (filterDiv && searchHolder) {
+      const label = filterDiv.querySelector('label');
+      if (label) {
+        const input = label.querySelector('input');
+        if (input) {
+          input.classList.add('form-control', 'form-control-sm');
+          input.placeholder = 'Search...';
+          searchHolder.appendChild(input);
+        }
+      }
+      filterDiv.remove();
+    }
+  }
+
+  // Hide exited rows by default
+  const hideExited = () => {
+    document.querySelectorAll('#employees-table tbody tr.exited-row').forEach(tr => tr.classList.add('d-none'));
+  };
+  const showExited = () => {
+    document.querySelectorAll('#employees-table tbody tr.exited-row').forEach(tr => tr.classList.remove('d-none'));
+  };
+  hideExited();
+
+  // Toggle button logic
+  const toggleBtn = document.getElementById('toggleExited');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const show = toggleBtn.getAttribute('data-show') === '1';
+      if (show) {
+        // Currently showing exited -> hide them
+        hideExited();
+        toggleBtn.setAttribute('data-show', '0');
+        toggleBtn.classList.remove('btn-secondary');
+        toggleBtn.classList.add('btn-outline-secondary');
+        toggleBtn.innerHTML = '<i class="fas fa-user-slash me-1"></i> Show Exited';
+      } else {
+        showExited();
+        toggleBtn.setAttribute('data-show', '1');
+        toggleBtn.classList.remove('btn-outline-secondary');
+        toggleBtn.classList.add('btn-secondary');
+        toggleBtn.innerHTML = '<i class="fas fa-users me-1"></i> Hide Exited';
+      }
+    });
+  }
 
   // Mark Exit Modal Handler
   const markExitModal = document.getElementById('markExitModal');

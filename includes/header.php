@@ -92,7 +92,7 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   <meta http-equiv="Expires" content="0">
   
   <!-- Auto refresh for dashboard and other data-sensitive pages -->
-  <?php if (in_array(basename($_SERVER['PHP_SELF']), ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 'daily-report.php', 'employees.php'])): ?>
+  <?php if (in_array(basename($_SERVER['PHP_SELF']), ['dashboard.php', 'admin-dashboard.php', 'attendance.php', 'attendance-reports.php', 'employees.php'])): ?>
   <meta http-equiv="refresh" content="300"> <!-- Refresh every 5 minutes -->
   <?php endif; ?>
   
