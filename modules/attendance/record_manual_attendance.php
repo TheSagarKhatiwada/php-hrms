@@ -35,11 +35,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
     $dataSaved = false;
     
     try {
-        // Get the employee ID from POST and convert to internal ID
+        // Get the employee ID from POST (employees.emp_id string)
         $emp_id_string = $_POST['emp_id'];
         
-        // Get the internal employee ID (integer) from the emp_id string
-        $stmt = $pdo->prepare("SELECT id FROM employees WHERE emp_id = ?");
+        // Validate employee exists
+        $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE emp_id = ?");
         $stmt->execute([$emp_id_string]);
         $employee = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -48,8 +48,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
             header("Location: attendance.php");
             exit();
         }
-        
-        $emp_internal_id = $employee['id']; // This is the integer ID for attendance_logs
         
         // Get timezone from settings
         $timezone = get_setting('timezone', 'UTC');
@@ -64,8 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         error_log("Current time in this timezone: $current_time");
         
         // Check if employee already clocked in today
-        $stmt = $pdo->prepare("SELECT id FROM attendance_logs WHERE emp_Id = ? AND date = ? LIMIT 1");
-        $stmt->execute([$emp_internal_id, $today]);
+    $stmt = $pdo->prepare("SELECT id FROM attendance_logs WHERE emp_id = ? AND date = ? LIMIT 1");
+    $stmt->execute([$emp_id_string, $today]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($result) {
@@ -75,11 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         }
         
         // Insert clock in record - improved error handling
-        $sql = "INSERT INTO attendance_logs (emp_Id, date, time, method, mach_sn, mach_id, manual_reason) VALUES (?, ?, ?, '2', 0, 0, 'web')";
+    $sql = "INSERT INTO attendance_logs (emp_id, date, time, method, mach_sn, mach_id, manual_reason) VALUES (?, ?, ?, '2', 0, 0, 'web')";
         $stmt = $pdo->prepare($sql);
         
         try {
-            if ($stmt->execute([$emp_internal_id, $today, $current_time])) {
+            if ($stmt->execute([$emp_id_string, $today, $current_time])) {
                 // Mark that data was successfully saved
                 $dataSaved = true;
                 
@@ -154,19 +152,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['action'])) {
     
     // Get form data
     $empId_string = $_POST['empId'];
-    
-    // Convert string emp_id to integer employee ID for database operations
-    $stmt = $pdo->prepare("SELECT id FROM employees WHERE emp_id = ?");
+
+    // Validate employee exists by string emp_id
+    $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE emp_id = ?");
     $stmt->execute([$empId_string]);
     $employee = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$employee) {
         $_SESSION['error'] = 'Employee not found';
         header("Location: attendance.php");
         exit();
     }
-    
-    $empId = $employee['id']; // Integer ID for database operations
+
+    // Use the string emp_id directly when writing to attendance_logs
+    $empId = $empId_string;
     $attendanceDate = $_POST['attendanceDate'];
     $attendanceTime = $_POST['attendanceTime'];
     $reason = $_POST['reason'];
@@ -180,8 +179,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['action'])) {
 
     try {
         // SQL query to insert data into the table
-        $sql = "INSERT INTO attendance_logs (emp_Id, date, time, method, manual_reason, mach_sn, mach_id) 
-                VALUES (:empId, :attendanceDate, :attendanceTime, '1', :manualReason, 0, 0)";
+    $sql = "INSERT INTO attendance_logs (emp_id, date, time, method, manual_reason, mach_sn, mach_id) 
+        VALUES (:empId, :attendanceDate, :attendanceTime, '1', :manualReason, 0, 0)";
         
         // Prepare statement
         $stmt = $pdo->prepare($sql);

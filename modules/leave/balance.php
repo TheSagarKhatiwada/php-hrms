@@ -23,7 +23,7 @@ $current_year = date('Y');
 $selected_year = $_GET['year'] ?? $current_year;
 
 // Get employee details
-$employee_sql = "SELECT first_name, last_name, emp_id FROM employees WHERE id = ?";
+$employee_sql = "SELECT first_name, last_name, emp_id FROM employees WHERE emp_id = ?";
 $employee_stmt = $pdo->prepare($employee_sql);
 $employee_stmt->execute([$employee_id]);
 $employee = $employee_stmt->fetch();
@@ -91,7 +91,7 @@ $years_result = $years_stmt->fetchAll();
 // Get all employees for admin/hr dropdown
 $employees_result = null;
 if ($is_admin_user) {
-    $employees_sql = "SELECT id, first_name, last_name, emp_id FROM employees ORDER BY first_name, last_name";
+    $employees_sql = "SELECT emp_id, first_name, last_name FROM employees ORDER BY first_name, last_name";
     $employees_result = $pdo->query($employees_sql)->fetchAll();
 }
 
@@ -113,9 +113,9 @@ include '../../includes/header.php';
             </nav>
         </div>        <div class="d-flex gap-2">
             <?php if (!$is_admin_user): ?>
-                <a href="request.php" class="btn btn-primary">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                     <i class="fas fa-plus me-1"></i>Apply Leave
-                </a>
+                </button>
                 <a href="my-requests.php" class="btn btn-outline-success">
                     <i class="fas fa-list me-1"></i>My Requests
                 </a>
@@ -131,7 +131,48 @@ include '../../includes/header.php';
                 <i class="fas fa-calendar me-1"></i>Calendar View
             </a>
         </div>
-    </div>    <!-- Employee Info and Statistics -->
+    </div>
+    
+    <!-- Filters -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-filter me-2"></i>Filters</h6>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <?php if ($is_admin_user): ?>
+                    <div class="col-md-4">
+                        <label class="form-label">Employee</label>
+                        <select name="employee_id" class="form-select">
+                            <?php foreach ($employees_result as $emp): ?>
+                                <option value="<?php echo $emp['emp_id']; ?>" 
+                                        <?php echo $employee_id == $emp['emp_id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name'] . ' (' . $emp['emp_id'] . ')'); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                <?php endif; ?>
+                <div class="col-md-3">
+                    <label class="form-label">Year</label>
+                    <select name="year" class="form-select">
+                        <?php for ($year = $current_year; $year >= $current_year - 5; $year--): ?>
+                            <option value="<?php echo $year; ?>" <?php echo $selected_year == $year ? 'selected' : ''; ?>>
+                                <?php echo $year; ?>
+                            </option>
+                        <?php endfor; ?>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Employee Info and Statistics -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 fw-bold text-primary">
@@ -217,47 +258,9 @@ include '../../includes/header.php';
                     </div>
                 </div>
             </div>
-        </div>    </div>
-
-    <!-- Filters -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-filter me-2"></i>Filters</h6>
-        </div>
-        <div class="card-body">
-            <form method="GET" class="row g-3">
-                <?php if ($is_admin_user): ?>
-                    <div class="col-md-4">
-                        <label class="form-label">Employee</label>
-                        <select name="employee_id" class="form-select">
-                            <?php foreach ($employees_result as $emp): ?>
-                                <option value="<?php echo $emp['id']; ?>" 
-                                        <?php echo $employee_id == $emp['id'] ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name'] . ' (' . $emp['emp_id'] . ')'); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                <?php endif; ?>
-                <div class="col-md-3">
-                    <label class="form-label">Year</label>
-                    <select name="year" class="form-select">
-                        <?php for ($year = $current_year; $year >= $current_year - 5; $year--): ?>
-                            <option value="<?php echo $year; ?>" <?php echo $selected_year == $year ? 'selected' : ''; ?>>
-                                <?php echo $year; ?>
-                            </option>
-                        <?php endfor; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">&nbsp;</label>
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-search"></i>
-                    </button>
-                </div>
-            </form>
-        </div>
+        </div>    
     </div>
+
 
     <div class="row"><!-- Leave Balance Breakdown -->
         <div class="col-md-8">

@@ -68,15 +68,19 @@ $holidays = [];
 
 // Convert holidays to the expected format (date => name)
 foreach ($holidays_data as $holiday) {
-    $holiday_date = $holiday['date'];
-    
+    // Prefer start_date (range-aware) if present
+    $base = $holiday['start_date'] ?? null;
+
     // Handle recurring holidays - adjust year to current year
-    if ($holiday['is_recurring']) {
-        $holiday_date = $current_year . '-' . date('m-d', strtotime($holiday['date']));
+    if (!empty($holiday['is_recurring'])) {
+        // Use base for month/day extraction
+        $holiday_date = $current_year . '-' . date('m-d', strtotime($base));
+    } else {
+        $holiday_date = $base;
     }
-    
+
     // Only include holidays that fall within the current month
-    if (date('Y-m', strtotime($holiday_date)) === sprintf('%04d-%02d', $current_year, $current_month)) {
+    if ($holiday_date && date('Y-m', strtotime($holiday_date)) === sprintf('%04d-%02d', $current_year, $current_month)) {
         $holidays[$holiday_date] = $holiday['name'];
     }
 }
@@ -150,9 +154,9 @@ include '../../includes/header.php';
                 <i class="fas fa-list me-1"></i>All Requests
             </a>
             <?php if (!$is_admin_user): ?>
-                <a href="request.php" class="btn btn-success">
+                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                     <i class="fas fa-plus me-1"></i>Apply for Leave
-                </a>
+                </button>
             <?php endif; ?>
         </div>
     </div>    <!-- Calendar Stats -->
@@ -244,9 +248,9 @@ include '../../includes/header.php';
                     </a>
                 </div>
                 <?php if (!$is_admin_user): ?>
-                    <a href="request.php" class="btn btn-sm btn-success">
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                         <i class="fas fa-plus me-1"></i>Apply for Leave
-                    </a>
+                    </button>
                 <?php endif; ?>
             </div>
         </div><div class="card-body p-0">

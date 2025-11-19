@@ -1,5 +1,6 @@
 <?php
 $page = 'Edit Employee';
+$page = 'employees';
 // Include utilities for role check functions
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
@@ -21,7 +22,7 @@ if (!isset($_GET['id'])) {
 $emp_id = $_GET['id'];
 
 // Fetch employee details
-$stmt = $pdo->prepare("SELECT e.*, b.name as branch_name FROM employees e LEFT JOIN branches b ON e.branch = b.id WHERE e.emp_id = :emp_id");
+$stmt = $pdo->prepare("SELECT e.*, b.name as branch_name FROM employees e LEFT JOIN branches b ON e.branch_id = b.id WHERE e.emp_id = :emp_id");
 $stmt->execute(['emp_id' => $emp_id]);
 $employee = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -57,18 +58,24 @@ require_once __DIR__ . '/../../includes/header.php';
             
             <div class="row mb-3">
               <div class="col-md-4">
-                <label for="machId" class="form-label">Machine ID</label>
-                <input type="text" class="form-control" id="machId" name="machId" value="<?php echo htmlspecialchars($employee['mach_id'] ?? ''); ?>">
+                <div class="d-flex justify-content-between align-items-center">
+                  <label for="machId" class="form-label mb-0">Machine ID</label>
+                  <div class="form-check form-check-inline m-0 small">
+                    <input class="form-check-input" type="checkbox" id="machIdNotApplicable" name="mach_id_not_applicable" value="1" <?php echo !empty($employee['mach_id_not_applicable']) ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="machIdNotApplicable">Not Applicable</label>
+                  </div>
+                </div>
+                <input type="text" class="form-control mt-1" id="machId" name="machId" value="<?php echo htmlspecialchars($employee['mach_id'] ?? ''); ?>">
               </div>
               <div class="col-md-8">
-                <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
-                <select class="form-select" id="empBranch" name="empBranch" required>
+                <label for="empBranchId" class="form-label">Branch <span class="text-danger">*</span></label>
+                <select class="form-select" id="empBranchId" name="empBranchId" required>
                   <option disabled>Select a Branch</option>
                   <?php 
                     $branchQuery = "SELECT id, name FROM branches";
                     $stmt = $pdo->query($branchQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $employee['branch']) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $employee['branch_id']) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
                     }
                   ?>
@@ -101,9 +108,14 @@ require_once __DIR__ . '/../../includes/header.php';
                 <select class="form-select" id="gender" name="gender" required>
                   <option disabled>Select a Gender</option>
                   <?php 
+                    // Convert database values back to display format
+                    $displayGender = '';
+                    if ($employee['gender'] == 'male') $displayGender = 'M';
+                    elseif ($employee['gender'] == 'female') $displayGender = 'F';
+                    
                     $genders = ['M' => 'Male', 'F' => 'Female'];
                     foreach ($genders as $key => $value) {
-                      $selected = ($employee['gender'] == $key) ? 'selected' : '';
+                      $selected = ($displayGender == $key) ? 'selected' : '';
                       echo "<option value='$key' $selected>$value</option>";
                     }
                   ?>
@@ -139,20 +151,41 @@ require_once __DIR__ . '/../../includes/header.php';
             
             <div class="row mb-3">
               <div class="col-md-6">
-                <label for="empJoinDate" class="form-label">Joining Date <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" required 
-                       value="<?php echo htmlspecialchars($employee['join_date']); ?>" 
-                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>">
+                <label for="empHireDate" class="form-label">Hire Date</label>
+                <input type="date" class="form-control" id="empHireDate" name="empHireDate" 
+                       value="<?php echo htmlspecialchars($employee['hire_date']); ?>" readonly
+                       title="Hire date cannot be changed">
               </div>
               <div class="col-md-6">
-                <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
-                <select class="form-select" id="designation" name="designation" required>
+                <label for="empJoinDate" class="form-label">Join Date (Start Working)</label>
+                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" 
+                       value="<?php echo htmlspecialchars($employee['join_date']); ?>" 
+                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>"
+                       title="Date when employee actually started working">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="work_start_time" class="form-label">Work Start Time</label>
+                <input type="time" class="form-control" id="work_start_time" name="work_start_time" value="<?php echo htmlspecialchars($employee['work_start_time'] ?? '09:30:00'); ?>">
+              </div>
+              <div class="col-md-6">
+                <label for="work_end_time" class="form-label">Work End Time</label>
+                <input type="time" class="form-control" id="work_end_time" name="work_end_time" value="<?php echo htmlspecialchars($employee['work_end_time'] ?? '18:00:00'); ?>">
+              </div>
+            </div>
+            
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="designationId" class="form-label">Designation <span class="text-danger">*</span></label>
+                <select class="form-select" id="designationId" name="designationId" required>
                   <option value="" disabled>Select a Designation</option>
                   <?php 
                     $designationQuery = "SELECT id, title FROM designations ORDER BY title";
                     $stmt = $pdo->query($designationQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $employee['designation']) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $employee['designation_id']) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
                     }
                   ?>
@@ -197,16 +230,40 @@ require_once __DIR__ . '/../../includes/header.php';
                 <select class="form-select" id="supervisor" name="supervisor_id">
                   <option value="">-- No Supervisor --</option>
                   <?php 
-                    $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
-                                       FROM employees 
-                                       WHERE emp_id != :current_emp_id
-                                       ORDER BY first_name, last_name";
+                    // DEBUG: Check total employees first
+                    $totalQuery = "SELECT COUNT(*) as total FROM employees";
+                    $totalStmt = $pdo->prepare($totalQuery);
+                    $totalStmt->execute();
+                    $totalCount = $totalStmt->fetch()['total'];
+                    echo "<!-- DEBUG: Total employees in database: $totalCount -->";
+                    
+                    // DEBUG: Check active employees (no exit date)
+                    $activeQuery = "SELECT COUNT(*) as active FROM employees WHERE (exit_date IS NULL OR exit_date = '' OR exit_date = '0000-00-00')";
+                    $activeStmt = $pdo->prepare($activeQuery);
+                    $activeStmt->execute();
+                    $activeCount = $activeStmt->fetch()['active'];
+                    echo "<!-- DEBUG: Active employees (no exit date): $activeCount -->";
+                    
+                    // DEBUG: Current employee being edited
+                    echo "<!-- DEBUG: Current employee ID being edited: {$employee['emp_id']} -->";
+                    
+                    // Modified query to exclude employees with exit dates and show designation
+                    $supervisorQuery = "SELECT e.emp_id, CONCAT(e.first_name, ' ', e.last_name, ' (', COALESCE(d.title, 'No Designation'), ')') as supervisor_name 
+                                       FROM employees e
+                                       LEFT JOIN designations d ON e.designation_id = d.id
+                                       WHERE e.emp_id != :current_emp_id 
+                                       AND (e.exit_date IS NULL OR e.exit_date = '' OR e.exit_date = '0000-00-00')
+                                       ORDER BY e.first_name, e.last_name";
                     $stmtSupervisor = $pdo->prepare($supervisorQuery);
                     $stmtSupervisor->execute(['current_emp_id' => $employee['emp_id']]);
+                    
+                    $supervisorCount = 0;
                     while ($rowSupervisor = $stmtSupervisor->fetch()) {
+                      $supervisorCount++;
                       $selectedSupervisor = ($rowSupervisor['emp_id'] == $employee['supervisor_id']) ? 'selected' : '';
                       echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
                     }
+                    echo "<!-- DEBUG: Total supervisors shown in dropdown: $supervisorCount -->";
                   ?>
                 </select>
               </div>
@@ -223,6 +280,20 @@ require_once __DIR__ . '/../../includes/header.php';
                     }
                   ?>
                 </select>
+              </div>
+            </div>
+
+
+            
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Web Check-In/Checkout</label>
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo !empty($employee['allow_web_attendance']) ? 'checked' : ''; ?>>
+                  <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                </div>
+                <small class="text-muted">Leave disabled for employees who must rely on biometric devices only.</small>
               </div>
             </div>
           </div>
@@ -344,4 +415,44 @@ document.getElementById('cropButton').addEventListener('click', function() {
     });
   }
 });
+</script>
+<script>
+(function(){
+  function initMachIdToggle(){
+    const checkbox = document.getElementById('machIdNotApplicable');
+    if(!checkbox) return;
+    const fields = ['machId','work_start_time','work_end_time']
+      .map(id => document.getElementById(id))
+      .filter(Boolean);
+    const rememberValue = (field) => { field.dataset.prevValue = field.value; };
+    fields.forEach(field => {
+      rememberValue(field);
+      field.addEventListener('input', function(){
+        if(!checkbox.checked){ rememberValue(field); }
+      });
+    });
+    const toggleMachineFields = () => {
+      const disableFields = checkbox.checked;
+      fields.forEach(field => {
+        if(disableFields){
+          rememberValue(field);
+          field.value = '';
+          field.setAttribute('disabled','disabled');
+        } else {
+          field.removeAttribute('disabled');
+          if(typeof field.dataset.prevValue !== 'undefined'){
+            field.value = field.dataset.prevValue;
+          }
+        }
+      });
+    };
+    checkbox.addEventListener('change', toggleMachineFields);
+    toggleMachineFields();
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initMachIdToggle);
+  } else {
+    initMachIdToggle();
+  }
+})();
 </script>

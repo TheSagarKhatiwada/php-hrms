@@ -7,9 +7,12 @@
  * leave days gradually throughout the year instead of getting full allocation upfront
  */
 
-require_once '../../includes/db_connection.php';
-require_once '../../includes/session_config.php';
-require_once 'config.php';
+require_once __DIR__ . '/../../includes/db_connection.php';
+require_once __DIR__ . '/../../includes/session_config.php';
+require_once __DIR__ . '/config.php';
+
+// Determine if this file is accessed directly (not via include)
+$__LEAVE_ACCRUAL_IS_DIRECT = (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME']));
 
 // Check if user has admin access for manual runs
 // if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'hr'])) {
@@ -285,8 +288,8 @@ function checkLeaveBalance($employee_id, $leave_type_id, $requested_days, $year 
     ];
 }
 
-// Handle manual execution (admin interface)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+// Handle manual execution (admin interface) only when accessed directly
+if ($__LEAVE_ACCRUAL_IS_DIRECT && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $response = ['success' => false, 'message' => ''];
     
     switch ($_POST['action']) {
@@ -356,9 +359,10 @@ if (defined('CRON_RUN')) {
     exit();
 }
 
-// Admin interface
-$page = 'Leave Accrual Management';
-include '../../includes/header.php';
+// Admin interface: render only when accessed directly
+if ($__LEAVE_ACCRUAL_IS_DIRECT) {
+    $page = 'Leave Accrual Management';
+    include __DIR__ . '/../../includes/header.php';
 
 // Get current month/year accrual status
 $current_month = date('n');
@@ -621,4 +625,5 @@ setInterval(function() {
 }, 30000);
 </script>
 
-<?php include '../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; }
+?>

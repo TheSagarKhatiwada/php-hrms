@@ -1,12 +1,24 @@
 # Exclude uploads folder
 resources/userimg/uploads/
 
+# Root uploads directory (general uploaded assets)
+uploads/
+
+# PHP session files (should not be versioned)
+sessions/
+
+# Tool temp files
+tools/*.tmp
+tools/*.log
+
+# OS / editor artifacts
+Thumbs.db
+.DS_Store
+
 # Exclude log files and temporary files
 *.log
 temp/
 
-# Exclude AdminLTE Theme folder
-AdminLTE/
 
 # Exclude a config file
 include/config.php

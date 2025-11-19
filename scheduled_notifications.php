@@ -50,7 +50,7 @@ function checkBirthdays($pdo) {
         
         if (!empty($birthdayEmployees)) {
             // Get HR/Management team IDs to notify them about birthdays
-            $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role = 1 OR role = 2");
+            $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role_id = 1 OR role_id = 2");
             $adminStmt->execute();
             $adminIds = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
             
@@ -104,7 +104,7 @@ function checkWorkAnniversaries($pdo) {
         
         if (!empty($anniversaryEmployees)) {
             // Get HR/Management team IDs to notify them about work anniversaries
-            $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role = 1 OR role = 2");
+            $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role_id = 1 OR role_id = 2");
             $adminStmt->execute();
             $adminIds = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
             
@@ -199,7 +199,7 @@ function checkOverdueAssets($pdo) {
         $overdueAssets = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Get admin IDs for notification
-        $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role = 1");
+    $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role_id = 1");
         $adminStmt->execute();
         $adminIds = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
         

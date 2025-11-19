@@ -70,11 +70,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     if (function_exists('notify_employee_attendance')) {
                         // Get employee ID for notification
-                        $empStmt = $pdo->prepare("SELECT emp_Id FROM attendance_logs WHERE id = ?");
+                        $empStmt = $pdo->prepare("SELECT emp_id FROM attendance_logs WHERE id = ?");
                         $empStmt->execute([$attendanceId]);
                         $empData = $empStmt->fetch(PDO::FETCH_ASSOC);
                         if ($empData) {
-                            notify_employee_attendance($empData['emp_Id'], 'attendance_updated', $attendanceDate . ' ' . $attendanceTime);
+                            notify_employee_attendance($empData['emp_id'], 'attendance_updated', $attendanceDate . ' ' . $attendanceTime);
                         }
                     }
                 } catch (Exception $e) {

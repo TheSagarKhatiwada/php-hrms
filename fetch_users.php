@@ -1,4 +1,8 @@
 <?php
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 include 'includes/db_connection.php';  // Include your DB connection file
 
 // Check if the branch parameter is provided
@@ -10,11 +14,20 @@ if (isset($_POST['branch'])) {
         try {
             // Prepare the query to fetch employees and their branch name
             $stmt = $pdo->prepare("
-                SELECT e.emp_id, CONCAT(e.first_name, ' ', e.middle_name, ' ', e.last_name) AS full_name, d.title AS designation, b.name
+                SELECT e.emp_id, 
+                       CONCAT(e.first_name, 
+                              CASE WHEN e.middle_name IS NOT NULL AND e.middle_name != '' 
+                                   THEN CONCAT(' ', e.middle_name, ' ') 
+                                   ELSE ' ' 
+                              END, 
+                              e.last_name) AS full_name, 
+                       COALESCE(d.title, 'Not Assigned') AS designation, 
+                       b.name
                 FROM employees e
-                JOIN branches b ON e.branch = b.id
-                JOIN designations d ON e.designation = d.id
-                WHERE b.id = :id
+                LEFT JOIN branches b ON e.branch = b.id
+                LEFT JOIN designations d ON e.designation = d.id
+                WHERE b.id = :id AND e.status = 'active'
+                ORDER BY e.first_name, e.last_name
             ");
             $stmt->execute(['id' => $branchId]);
 

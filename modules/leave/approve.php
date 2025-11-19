@@ -34,16 +34,38 @@ if ($_POST && isset($_POST['approve_request'])) {
         if (!$request_data) {
             throw new Exception("Leave request not found or already processed.");
         }
-          // Update request status
-        $sql = "UPDATE leave_requests 
-                SET status = 'approved', 
-                    approved_by = ?, 
-                    reviewed_date = NOW(),
-                    approval_comments = ?
-                WHERE id = ? AND status = 'pending'";
+        // Build update dynamically based on available columns
+        $params = [];
+        $setParts = [];
+        // Always set status/approved_by/reviewed_date
+        $setParts[] = "status = 'approved'";
+        $setParts[] = "approved_by = ?"; $params[] = $_SESSION['user_id'];
+        $setParts[] = "reviewed_date = NOW()";
+
+        // Check for optional columns to avoid SQL errors on legacy schemas
+        $hasApprovalComments = false;
+        $hasApprovedDate = false;
+        try {
+            $colStmt = $pdo->query("SHOW COLUMNS FROM `leave_requests` LIKE 'approval_comments'");
+            $hasApprovalComments = $colStmt && $colStmt->rowCount() > 0;
+        } catch (Throwable $e) { /* ignore */ }
+        try {
+            $colStmt2 = $pdo->query("SHOW COLUMNS FROM `leave_requests` LIKE 'approved_date'");
+            $hasApprovedDate = $colStmt2 && $colStmt2->rowCount() > 0;
+        } catch (Throwable $e) { /* ignore */ }
+
+        if ($hasApprovalComments) {
+            $setParts[] = "approval_comments = ?"; $params[] = $approval_comments;
+        }
+        if ($hasApprovedDate) {
+            $setParts[] = "approved_date = NOW()";
+        }
+
+        $sql = "UPDATE leave_requests SET " . implode(', ', $setParts) . " WHERE id = ? AND status = 'pending'";
+        $params[] = $request_id;
         $stmt = $pdo->prepare($sql);
-        
-        if ($stmt->execute([$_SESSION['user_id'], $approval_comments, $request_id]) && $stmt->rowCount() > 0) {
+
+        if ($stmt->execute($params) && $stmt->rowCount() > 0) {
             // Send notification
             include_once 'notifications.php';
             sendLeaveNotification('approved', $request_id, [

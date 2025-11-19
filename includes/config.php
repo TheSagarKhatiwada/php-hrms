@@ -27,15 +27,83 @@ if (!defined('ENVIRONMENT')) {
     define('ENVIRONMENT', 'development');
 }
 
+// String helpers for PHP < 8 compatibility
+if (!function_exists('str_starts_with')) {
+    function str_starts_with($haystack, $needle) {
+        return $needle === '' || strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
+if (!function_exists('str_ends_with')) {
+    function str_ends_with($haystack, $needle) {
+        if ($needle === '') {
+            return true;
+        }
+        return substr($haystack, -strlen($needle)) === $needle;
+    }
+}
+
+// Lightweight .env loader so secrets can live outside version control
+if (!function_exists('hrms_load_env_file')) {
+    function hrms_load_env_file($path)
+    {
+        if (!is_readable($path)) {
+            return;
+        }
+
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+            if (strpos($line, '=') === false) {
+                continue;
+            }
+            [$name, $value] = array_map('trim', explode('=', $line, 2));
+            if ($name === '') {
+                continue;
+            }
+            // Remove optional surrounding quotes
+            if ((str_starts_with($value, '"') && str_ends_with($value, '"')) ||
+                (str_starts_with($value, "'") && str_ends_with($value, "'"))) {
+                $value = substr($value, 1, -1);
+            }
+            putenv(sprintf('%s=%s', $name, $value));
+            $_ENV[$name] = $value;
+            $_SERVER[$name] = $value;
+        }
+    }
+}
+
+hrms_load_env_file(dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env');
+
+if (!function_exists('hrms_env')) {
+    function hrms_env($key, $default = null)
+    {
+        $value = getenv($key);
+        return $value !== false ? $value : $default;
+    }
+}
+
 // Database configuration - CENTRALIZED CONFIGURATION
 // All database connections in the system use this configuration
 $DB_CONFIG = [
-    'host'    => 'localhost',        // Database server hostname
-    'name'    => 'hrms',            // Database name
-    'user'    => 'root',            // Database username
-    'pass'    => 'Sagar',           // Database password - CHANGE THIS FOR PRODUCTION
-    'charset' => 'utf8mb4',         // Character set
+    'host'    => hrms_env('HRMS_DB_HOST', 'localhost'),  // Database server hostname
+    'name'    => hrms_env('HRMS_DB_NAME', 'hrms'),       // Database name
+    'user'    => hrms_env('HRMS_DB_USER', 'root'),       // Database username
+    'pass'    => hrms_env('HRMS_DB_PASS', 'Sagar'),      // Database password - override in .env for production
+    'charset' => hrms_env('HRMS_DB_CHARSET', 'utf8mb4'), // Character set
 ];
+
+if (!defined('APP_KEY')) {
+    $appKey = hrms_env('HRMS_APP_KEY');
+    if (!$appKey) {
+        // Last resort fallback keeps value stable per install while reminding admins to override
+        $appKey = hash('sha256', __DIR__ . php_uname('n'));
+    }
+    define('APP_KEY', $appKey);
+}
 
 // Function to get database configuration
 // This ensures the configuration is accessible from any scope

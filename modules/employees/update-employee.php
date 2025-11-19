@@ -1,48 +1,68 @@
 <?php
-// Include session configuration before starting any session
+// (Removed verbose debug logging previously writing POST data to debug_log.txt)
 require_once '../../includes/session_config.php';
+require_once '../../includes/db_connection.php';
+require_once '../../includes/utilities.php';
+require_once '../../includes/hierarchy_helpers.php';
 
-require '../../includes/db_connection.php'; // Include database connection
-require_once '../../includes/utilities.php'; // Include utilities
-require_once '../../includes/hierarchy_helpers.php'; // Include hierarchy helpers
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    // Collect and sanitize input
+    $emp_id         = $_POST["emp_id"] ?? '';
+    $machId         = trim($_POST['machId'] ?? '');
+    $machIdNotApplicable = isset($_POST['mach_id_not_applicable']) ? 1 : 0;
+    $empBranchId    = trim($_POST['empBranchId'] ?? '');
+    $empFirstName   = trim($_POST['empFirstName'] ?? '');
+    $empMiddleName  = trim($_POST['empMiddleName'] ?? '');
+    $empLastName    = trim($_POST['empLastName'] ?? '');
+    $gender         = trim($_POST['gender'] ?? '');
+    $empEmail       = trim($_POST['empEmail'] ?? '');
+    $empPhone       = trim($_POST['empPhone'] ?? '');
+    $empHireDate    = trim($_POST['empHireDate'] ?? '');
+    $empJoinDate    = trim($_POST['empJoinDate'] ?? '');
+    $designationId  = trim($_POST['designationId'] ?? '');
+    $loginAccess    = trim($_POST['login_access'] ?? '');
+    $croppedImage   = $_POST['croppedImage'] ?? '';
+    $dob            = trim($_POST['dob'] ?? '');
+    $role_id        = trim($_POST['role_id'] ?? '');
+    $office_email   = trim($_POST['office_email'] ?? '');
+    $office_phone   = trim($_POST['office_phone'] ?? '');
+    $supervisor_id  = !empty($_POST['supervisor_id']) ? trim($_POST['supervisor_id']) : null;
+    $department_id  = !empty($_POST['department_id']) ? trim($_POST['department_id']) : null;
+    $work_start_time = trim($_POST['work_start_time'] ?? '');
+    $work_end_time = trim($_POST['work_end_time'] ?? '');
+    $allowWebAttendance = isset($_POST['allow_web_attendance']) ? 1 : 0;
+    if ($machIdNotApplicable) {
+        $machId = '';
+        $work_start_time = '';
+        $work_end_time = '';
+    }
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Get form data
-    $emp_id = $_POST["emp_id"];
-    $machId = $_POST['machId'];
-    $empBranch = $_POST['empBranch'];
-    $empFirstName = $_POST['empFirstName'];
-    $empMiddleName = $_POST['empMiddleName'];
-    $empLastName = $_POST['empLastName'];
-    $gender = $_POST['gender'];
-    $empEmail = filter_var($_POST['empEmail'], FILTER_VALIDATE_EMAIL) ? $_POST['empEmail'] : null;
-    $empPhone = preg_match('/^\d+$/', $_POST['empPhone']) ? $_POST['empPhone'] : null;
-    $empJoinDate = $_POST['empJoinDate'];
-    $designation = $_POST['designation']; 
-    $loginAccess = $_POST['login_access']; 
-    $croppedImage = $_POST['croppedImage'];
-    $dob = $_POST['dob'];
-    $role_id = $_POST['role_id']; // Changed from role to role_id
-    $office_email = filter_var($_POST['office_email'], FILTER_VALIDATE_EMAIL) ? $_POST['office_email'] : null;
-    $office_phone = preg_match('/^\+?[0-9]*$/', $_POST['office_phone']) ? $_POST['office_phone'] : null;
-    
-    // Hierarchy fields
-    $supervisor_id = !empty($_POST['supervisor_id']) ? $_POST['supervisor_id'] : null;
-    $department_id = !empty($_POST['department_id']) ? $_POST['department_id'] : null;
+    // Normalize and map gender like add-employee (form uses M/F, DB expects male/female)
+    $gender = strtoupper($gender);
+    if (!in_array($gender, ['M', 'F'], true)) {
+        $gender = 'M';
+    }
+    $genderForDb = ($gender === 'F') ? 'female' : 'male';
 
-    if (!$empEmail || !$empPhone) {
-        $_SESSION['error'] = "Invalid email or phone number";
+    // Validate required fields
+    if (!$emp_id || !$empFirstName || !$empLastName || !$empEmail || !$empPhone || !$empBranchId || !$designationId) {
+        $_SESSION['error'] = "Missing required fields.";
         header("Location: edit-employee.php?id=$emp_id&_nocache=" . time());
         exit();
     }
 
-    // Validate hierarchy to prevent circular references
+    // Validate email and phone
+    if (!filter_var($empEmail, FILTER_VALIDATE_EMAIL) || !preg_match('/^\+?[0-9]*$/', $empPhone)) {
+        $_SESSION['error'] = "Invalid email or phone number.";
+        header("Location: edit-employee.php?id=$emp_id&_nocache=" . time());
+        exit();
+    }
+
+    // Validate hierarchy (no circular reference)
     if ($supervisor_id) {
-        // Fetch current employee emp_id
         $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE emp_id = :emp_id");
         $stmt->execute(['emp_id' => $emp_id]);
         $current_employee = $stmt->fetch(PDO::FETCH_ASSOC);
-        
         if ($current_employee && !canSupervise($pdo, $supervisor_id, $current_employee['emp_id'])) {
             $_SESSION['error'] = "Cannot assign supervisor: This would create a circular hierarchy.";
             header("Location: edit-employee.php?id=$emp_id&_nocache=" . time());
@@ -50,231 +70,106 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
 
-    // Fetch employee details
+    // Fetch current employee data
     $stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = :emp_id");
     $stmt->execute(['emp_id' => $emp_id]);
     $employee = $stmt->fetch(PDO::FETCH_ASSOC);
-
     if (!$employee) {
-        $_SESSION['error'] = "Employee not found";
+        $_SESSION['error'] = "Employee not found.";
         header("Location: employees.php");
         exit();
     }
 
-    // Handle file upload
+    // Handle image upload
     if ($croppedImage) {
         $targetDir = "../../resources/userimg/uploads/";
-
-        // Ensure directory exists
-        if (!is_dir($targetDir)) {
-            mkdir($targetDir, 0777, true);
-        }
-
-        $imageData = base64_decode(preg_split('#^data:image/\w+;base64,#i', $croppedImage)[1]);
+        if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
+        $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
         $imageName = uniqid() . '.png';
         $targetFile = $targetDir . $imageName;
-        $dbPath = "resources/userimg/uploads/" . $imageName;
         file_put_contents($targetFile, $imageData);
+        $dbPath = "resources/userimg/uploads/" . $imageName;
     } else {
-        $dbPath = $employee['user_image']; // Keep existing image
+        $dbPath = $employee['user_image'];
     }
 
-    // Generate a random password if login access is granted and was not previously granted
+    // Password logic
     if ($loginAccess == '1' && $employee['login_access'] != '1') {
-        $randomPassword = bin2hex(random_bytes(4)); // Generate a random 8-character password
-        $hashedPassword = password_hash($randomPassword, PASSWORD_BCRYPT); // Hash the password
+        $randomPassword = bin2hex(random_bytes(4));
+        $hashedPassword = password_hash($randomPassword, PASSWORD_BCRYPT);
     } else {
-        $hashedPassword = $employee['password']; // Keep existing password
+        $hashedPassword = $employee['password'];
     }
 
-    // Update data in the database using prepared statements
-    $sql = "UPDATE employees SET 
-            mach_id = :machId, 
-            branch = :empBranch, 
-            first_name = :empFirstName, 
-            middle_name = :empMiddleName, 
-            last_name = :empLastName, 
-            gender = :gender, 
-            email = :empEmail, 
-            phone = :empPhone, 
-            join_date = :empJoinDate, 
-            designation = :designation,
-            login_access = :loginAccess,
-            user_image = :userImage,
-            password = :password,
-            date_of_birth = :date_of_birth,
-            role_id = :role_id,
-            office_email = :office_email,
-            office_phone = :office_phone,
-            supervisor_id = :supervisor_id,
-            department_id = :department_id
-            WHERE emp_id = :emp_id";
-
-    $stmt = $pdo->prepare($sql);
-    
+    // Update employee
+    $sql = "UPDATE employees SET
+        mach_id = :machId,
+        mach_id_not_applicable = :mach_id_not_applicable,
+        branch_id = :empBranchId,
+        first_name = :empFirstName,
+        middle_name = :empMiddleName,
+        last_name = :empLastName,
+        gender = :gender,
+        email = :empEmail,
+        phone = :empPhone,
+        hire_date = :empHireDate,
+        join_date = :empJoinDate,
+        designation_id = :designationId,
+        login_access = :loginAccess,
+        user_image = :userImage,
+        password = :password,
+        date_of_birth = :date_of_birth,
+        role_id = :role_id,
+        office_email = :office_email,
+        office_phone = :office_phone,
+        work_start_time = :work_start_time,
+        work_end_time = :work_end_time,
+        supervisor_id = :supervisor_id,
+        department_id = :department_id,
+        allow_web_attendance = :allow_web_attendance
+        WHERE emp_id = :emp_id";
     try {
-        $stmt->execute([
+        $stmt = $pdo->prepare($sql);
+        $result = $stmt->execute([
             ':emp_id' => $emp_id,
-            ':machId' => $machId,
-            ':empBranch' => $empBranch,
+            ':machId' => ($machId !== '' ? (int)$machId : null),
+            ':empBranchId' => $empBranchId,
             ':empFirstName' => $empFirstName,
             ':empMiddleName' => $empMiddleName,
             ':empLastName' => $empLastName,
-            ':gender' => $gender,
+            ':gender' => $genderForDb,
             ':empEmail' => $empEmail,
             ':empPhone' => $empPhone,
-            ':empJoinDate' => $empJoinDate,
-            ':designation' => $designation,
-            ':loginAccess' => $loginAccess,
+            ':empHireDate' => $empHireDate ?: null,
+            ':empJoinDate' => $empJoinDate ?: null,
+            ':designationId' => ($designationId !== '' ? (int)$designationId : null),
+            ':loginAccess' => ($loginAccess !== '' ? (int)$loginAccess : 0),
             ':userImage' => $dbPath,
             ':password' => $hashedPassword,
-            ':date_of_birth' => $dob,
-            ':role_id' => $role_id, // Changed from role to role_id
-            ':office_email' => $office_email,
-            ':office_phone' => $office_phone,
+            ':date_of_birth' => $dob ?: null,
+            ':role_id' => ($role_id !== '' ? (int)$role_id : null),
+            ':office_email' => ($office_email !== '' ? $office_email : null),
+            ':office_phone' => ($office_phone !== '' ? $office_phone : null),
             ':supervisor_id' => $supervisor_id,
             ':department_id' => $department_id
+            ,':work_start_time' => ($machIdNotApplicable ? null : ($work_start_time !== '' ? $work_start_time : '09:30:00'))
+            ,':work_end_time' => ($machIdNotApplicable ? null : ($work_end_time !== '' ? $work_end_time : '18:00:00'))
+            ,':mach_id_not_applicable' => $machIdNotApplicable
+            ,':allow_web_attendance' => $allowWebAttendance
         ]);
-
-        // Send notification to the employee about the profile update
-        notify_employee($employee['emp_id'], 'updated');
-        
-        // Track and notify for significant changes
-        $changes = [];
-        
-        // Check for significant changes to track
-        if ($employee['branch'] != $empBranch) {
-            $changes[] = 'branch';
-            
-            // Get branch name
-            $branchStmt = $pdo->prepare("SELECT name FROM branches WHERE id = :id");
-            $branchStmt->execute([':id' => $empBranch]);
-            $branchName = $branchStmt->fetchColumn() ?: 'Unknown Branch';
-            
-            notify_system(
-                'Employee Branch Change', 
-                "Employee $empFirstName $empLastName's branch has been updated to $branchName",
-                'info'
-            );
-        }
-        
-        if ($employee['designation'] != $designation) {
-            $changes[] = 'designation';
-            
-            // Get designation title
-            $designationStmt = $pdo->prepare("SELECT title FROM designations WHERE id = :id");
-            $designationStmt->execute([':id' => $designation]);
-            $designationTitle = $designationStmt->fetchColumn() ?: 'Unknown Designation';
-            
-            // This is a significant change - notify HR/Management
-            $adminStmt = $pdo->prepare("SELECT id FROM employees WHERE role_id = 1 OR role_id = 2"); // Changed from role to role_id
-            $adminStmt->execute();
-            $adminIds = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
-            
-            if (!empty($adminIds)) {
-                notify_users(
-                    $adminIds,
-                    'Employee Designation Change',
-                    "Employee $empFirstName $empLastName's designation has been updated to $designationTitle",
-                    'info',
-                    'employees.php'
-                );
-            }
-        }
-
-        // Check for hierarchy changes
-        if ($employee['supervisor_id'] != $supervisor_id) {
-            $changes[] = 'supervisor';
-            
-            if ($supervisor_id) {
-                // Get new supervisor name
-                $supervisorStmt = $pdo->prepare("SELECT CONCAT(first_name, ' ', last_name) as name FROM employees WHERE id = :id");
-                $supervisorStmt->execute([':id' => $supervisor_id]);
-                $supervisorName = $supervisorStmt->fetchColumn() ?: 'Unknown Supervisor';
-                
-                notify_system(
-                    'Employee Supervisor Change', 
-                    "Employee $empFirstName $empLastName's supervisor has been updated to $supervisorName",
-                    'info'
-                );
-            } else {
-                notify_system(
-                    'Employee Supervisor Removed', 
-                    "Employee $empFirstName $empLastName no longer has a direct supervisor",
-                    'info'
-                );
-            }
-        }
-
-        if ($employee['department_id'] != $department_id) {
-            $changes[] = 'department';
-            
-            if ($department_id) {
-                // Get department name
-                $departmentStmt = $pdo->prepare("SELECT name FROM departments WHERE id = :id");
-                $departmentStmt->execute([':id' => $department_id]);
-                $departmentName = $departmentStmt->fetchColumn() ?: 'Unknown Department';
-                
-                notify_system(
-                    'Employee Department Change', 
-                    "Employee $empFirstName $empLastName's department has been updated to $departmentName",
-                    'info'
-                );
-            } else {
-                notify_system(
-                    'Employee Department Removed', 
-                    "Employee $empFirstName $empLastName is no longer assigned to a department",
-                    'info'
-                );
-            }
-        }
-        
-        // If login access was granted, send notification
-        if ($loginAccess == '1' && $employee['login_access'] != '1') {
-            notify_employee($employee['id'], 'access_granted', [
-                'access_type' => 'login'
-            ]);
-            
-            // Notify admins
-            notify_system(
-                'Login Access Granted', 
-                "Login access has been granted to employee $empFirstName $empLastName",
-                'success'
-            );
-        }
-        
-        // If login access was revoked, send notification
-        if ($loginAccess == '0' && $employee['login_access'] == '1') {
-            notify_system(
-                'Login Access Revoked', 
-                "Login access has been revoked for employee $empFirstName $empLastName",
-                'warning'
-            );
-        }
-
-        $_SESSION['success'] = "Employee record updated successfully";
-
-        // Send email if login access is granted and was not previously granted
-        if ($loginAccess == '1' && $employee['login_access'] != '1') {
-            // Include the mail helper file
-            require_once '../../includes/mail_helper.php';
-            
-            $to = $empEmail;
-            $subject = "Login Access Granted";
-            $message = "Dear $empFirstName $empLastName,\n\nYour login access has been granted. You can now log in to the system using the following credentials:\n\nLogin ID: $empEmail\nPassword: $randomPassword\n\nPlease change your password after logging in for the first time.\n\nBest regards,\nHRMS Team";
-            
-            if (send_email($to, $subject, $message, 'HRMS System')) {
-                $_SESSION['success'] .= "\nLogin credentials have been sent to the employee's email.";
-            } else {
-                $_SESSION['error'] = "Failed to send login credentials email.";
-            }
+        if ($result) {
+            $_SESSION['success'] = "Employee record updated successfully.";
+        } else {
+            $_SESSION['error'] = "No changes were made to the employee record.";
         }
     } catch (PDOException $e) {
         $_SESSION['error'] = "Error updating employee: " . $e->getMessage();
     }
-
-    // Redirect to the employees page
     header("Location: employees.php?_nocache=" . time());
+    exit();
+} else {
+    $_SESSION['error'] = "Invalid request method.";
+    header("Location: employees.php");
     exit();
 }
 ?>

@@ -84,7 +84,7 @@ switch ($report_type) {
                 COUNT(DISTINCT lr.employee_id) as employees_took_leave
             FROM departments d
             LEFT JOIN employees e ON d.id = e.department_id
-            LEFT JOIN leave_requests lr ON e.id = lr.employee_id 
+            LEFT JOIN leave_requests lr ON e.emp_id = lr.employee_id 
                 AND lr.deleted_at IS NULL 
                 AND $date_filter $type_filter
             GROUP BY d.id, d.name
@@ -110,11 +110,11 @@ switch ($report_type) {
                 SUM(CASE WHEN lr.status = 'approved' THEN lr.days_requested ELSE 0 END) as total_days_taken
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
-            LEFT JOIN leave_requests lr ON e.id = lr.employee_id 
+            LEFT JOIN leave_requests lr ON e.emp_id = lr.employee_id 
                 AND lr.deleted_at IS NULL 
                 AND $date_filter $type_filter
             WHERE e.status = 'active' $dept_filter
-            GROUP BY e.id, e.first_name, e.last_name, e.employee_id, d.name
+            GROUP BY e.emp_id, e.first_name, e.last_name, e.employee_id, d.name
             HAVING total_requests > 0
             ORDER BY total_days_taken DESC        ";
         $emp_stmt = $pdo->prepare($emp_query);

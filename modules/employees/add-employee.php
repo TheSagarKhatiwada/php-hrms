@@ -4,6 +4,7 @@ require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
 $page = 'Add Employee';
+$page = 'employees';
 
 // Use the standardized role check function
 if (!is_admin() && get_user_role() === '0') {
@@ -15,15 +16,17 @@ include '../../includes/db_connection.php'; // Include the database connection f
 
 // Get query parameters for repopulating form after errors
 $machId = $_GET['machId'] ?? '';
-$empBranch = $_GET['empBranch'] ?? '';
+$machIdNotApplicablePrefill = isset($_GET['mach_id_not_applicable']) ? (int)$_GET['mach_id_not_applicable'] : 0;
+$empBranchId = $_GET['empBranchId'] ?? '';
 $empFirstName = $_GET['empFirstName'] ?? '';
 $empMiddleName = $_GET['empMiddleName'] ?? '';
 $empLastName = $_GET['empLastName'] ?? '';
 $gender = $_GET['gender'] ?? '';
 $empEmail = $_GET['empEmail'] ?? '';
 $empPhone = $_GET['empPhone'] ?? '';
+$empHireDate = $_GET['empHireDate'] ?? '';
 $empJoinDate = $_GET['empJoinDate'] ?? '';
-$designation = $_GET['designation'] ?? '';
+$designationId = $_GET['designationId'] ?? '';
 $loginAccess = $_GET['login_access'] ?? '';
 $dob = $_GET['dob'] ?? '';
 $role = $_GET['role'] ?? '';
@@ -31,29 +34,59 @@ $officeEmail = $_GET['office_email'] ?? '';
 $officePhone = $_GET['office_phone'] ?? '';
 $supervisor_id = $_GET['supervisor_id'] ?? '';
 $department_id = $_GET['department_id'] ?? '';
+$allowWebAttendancePrefill = isset($_GET['allow_web_attendance']) ? (int)$_GET['allow_web_attendance'] : 0;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-  // Get form data
-  $machId = $_POST['machId'];
-  $empBranch = $_POST['empBranch'];
-  $empFirstName = $_POST['empFirstName'];
-  $empMiddleName = $_POST['empMiddleName'];
-  $empLastName = $_POST['empLastName'];
-  $gender = $_POST['gender'];
-  $empEmail = $_POST['empEmail'];
-  $empPhone = $_POST['empPhone'];
-  $empJoinDate = $_POST['empJoinDate'];
-  $designation = $_POST['designation']; 
-  $loginAccess = $_POST['login_access']; 
+  // Get form data and trim/validate
+  $machId = trim($_POST['machId']);
+  $machIdNotApplicable = isset($_POST['mach_id_not_applicable']) ? 1 : 0;
+  $empBranchId = trim($_POST['empBranchId']);
+  $empFirstName = trim($_POST['empFirstName']);
+  $empMiddleName = trim($_POST['empMiddleName']);
+  $empLastName = trim($_POST['empLastName']);
+  $gender = trim($_POST['gender']);
+  $empEmail = trim($_POST['empEmail']);
+  $empPhone = trim($_POST['empPhone']);
+  $empHireDate = trim($_POST['empHireDate']);
+  $empJoinDate = trim($_POST['empJoinDate']);
+  $workStartTime = trim($_POST['work_start_time'] ?? '');
+  $workEndTime = trim($_POST['work_end_time'] ?? '');
+  if ($machIdNotApplicable) {
+      $machId = '';
+      $workStartTime = '';
+      $workEndTime = '';
+  }
+  $designationId = trim($_POST['designationId']); 
+  $loginAccess = trim($_POST['login_access']); 
   $croppedImage = $_POST['croppedImage'];
-  $dob = $_POST['dob'];
-  $role = $_POST['role'];
-  $officeEmail = $_POST['office_email'];
-  $officePhone = $_POST['office_phone'];
+  $dob = trim($_POST['dob']);
+  $role = trim($_POST['role']);
+  $officeEmail = trim($_POST['office_email']);
+  $officePhone = trim($_POST['office_phone']);
+  $allowWebAttendance = isset($_POST['allow_web_attendance']) ? 1 : 0;
   
   // Hierarchy fields
-  $supervisor_id = !empty($_POST['supervisor_id']) ? $_POST['supervisor_id'] : null;
-  $department_id = !empty($_POST['department_id']) ? $_POST['department_id'] : null;
+  $supervisor_id = !empty($_POST['supervisor_id']) ? trim($_POST['supervisor_id']) : null;
+  $department_id = !empty($_POST['department_id']) ? trim($_POST['department_id']) : null;
+
+  // Validate and clean gender field
+  $gender = strtoupper(trim($gender)); // Ensure uppercase and no whitespace
+  if (!in_array($gender, ['M', 'F'])) {
+      $gender = 'M'; // Default to M if invalid
+  }
+  
+  // Convert gender to database format (enum expects 'male', 'female', 'other')
+  $genderForDb = '';
+  switch($gender) {
+      case 'M':
+          $genderForDb = 'male';
+          break;
+      case 'F':
+          $genderForDb = 'female';
+          break;
+      default:
+          $genderForDb = 'male';
+  }
 
   // Handle file upload
   if ($croppedImage) {
@@ -68,63 +101,77 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       $dbPath = "resources/userimg/default-image.jpg";
   }
 
-  // Generate empID based on branch value and finding the next available number
-  $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE branch = ? ORDER BY emp_id DESC LIMIT 1");
-  $stmt->execute([$empBranch]);
+  // Generate empID based on branch_id value and finding the next available number
+  $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE branch_id = ? ORDER BY emp_id DESC LIMIT 1");
+  $stmt->execute([$empBranchId]);
   $lastEmployee = $stmt->fetch();
   
   if ($lastEmployee) {
-      // Extract the number part and increment
       $lastId = $lastEmployee['emp_id'];
-      $numberPart = (int)substr($lastId, strlen($empBranch));
+      $numberPart = (int)substr($lastId, strlen($empBranchId));
       $nextNumber = $numberPart + 1;
-      $empId = $empBranch . str_pad($nextNumber, 2, '0', STR_PAD_LEFT);
+      $empId = $empBranchId . str_pad($nextNumber, 2, '0', STR_PAD_LEFT);
   } else {
-      // First employee for this branch
-      $empId = $empBranch . '01';
+      $empId = $empBranchId . '01';
   }
 
   try {
     // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (emp_id, mach_id, branch, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
-            VALUES (:empId, :machId, :empBranch, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designation, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
+    $sql = "INSERT INTO employees (emp_id, mach_id, branch_id, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation_id, login_access, allow_web_attendance, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id, work_start_time, work_end_time, mach_id_not_applicable)
+      VALUES (:empId, :machId, :empBranchId, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designationId, :loginAccess, :allowWebAttendance, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id, :workStartTime, :workEndTime, :machIdNotApplicable)";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([
+    
+    $result = $stmt->execute([
         ':empId' => $empId,
-        ':machId' => $machId,
-        ':empBranch' => $empBranch,
+        ':machId' => ($machId !== '' ? (int)$machId : null),
+        ':empBranchId' => $empBranchId,
         ':empFirstName' => $empFirstName,
         ':empMiddleName' => $empMiddleName,
         ':empLastName' => $empLastName,
-        ':gender' => $gender,
+        ':gender' => $genderForDb,
         ':empEmail' => $empEmail,
         ':empPhone' => $empPhone,
-        ':hire_date' => $empJoinDate, // Use join date as hire date
-        ':empJoinDate' => $empJoinDate,
-        ':designation' => $designation,
-        ':loginAccess' => $loginAccess,
+        ':hire_date' => $empHireDate,
+        ':empJoinDate' => $empJoinDate ?: null,
+        ':designationId' => (int)$designationId,
+        ':loginAccess' => (int)$loginAccess,
+        ':allowWebAttendance' => $allowWebAttendance,
         ':userImage' => $dbPath,
-        ':date_of_birth' => $dob,
-        ':role_id' => $role,
-        ':officeEmail' => $officeEmail,
-        ':officePhone' => $officePhone,
+        ':date_of_birth' => $dob ?: null,
+        ':role_id' => (int)$role,
+        ':officeEmail' => $officeEmail ?: null,
+        ':officePhone' => $officePhone ?: null,
         ':supervisor_id' => $supervisor_id,
         ':department_id' => $department_id
+      ,':workStartTime' => ($machIdNotApplicable ? null : ($workStartTime !== '' ? $workStartTime : '09:30:00'))
+      ,':workEndTime' => ($machIdNotApplicable ? null : ($workEndTime !== '' ? $workEndTime : '18:00:00'))
+      ,':machIdNotApplicable' => $machIdNotApplicable
     ]);
 
     // Since employees table uses emp_id as primary key, get the inserted emp_id
     $newEmployeeId = $empId; // Use the generated emp_id
 
     // Add detailed error logging
-    if (!$newEmployeeId) {
+    if (!$result) {
         $errorInfo = $stmt->errorInfo();
         $_SESSION['error'] = "Database error: " . $errorInfo[2];
         error_log("Employee add error: " . print_r($errorInfo, true));
     } else {
-        // Update attendance_logs with emp_Id from employees based on machine_id
-        $sql = "UPDATE attendance_logs a JOIN employees e ON a.mach_id = e.mach_id SET a.emp_Id = e.emp_id;";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute();
+        // Update attendance_logs with emp_Id from employees based on machine_id (only for valid numeric mach_id)
+        try {
+            $sql = "UPDATE attendance_logs a 
+                    JOIN employees e ON a.mach_id = e.mach_id 
+                    SET a.emp_Id = e.emp_id 
+                    WHERE a.mach_id IS NOT NULL 
+                    AND e.mach_id IS NOT NULL 
+                    AND a.mach_id > 0 
+                    AND e.mach_id > 0";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute();
+        } catch (PDOException $e) {
+            // Log the error but don't stop the employee creation process
+            error_log("Warning: Could not update attendance_logs: " . $e->getMessage());
+        }
 
         // Send welcome notification to the new employee if login access is granted
         if ($loginAccess == '1' && $newEmployeeId) {
@@ -158,7 +205,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $_SESSION['success'] = "Employee added successfully!";
   } catch (PDOException $e) {
-    $_SESSION['error'] = "Error adding employee: " . $e->getMessage();
+    $errorMessage = "Error adding employee: " . $e->getMessage();
+    $_SESSION['error'] = $errorMessage;
+    error_log("PDO Exception in add-employee.php: " . $e->getMessage());
+    error_log("PDO Error Code: " . $e->getCode());
+    error_log("Stack trace: " . $e->getTraceAsString());
+  } catch (Exception $e) {
+    $errorMessage = "General error adding employee: " . $e->getMessage();
+    $_SESSION['error'] = $errorMessage;
+    error_log("General Exception in add-employee.php: " . $e->getMessage());
   }
 
   // Redirect to the employees page
@@ -189,18 +244,24 @@ require_once __DIR__ . '/../../includes/header.php';
           <div class="col-md-8">
             <div class="row mb-3">
               <div class="col-md-4">
-                <label for="machId" class="form-label">Machine ID</label>
-                <input type="text" class="form-control" id="machId" name="machId" value="<?php echo htmlspecialchars($machId); ?>" autofocus>
+                <div class="d-flex justify-content-between align-items-center">
+                  <label for="machId" class="form-label mb-0">Machine ID</label>
+                  <div class="form-check form-check-inline m-0 small">
+                    <input class="form-check-input" type="checkbox" id="machIdNotApplicable" name="mach_id_not_applicable" value="1" <?php echo $machIdNotApplicablePrefill ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="machIdNotApplicable">Not Applicable</label>
+                  </div>
+                </div>
+                <input type="text" class="form-control mt-1" id="machId" name="machId" value="<?php echo htmlspecialchars($machId); ?>" autofocus>
               </div>
               <div class="col-md-8">
                 <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
                 <select class="form-select" id="empBranch" name="empBranch" required>
-                  <option value="" disabled <?php echo empty($empBranch) ? 'selected' : ''; ?>>Select a Branch</option>
+                  <option value="" disabled <?php echo empty($empBranchId) ? 'selected' : ''; ?>>Select a Branch</option>
                   <?php 
                     $branchQuery = "SELECT DISTINCT id, name FROM branches";
                     $stmt = $pdo->query($branchQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $empBranch) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $empBranchId) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
                     }
                   ?>
@@ -266,21 +327,42 @@ require_once __DIR__ . '/../../includes/header.php';
             
             <div class="row mb-3">
               <div class="col-md-6">
-                <label for="empJoinDate" class="form-label">Joining Date <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" required 
-                       value="<?php echo $empJoinDate ?: date('Y-m-d'); ?>" 
-                       min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
-                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>">
+                <label for="empHireDate" class="form-label">Hire Date <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" id="empHireDate" name="empHireDate" required 
+                       value="<?php echo date('Y-m-d'); ?>" readonly
+                       title="Hire date is automatically set to today's date">
               </div>
+              <div class="col-md-6">
+                <label for="empJoinDate" class="form-label">Join Date (Start Working)</label>
+                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" 
+                       value="<?php echo $empJoinDate; ?>" 
+                       min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
+                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>"
+                       title="Date when employee actually started working (can be updated later)">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="work_start_time" class="form-label">Work Start Time</label>
+                <input type="time" class="form-control" id="work_start_time" name="work_start_time" value="<?php echo htmlspecialchars($_GET['work_start_time'] ?? '09:00'); ?>">
+              </div>
+              <div class="col-md-6">
+                <label for="work_end_time" class="form-label">Work End Time</label>
+                <input type="time" class="form-control" id="work_end_time" name="work_end_time" value="<?php echo htmlspecialchars($_GET['work_end_time'] ?? '18:00'); ?>">
+              </div>
+            </div>
+            
+            <div class="row mb-3">
               <div class="col-md-6">
                 <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
                 <select class="form-select" id="designation" name="designation" required>
-                  <option value="" disabled <?php echo empty($designation) ? 'selected' : ''; ?>>Select a Designation</option>
+                  <option value="" disabled <?php echo empty($designationId) ? 'selected' : ''; ?>>Select a Designation</option>
                   <?php 
                     $designationQuery = "SELECT id, title FROM designations ORDER BY title";
                     $stmt = $pdo->query($designationQuery);
                     while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $designation) ? 'selected' : ''; 
+                      $selected = ($row['id'] == $designationId) ? 'selected' : ''; 
                       echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
                     }
                   ?>
@@ -344,6 +426,17 @@ require_once __DIR__ . '/../../includes/header.php';
                   <option value="1" <?php echo ($loginAccess === '1') ? 'selected' : ''; ?>>Granted</option>
                   <option value="0" <?php echo ($loginAccess === '0') ? 'selected' : ''; ?>>Denied</option>
                 </select>
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Web Check-In/Checkout</label>
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo $allowWebAttendancePrefill ? 'checked' : ''; ?>>
+                  <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                </div>
+                <small class="text-muted">Leave disabled for employees who must rely on biometric devices only.</small>
               </div>
             </div>
           </div>
@@ -457,4 +550,44 @@ document.getElementById('cropButton').addEventListener('click', function() {
     });
   }
 });
+</script>
+<script>
+(function(){
+  function initMachIdToggle(){
+    const checkbox = document.getElementById('machIdNotApplicable');
+    if(!checkbox) return;
+    const fields = ['machId','work_start_time','work_end_time']
+      .map(id => document.getElementById(id))
+      .filter(Boolean);
+    const rememberValue = (field) => { field.dataset.prevValue = field.value; };
+    fields.forEach(field => {
+      rememberValue(field);
+      field.addEventListener('input', function(){
+        if(!checkbox.checked){ rememberValue(field); }
+      });
+    });
+    const toggleMachineFields = () => {
+      const disableFields = checkbox.checked;
+      fields.forEach(field => {
+        if(disableFields){
+          rememberValue(field);
+          field.value = '';
+          field.setAttribute('disabled','disabled');
+        } else {
+          field.removeAttribute('disabled');
+          if(typeof field.dataset.prevValue !== 'undefined'){
+            field.value = field.dataset.prevValue;
+          }
+        }
+      });
+    };
+    checkbox.addEventListener('change', toggleMachineFields);
+    toggleMachineFields();
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initMachIdToggle);
+  } else {
+    initMachIdToggle();
+  }
+})();
 </script>

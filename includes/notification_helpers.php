@@ -112,9 +112,9 @@ if (!function_exists('notify_user')) {
      * @param string $dateTime Date and time of attendance
      * @return bool Success status
      */
-    function notify_attendance($userId, $action, $dateTime) {
-        global $pdo;
-          try {
+        function notify_attendance($userId, $action, $dateTime) {
+                global $pdo;
+                try {
             // Get employee details using emp_id
             $stmt = $pdo->prepare("SELECT emp_id, CONCAT(first_name, ' ', last_name) as name FROM employees WHERE emp_id = ?");
             $stmt->execute([$userId]);
@@ -162,14 +162,19 @@ if (!function_exists('notify_user')) {
             
             // Try to send notification, but don't let it break the attendance process
             try {
-                // Send notification using the internal user ID
+                if (!class_exists('NotificationService')) {
+                    error_log('NotificationService class not available; skipping attendance notification.');
+                    return true;
+                }
+
+                // Send notification using the employee ID (emp_id string)
                 $notificationService = new NotificationService($pdo);
-                return $notificationService->sendNotification($internalUserId, $title, $message, $type, $link);
-            } catch (Exception $e) {
+                return $notificationService->sendNotification($empId, $title, $message, $type, $link);
+            } catch (Throwable $e) {
                 error_log("Error sending notification in notify_attendance: " . $e->getMessage());
                 return true; // Return true so attendance process completes successfully
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Error in notify_attendance: " . $e->getMessage());
             return true; // Return true anyway so attendance process isn't broken
         }
@@ -186,7 +191,8 @@ if (!function_exists('notify_user')) {
     function notify_asset($userId, $action, $assetName) {
         global $pdo;
         
-        // Format title and message based on action        $title = "Asset " . ucfirst(str_replace('_', ' ', $action));
+        // Format title and message based on action
+        $title = "Asset " . ucfirst(str_replace('_', ' ', $action));
         $message = "";
         $type = "info";
         $link = "modules/assets/assets.php";

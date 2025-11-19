@@ -261,9 +261,9 @@ function getLeaveModuleDashboardWidget($user_id, $user_role) {
                     <i class="fas fa-eye"></i> View Dashboard
                 </a>
                 <?php if (hasLeavePermission($user_role, PERMISSION_CREATE_REQUESTS)): ?>
-                    <a href="modules/leave/request.php" class="btn btn-success btn-sm">
+                    <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
                         <i class="fas fa-plus"></i> Apply Leave
-                    </a>
+                    </button>
                 <?php endif; ?>
             </div>
         </div>

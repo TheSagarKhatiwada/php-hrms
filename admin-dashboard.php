@@ -1,19 +1,9 @@
 <?php 
-// Include session configuration - ensure it's included first
-require_once 'includes/session_config.php';
-
-// Include database connection before other includes that might use it
-require_once 'includes/db_connection.php';
-
-require_once 'includes/utilities.php';
-require_once 'includes/settings.php';
+// Page meta
+require_once 'includes' . DIRECTORY_SEPARATOR . 'settings.php';
+require_once 'includes' . DIRECTORY_SEPARATOR . 'utilities.php';
 
 $page = 'Admin Dashboard';
-
-// Get timezone from settings using the get_setting function for consistency
-$timezone = get_setting('timezone', 'GMT');
-// Set the timezone from settings
-date_default_timezone_set($timezone);
 
 // Get current date and time values based on the set timezone
 $today = date('Y-m-d');
@@ -22,12 +12,58 @@ $currentDay = date('d');
 $currentYear = date('Y');
 $currentTime = date('H:i:s');
 
-// Store timezone offset for JavaScript
-$date = new DateTime('now', new DateTimeZone($timezone));
-$timezoneOffset = $date->format('P'); // Format as +00:00
+// Include the main header (loads CSS/JS and opens layout wrappers)
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'header.php';
 
-// Display the timezone in the console for debugging
-echo "<!-- Using timezone: $timezone, Current time: $currentTime, Offset: $timezoneOffset -->";
+// Open page container
+echo '<div class="container-fluid">';
+
+// Recompute timezone offset after header (ensures DB settings are applied)
+try {
+    $tzId = date_default_timezone_get();
+    $date = new DateTime('now', new DateTimeZone($tzId ?: 'UTC'));
+    $timezoneOffset = $date->format('P');
+} catch (Throwable $e) {
+    $timezoneOffset = '+00:00';
+}
+
+// Prepare greeting for the logged-in user (use only first name)
+$userDisplayName = 'Admin';
+try {
+    if (isset($_SESSION['user_id'])) {
+        $stmtUser = $pdo->prepare("SELECT first_name, middle_name, last_name FROM employees WHERE emp_id = ? LIMIT 1");
+        $stmtUser->execute([$_SESSION['user_id']]);
+        if ($row = $stmtUser->fetch(PDO::FETCH_ASSOC)) {
+            $first = trim((string)($row['first_name'] ?? ''));
+            // If first name contains spaces, take the first token
+            if ($first !== '') {
+                $tokens = preg_split('/\s+/', $first);
+                $first = $tokens && isset($tokens[0]) ? $tokens[0] : $first;
+            }
+            // Fallback to last name's first token if first name is missing
+            if ($first === '') {
+                $last = trim((string)($row['last_name'] ?? ''));
+                if ($last !== '') {
+                    $tokens = preg_split('/\s+/', $last);
+                    $first = $tokens && isset($tokens[0]) ? $tokens[0] : $last;
+                }
+            }
+            if ($first !== '') { $userDisplayName = $first; }
+        }
+    }
+} catch (Throwable $e) { /* ignore, use default name */ }
+
+$hourNow = (int)date('G');
+if ($hourNow < 12) {
+    $greetingWord = 'Good Morning';
+} elseif ($hourNow < 17) {
+    $greetingWord = 'Good Afternoon';
+} elseif ($hourNow < 21) {
+    $greetingWord = 'Good Evening';
+} else {
+    $greetingWord = 'Good Night';
+}
+$greetingText = $greetingWord . ', ' . $userDisplayName;
 
 // Get attendance statistics
 try {
@@ -43,6 +79,10 @@ try {
     $stmt = $pdo->query("SELECT COUNT(*) FROM departments");
     $totalDepartments = $stmt->fetchColumn();
     
+    // Total designations
+    $stmt = $pdo->query("SELECT COUNT(*) FROM designations");
+    $totalDesignations = $stmt->fetchColumn();
+    
     // Present today
     $stmt = $pdo->prepare("SELECT COUNT(DISTINCT emp_Id) FROM attendance_logs WHERE date = ?");
     $stmt->execute([$today]);
@@ -55,149 +95,132 @@ try {
         $absentToday = 0;
     }
     
-    // Get upcoming birthdays (within the next 30 days)
-    try {
-        $upcomingBirthdays = [];
-        
-        // Query for employees with birthdays in the next 30 days
-        $stmt = $pdo->prepare("
-            SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, d.title as designation_name, e.user_image, e.date_of_birth, 
-                   DAYOFMONTH(e.date_of_birth) as birth_day, 
-                   MONTH(e.date_of_birth) as birth_month,
-                   YEAR(CURDATE()) as current_year
-            FROM employees e
-            LEFT JOIN designations d ON e.designation = d.id
-            WHERE (MONTH(e.date_of_birth) = ? AND DAYOFMONTH(e.date_of_birth) >= ?) 
-               OR (MONTH(e.date_of_birth) = ? AND DAYOFMONTH(e.date_of_birth) <= ?)
-               AND e.exit_date IS NULL
-            ORDER BY MONTH(e.date_of_birth), DAYOFMONTH(e.date_of_birth)
-            LIMIT 5
-        ");
-        
-        // For current month, get upcoming birthdays
-        // For next month, get birthdays in the first days to complete 30 days window
-        $nextMonth = $currentMonth == 12 ? 1 : $currentMonth + 1;
-        $daysInCurrentMonth = date('t'); // Days in current month
-        $daysInNextMonth = min(30 - ($daysInCurrentMonth - $currentDay), 31); // Days to look in next month
-        
-        $stmt->execute([$currentMonth, $currentDay, $nextMonth, $daysInNextMonth]);
-        $upcomingBirthdays = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Get work anniversaries (employees who joined this month)
-        $upcomingAnniversaries = [];
-        
-        // Query for employees with work anniversaries in the current month
-        $stmt = $pdo->prepare("
-            SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, d.title as designation_name, e.user_image, 
-                   e.join_date, 
-                   DAYOFMONTH(e.join_date) as join_day, 
-                   MONTH(e.join_date) as join_month,
-                   YEAR(e.join_date) as join_year,
-                   YEAR(CURDATE())-YEAR(e.join_date) as years_completed
-            FROM employees e
-            LEFT JOIN designations d ON e.designation = d.id
-            WHERE MONTH(e.join_date) = ? 
-               AND DAYOFMONTH(e.join_date) >= ?
-               AND YEAR(e.join_date) < ?
-               AND e.exit_date IS NULL
-            ORDER BY MONTH(e.join_date), DAYOFMONTH(e.join_date)
-            LIMIT 5
-        ");
-        
-        $stmt->execute([$currentMonth, $currentDay, $currentYear]);
-        $upcomingAnniversaries = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-    } catch (PDOException $e) {
-        // If the columns don't exist, we'll just show empty sections
-        $upcomingBirthdays = [];
-        $upcomingAnniversaries = [];
-    }
+    // New hires this month
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE exit_date IS NULL AND join_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')");
+    $stmt->execute();
+    $newHiresThisMonth = $stmt->fetchColumn();
     
+    // Birthdays this month
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE exit_date IS NULL AND date_of_birth IS NOT NULL AND MONTH(date_of_birth) = ?");
+    $stmt->execute([ (int)$currentMonth ]);
+    $birthdaysThisMonth = $stmt->fetchColumn();
+    
+    // Get upcoming celebrations (birthdays and anniversaries combined)
+    try {
+        $upcomingCelebrations = [];
+        
+        // Get birthdays in the next 30 days
+    // Upcoming celebrations via shared utility (30-day window, max 8)
+    try {
+        $upcomingCelebrations = get_upcoming_celebrations(30, 8, null);
+    } catch (Throwable $e) {
+        $upcomingCelebrations = [];
+    }
+    } catch (Throwable $e) {
+        $upcomingCelebrations = [];
+    }
+
     // Get recent attendance records
-    $stmt = $pdo->query("
-        SELECT a.*, e.first_name, e.last_name, e.middle_name, e.user_image, 
-               d.title as designation_name, b.name as branch_name 
-        FROM attendance_logs a
-        JOIN employees e ON a.emp_Id = e.emp_id
-        LEFT JOIN branches b ON e.branch = b.id
-        LEFT JOIN designations d ON e.designation = d.id
-        ORDER BY a.date DESC, a.time DESC
-        LIMIT 20
-    ");
+    $stmt = $pdo->query("\n        SELECT a.*, e.first_name, e.last_name, e.middle_name, e.user_image, \n               d.title as designation_name, b.name as branch_name \n        FROM attendance_logs a\n        JOIN employees e ON a.emp_Id = e.emp_id\n        LEFT JOIN branches b ON e.branch = b.id\n        LEFT JOIN designations d ON e.designation = d.id\n        ORDER BY a.date DESC, a.time DESC\n        LIMIT 20\n    ");
     $recentAttendance = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
     $_SESSION['error'] = "Error fetching dashboard data: " . $e->getMessage();
-    $totalEmployees = $totalBranches = $totalDepartments = $presentToday = $absentToday = 0;
+    $totalEmployees = $totalBranches = $totalDepartments = $totalDesignations = $presentToday = $absentToday = $newHiresThisMonth = $birthdaysThisMonth = 0;
     $recentAttendance = [];
-    $upcomingBirthdays = [];
-    $upcomingAnniversaries = [];
+    $upcomingCelebrations = [];
 }
 
-// Include header (which includes new bootstrap 5 structure and topbar)
-require_once __DIR__ . '/includes/header.php';
 ?>
 
-<!-- Main content -->
-<div class="container-fluid p-4">
-    <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <?php 
-            // Get user information
-            $firstName = 'User'; // Default value
-            $isFirstLogin = false; // Default to returning user
-            
-            if (isset($_SESSION['user_id'])) {
-                try {
-                    // Get user's first name
-                    $userStmt = $pdo->prepare("SELECT first_name, last_login FROM employees WHERE id = ?");
-                    $userStmt->execute([$_SESSION['user_id']]);
-                    if ($userData = $userStmt->fetch(PDO::FETCH_ASSOC)) {
-                        $firstName = $userData['first_name'];
-                        
-                        // Check if this is first login (if last_login is NULL or empty)
-                        if (empty($userData['last_login'])) {
-                            $isFirstLogin = true;
-                        }
-                        
-                        // Update last_login timestamp
-                        if (!isset($_SESSION['login_recorded'])) {
-                            $updateStmt = $pdo->prepare("UPDATE employees SET last_login = NOW() WHERE id = ?");
-                            $updateStmt->execute([$_SESSION['user_id']]);
-                            $_SESSION['login_recorded'] = true;
-                        }
-                    }
-                } catch (PDOException $e) {
-                    // Silently fail and use default values
-                }
-            }
-            
-            // Display appropriate welcome message
-            if ($isFirstLogin) {
-                echo "<h1 class='mb-1'>Welcome, {$firstName}!</h1>";
-                echo "<p class='text-muted'>Let's start managing your workforce</p>";
-            } else {
-                echo "<h1 class='mb-1'>Welcome back, {$firstName}!</h1>";
-                echo "<p class='text-muted'>Here's your organization at a glance</p>";
-            }
-          ?>
-        </div>
-        <div class="d-flex align-items-center">
-            <div class="dropdown">
-                <button class="btn btn-outline-primary dropdown-toggle" type="button" id="dashboardActions" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-cog me-1"></i> Actions
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dashboardActions">
-                    <li><a class="dropdown-item" href="modules/employees/add-employee.php"><i class="fas fa-user-plus me-2"></i>Add Employee</a></li>
-                    <li><a class="dropdown-item" href="modules/attendance/attendance.php?action=manual"><i class="fas fa-clipboard-check me-2"></i>Record Attendance</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="system-settings.php"><i class="fas fa-cogs me-2"></i>System Settings</a></li>
-                </ul>
+    <!-- Greeting Row -->
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="fs-4 fw-semibold"><?php echo htmlspecialchars($greetingText); ?></div>
+                <div class="d-flex align-items-center">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Quick settings">
+                            Quick Settings
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow">
+                            <!-- Manage -->
+                            <li>
+                                <a class="dropdown-item" href="contacts.php">
+                                    <i class="fas fa-users me-2"></i>Employees
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="roles.php">
+                                    <i class="fas fa-user-shield me-2"></i>Roles
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="permissions.php">
+                                    <i class="fas fa-key me-2"></i>Permissions
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="branches.php">
+                                    <i class="fas fa-code-branch me-2"></i>Branches
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="departments.php">
+                                    <i class="fas fa-sitemap me-2"></i>Departments
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="designations.php">
+                                    <i class="fas fa-id-badge me-2"></i>Designations
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <!-- Communication -->
+                            <li>
+                                <a class="dropdown-item" href="notifications.php">
+                                    <i class="fas fa-bell me-2"></i>Notifications
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="scheduled_notifications.php">
+                                    <i class="far fa-calendar-alt me-2"></i>Scheduled Notifications
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <!-- System -->
+                            <li>
+                                <a class="dropdown-item" href="system-settings.php">
+                                    <i class="fas fa-cog me-2"></i>System Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="maintenance.php">
+                                    <i class="fas fa-tools me-2"></i>Maintenance Mode
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="backup-management.php">
+                                    <i class="fas fa-database me-2"></i>Backup Management
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="clear-cache.php">
+                                    <i class="fas fa-broom me-2"></i>Clear Cache
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="system-validation.php">
+                                    <i class="fas fa-stethoscope me-2"></i>System Validation
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-      
+
     <!-- Date Time Card -->
     <div class="card mb-4 text-white shadow rounded-3 datetime-card" style="background: linear-gradient(135deg, var(--primary-color) 0%, #4e73df 100%);">
         <div class="card-body py-4">
@@ -227,49 +250,23 @@ require_once __DIR__ . '/includes/header.php';
     </div>
       
     <!-- Stats Cards -->
-    <div class="row g-4 mb-4">
+    <div class="row g-3 mb-4">
         <!-- Total Employees -->
         <div class="col-md-6 col-lg-3">
             <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                    <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
-                    <i class="fas fa-users text-success fs-4"></i>
+                        <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
+                            <i class="fas fa-users text-success fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Total Employees</h6>
-                            <h2 class="mb-0 fw-bold"><?php echo $totalEmployees; ?></h2>
+                            <h3 class="mb-0"><?php echo (int)$totalEmployees; ?></h3>
                         </div>
-                    </div>
-                    <div class="d-flex align-items-center text-green">
-                        <i class="fas fa-arrow-up me-1 small"></i>
-                        <span class="small">Active Workforce</span>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Total Branches -->
-        <div class="col-md-6 col-lg-3">
-            <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-3">
-                        <div class="bg-info bg-opacity-10 p-3 rounded-3 stat-icon">
-                            <i class="fas fa-code-branch text-info fs-4"></i>
-                        </div>
-                        <div class="ms-3">
-                            <h6 class="mb-1 text-muted">Total Branches</h6>
-                            <h2 class="mb-0 fw-bold"><?php echo $totalBranches; ?></h2>
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center text-info">
-                        <i class="fas fa-network-wired me-1 small"></i>
-                        <span class="small">Company Network</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <!-- Present Today -->
         <div class="col-md-6 col-lg-3">
             <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
@@ -280,190 +277,50 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Present Today</h6>
-                            <h2 class="mb-0 fw-bold"><?php echo $presentToday; ?></h2>
+                            <h3 class="mb-0"><?php echo (int)$presentToday; ?></h3>
                         </div>
-                    </div>
-                    <div class="progress mb-2" style="height: 6px;">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: <?php echo $totalEmployees > 0 ? ($presentToday/$totalEmployees) * 100 : 0; ?>%" aria-valuenow="<?php echo $totalEmployees > 0 ? ($presentToday/$totalEmployees) * 100 : 0; ?>" aria-valuemin="0" aria-valuemax="100"></div>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <span class="small text-muted"><?php echo $totalEmployees > 0 ? round(($presentToday/$totalEmployees) * 100, 1) : 0; ?>% of workforce</span>
                     </div>
                 </div>
             </div>
         </div>
-        
         <!-- Absent Today -->
         <div class="col-md-6 col-lg-3">
             <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
                         <div class="bg-danger bg-opacity-10 p-3 rounded-3 stat-icon">
-                            <i class="fas fa-user-times text-danger fs-4"></i>
+                            <i class="fas fa-user-xmark text-danger fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Absent Today</h6>
-                            <h2 class="mb-0 fw-bold"><?php echo $absentToday; ?></h2>
+                            <h3 class="mb-0"><?php echo (int)$absentToday; ?></h3>
                         </div>
-                    </div>
-                    <div class="progress mb-2" style="height: 6px;">
-                        <div class="progress-bar bg-danger" role="progressbar" style="width: <?php echo $totalEmployees > 0 ? ($absentToday/$totalEmployees) * 100 : 0; ?>%" aria-valuenow="<?php echo $totalEmployees > 0 ? ($absentToday/$totalEmployees) * 100 : 0; ?>" aria-valuemin="0" aria-valuemax="100"></div>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <span class="small text-muted"><?php echo $totalEmployees > 0 ? round(($absentToday/$totalEmployees) * 100, 1) : 0; ?>% of workforce</span>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-    
-    <!-- Upcoming Celebrations Card -->
-    <div class="card border-0 shadow-sm rounded-3 mb-4 celebration-card">
-        <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
-            <h5 class="card-title mb-0">Upcoming Celebrations</h5>
-            <div class="nav nav-pills" id="celebrations-tab" role="tablist">
-                <button class="nav-link active" id="birthdays-tab" data-bs-toggle="pill" data-bs-target="#birthdays" type="button" role="tab" aria-controls="birthdays" aria-selected="true">
-                    <i class="fas fa-birthday-cake me-1 celebration-icon"></i> Birthdays
-                </button>
-                <button class="nav-link" id="anniversaries-tab" data-bs-toggle="pill" data-bs-target="#anniversaries" type="button" role="tab" aria-controls="anniversaries" aria-selected="false">
-                    <i class="fas fa-glass-cheers me-1 celebration-icon"></i> Work Anniversaries
-                </button>
-            </div>
-        </div>
-        <div class="card-body p-0">
-            <div class="tab-content" id="celebrations-tab-content">
-                <!-- Birthdays Tab -->
-                <div class="tab-pane fade show active p-3" id="birthdays" role="tabpanel" aria-labelledby="birthdays-tab">
-                    <?php if (empty($upcomingBirthdays)): ?>
-                        <div class="text-center py-4">
-                            <i class="fas fa-birthday-cake fa-4x text-muted opacity-25 mb-3"></i>
-                            <p class="text-muted mb-0">No upcoming birthdays in the next 30 days</p>
+        <!-- New Hires (This Month) -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
+                            <i class="fas fa-user-plus text-success fs-4"></i>
                         </div>
-                    <?php else: ?>
-                        <div class="row g-3">
-                            <?php foreach ($upcomingBirthdays as $employee): ?>
-                                <?php 
-                                    // Format display date
-                                    $birthMonth = $employee['birth_month'];
-                                    $birthDay = $employee['birth_day'];
-                                    $birthDate = date('F j', mktime(0, 0, 0, $birthMonth, $birthDay, date('Y')));
-                                    
-                                    // Calculate days until birthday - Calculate more precisely
-                                    $today = new DateTime(date('Y-m-d')); // Use current date without time
-                                    $birthdayThisYear = new DateTime(date('Y') . '-' . sprintf('%02d', $birthMonth) . '-' . sprintf('%02d', $birthDay));
-                                    
-                                    // If birthday has passed this year, look at next year's birthday
-                                    if ($birthdayThisYear < $today) {
-                                        $birthdayThisYear->modify('+1 year');
-                                    }
-                                    
-                                    $diff = $today->diff($birthdayThisYear);
-                                    $daysUntil = $diff->days;
-                                    
-                                    // Get employee image or default
-                                    $employeeImage = $employee['user_image'] ?: 'resources/images/default-user.png';
-                                ?>
-                                <div class="col-md-6">
-                                    <div class="d-flex align-items-center p-3 rounded border employee-badge">
-                                        <div class="position-relative">
-                                            <img src="<?php echo $employeeImage; ?>" class="rounded-circle" alt="<?php echo $employee['first_name']; ?>" width="50" height="50" style="object-fit: cover;">
-                                            <div class="position-absolute top-0 end-0 bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 20px; height: 20px; font-size: 10px; transform: translate(25%, -25%);">
-                                                <i class="fas fa-gift"></i>
-                                            </div>
-                                        </div>
-                                        <div class="ms-3">
-                                            <h6 class="mb-0"><?php echo $employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']; ?></h6>
-                                            <div class="d-flex align-items-center">
-                                                <span class="text-muted small me-2"><?php echo htmlspecialchars($employee['designation_name'] ?? 'N/A'); ?></span>
-                                                <span class="badge bg-primary rounded-pill"><?php echo $birthDate; ?></span>
-                                            </div>
-                                            <div class="small text-success mt-1">
-                                                <?php if ($daysUntil == 0): ?>
-                                                    <strong>Today!</strong>
-                                                <?php elseif ($daysUntil == 1): ?>
-                                                    <strong>Tomorrow!</strong>
-                                                <?php else: ?>
-                                                    In <?php echo $daysUntil; ?> days
-                                                <?php endif; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+                        <div class="ms-3">
+                            <h6 class="mb-1 text-muted">New Hires (<?php echo date('M'); ?>)</h6>
+                            <h3 class="mb-0"><?php echo (int)$newHiresThisMonth; ?></h3>
                         </div>
-                    <?php endif; ?>
-                </div>
-                
-                <!-- Work Anniversaries Tab -->
-                <div class="tab-pane fade p-3" id="anniversaries" role="tabpanel" aria-labelledby="anniversaries-tab">
-                    <?php if (empty($upcomingAnniversaries)): ?>
-                        <div class="text-center py-4">
-                            <i class="fas fa-award fa-4x text-muted opacity-25 mb-3"></i>
-                            <p class="text-muted mb-0">No upcoming work anniversaries this month</p>
-                        </div>
-                    <?php else: ?>
-                        <div class="row g-3">
-                            <?php foreach ($upcomingAnniversaries as $employee): ?>
-                                <?php 
-                                    // Format display date
-                                    $joinMonth = $employee['join_month'];
-                                    $joinDay = $employee['join_day'];
-                                    $joinDate = date('F j', mktime(0, 0, 0, $joinMonth, $joinDay, date('Y')));
-                                    $yearsCompleted = $employee['years_completed'];
-                                    
-                                    // Calculate days until anniversary
-                                    $today = new DateTime();
-                                    $anniversaryThisYear = new DateTime(date('Y') . '-' . $joinMonth . '-' . $joinDay);
-                                    
-                                    // If anniversary has passed this year, look at next year's anniversary
-                                    if ($anniversaryThisYear < $today) {
-                                        $anniversaryThisYear->modify('+1 year');
-                                    }
-                                    
-                                    $diff = $today->diff($anniversaryThisYear);
-                                    $daysUntil = $diff->days;
-                                    
-                                    // Get employee image or default
-                                    $employeeImage = $employee['user_image'] ?: 'resources/images/default-user.png';
-                                ?>
-                                <div class="col-md-6">
-                                    <div class="d-flex align-items-center p-3 rounded border employee-badge">
-                                        <div class="position-relative">
-                                            <img src="<?php echo $employeeImage; ?>" class="rounded-circle" alt="<?php echo $employee['first_name']; ?>" width="50" height="50" style="object-fit: cover;">
-                                            <div class="position-absolute top-0 end-0 bg-info text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 20px; height: 20px; font-size: 10px; transform: translate(25%, -25%);">
-                                                <i class="fas fa-award"></i>
-                                            </div>
-                                        </div>
-                                        <div class="ms-3">
-                                            <h6 class="mb-0"><?php echo $employee['first_name'] . ' ' . $employee['middle_name'] . ' ' . $employee['last_name']; ?></h6>
-                                            <div class="d-flex align-items-center">
-                                                <span class="text-muted small me-2"><?php echo htmlspecialchars($employee['designation_name'] ?? 'N/A'); ?></span>
-                                                <span class="badge bg-info rounded-pill"><?php echo $joinDate; ?></span>
-                                            </div>
-                                            <div class="small text-success mt-1">
-                                                <?php if ($daysUntil == 0): ?>
-                                                    <strong>Today! (<?php echo $yearsCompleted; ?> years)</strong>
-                                                <?php elseif ($daysUntil == 1): ?>
-                                                    <strong>Tomorrow! (<?php echo $yearsCompleted; ?> years)</strong>
-                                                <?php else: ?>
-                                                    In <?php echo $daysUntil; ?> days (<?php echo $yearsCompleted; ?> years)
-                                                <?php endif; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+        
       
-    <div class="row g-4">
+    <div class="row g-2">
         <!-- Recent Attendance Table -->
         <div class="col-lg-8">
-            <div class="card border-0 shadow-sm rounded-3">
+            <div class="card border-0 shadow-sm rounded-3 mb-4">
                 <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
                     <h5 class="card-title mb-0">Recent Attendance</h5>
                     <a href="modules/attendance/attendance.php" class="btn btn-sm btn-primary">
@@ -534,8 +391,52 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                 </div>
             </div>
+            
+            <!-- Upcoming Celebrations (same width as attendance table) -->
+            <div class="card border-0 shadow-sm rounded-3 mb-4">
+                <div class="card-header bg-transparent border-0 py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Upcoming Celebrations</h5>
+                    <span class="badge rounded-pill bg-primary"><?php echo count($upcomingCelebrations ?? []); ?></span>
+                </div>
+                <div class="card-body">
+                    <?php if (empty($upcomingCelebrations)): ?>
+                        <div class="text-center py-4">
+                            <i class="far fa-calendar-alt fa-3x text-muted mb-3"></i>
+                            <p class="mb-0 text-muted">No upcoming celebrations in the next 30 days.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="row g-3">
+                            <?php foreach ($upcomingCelebrations as $c): ?>
+                                <?php 
+                                    $isBirthday = ($c['celebration_type'] === 'birthday');
+                                    $icon = $isBirthday ? 'fa-birthday-cake' : 'fa-award';
+                                    $badge = $isBirthday ? 'bg-primary' : 'bg-info';
+                                    $timeMsg = $c['days_until'] === 0 ? ($isBirthday ? 'Today 🎂' : 'Today 🎊') : ($c['days_until'] === 1 ? 'Tomorrow' : ($c['days_until'] . ' days'));
+                                    if (!$isBirthday && isset($c['years_completed']) && $c['days_until'] === 0) { $timeMsg .= " ({$c['years_completed']} years)"; }
+                                    $img = !empty($c['user_image']) ? $c['user_image'] : 'resources/images/default-user.png';
+                                ?>
+                                <div class="col-12 col-sm-6">
+                                    <div class="border rounded-3 p-3 h-100 d-flex align-items-center">
+                                        <img src="<?php echo htmlspecialchars($img); ?>" class="rounded-circle me-3 flex-shrink-0" alt="<?php echo htmlspecialchars($c['first_name']); ?>" width="44" height="44" style="object-fit: cover;">
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <strong><?php echo htmlspecialchars(trim($c['first_name'] . ' ' . ($c['middle_name'] ?? '') . ' ' . $c['last_name'])); ?></strong></br>
+                                                    <small class="text-muted"><?php echo htmlspecialchars($c['designation_name'] ?? ''); ?></small>
+                                                </div>
+                                                <span class="badge <?php echo $badge; ?>"> <i class="fas <?php echo $icon; ?> me-1"></i><?php echo $isBirthday ? 'Birthday' : 'Anniversary'; ?></span>
+                                            </div>
+                                            <small class="text-muted"><i class="far fa-calendar-alt me-1"></i><?php echo htmlspecialchars($c['display_date']); ?> • <?php echo $timeMsg; ?></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
-        
+
         <!-- Side Column -->
         <div class="col-lg-4">
             <!-- Attendance Chart -->
@@ -550,6 +451,7 @@ require_once __DIR__ . '/includes/header.php';
                 </div>
             </div>
             
+
             <!-- Quick Actions -->
             <div class="card border-0 shadow-sm rounded-3">
                 <div class="card-header bg-transparent border-0 py-3">
@@ -576,7 +478,7 @@ require_once __DIR__ . '/includes/header.php';
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="periodic-report.php" class="btn btn-warning w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-dark">
+                            <a href="modules/reports/attendance-reports.php" class="btn btn-warning w-100 d-flex flex-column align-items-center p-3 h-100 dashboard-action-btn text-dark">
                                 <i class="fas fa-chart-bar fs-4 mb-2"></i>
                                 <span>Reports</span>
                             </a>
@@ -601,14 +503,12 @@ require_once __DIR__ . '/includes/header.php';
 </div> <!-- /.container-fluid -->
 
 <!-- Include SMS Modal -->
-<?php include 'includes/sms-modal.php'; ?>
+<?php include 'includes' . DIRECTORY_SEPARATOR . 'sms-modal.php'; ?>
 
-<!-- Include the main footer -->
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
-
-<!-- Charts.js Script -->
+<!-- Page Scripts (defer init until after libraries load) -->
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+// Defer page initialization until all assets (from footer) are loaded
+window.addEventListener('load', function() {
   // Show loading overlay when page starts loading
   const loadingOverlay = document.getElementById('loadingOverlay');
   if (loadingOverlay) {
@@ -618,15 +518,15 @@ document.addEventListener('DOMContentLoaded', function() {
   // Pass PHP timezone information to JavaScript
   const serverTimezoneOffset = "<?php echo $timezoneOffset; ?>"; // Format: +HH:MM or -HH:MM
   
-  // Initialize DataTable with Bootstrap 5 styling
-  if ($.fn.DataTable) {
-    // Only initialize DataTable if we have data
-    if (!$('#attendanceTable tbody tr td[colspan="5"]').length) {
-      $('#attendanceTable').DataTable({
+    // Initialize DataTable with Bootstrap 5 styling if available
+    if (window.jQuery && $.fn && $.fn.DataTable && $('#attendanceTable').length) {
+        // Prevent reinitialization
+        if (!$.fn.DataTable.isDataTable('#attendanceTable') && !$('#attendanceTable tbody tr td[colspan="5"]').length) {
+            $('#attendanceTable').DataTable({
         responsive: true,
         lengthChange: true,
         pageLength: 7,
-        lengthMenu: [[7, 1, 20], [7, 15, 20]],
+                lengthMenu: [[7, 15, 20], [7, 15, 20]],
         order: [[2, 'desc'], [3, 'desc']],
         columnDefs: [
           { orderable: false, targets: [0, 1, 4] } // Disable sorting on specific columns
@@ -647,9 +547,9 @@ document.addEventListener('DOMContentLoaded', function() {
           emptyTable: "No attendance records found"
         }
       });
-    } else {
-      console.log('No attendance data to display in DataTable');
-    }
+        } else {
+            console.log('DataTable already initialized or no data to initialize');
+        }
   }
   
   // Live clock update with timezone support
@@ -714,7 +614,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Make sure we have a valid canvas element before initializing the chart
   const chartCanvas = document.getElementById('attendanceChart');
-  if (chartCanvas) {
+    if (chartCanvas && window.Chart) {
     try {
       // Initialize Charts with Bootstrap 5 colors and animations
       const ctx = chartCanvas.getContext('2d');
@@ -773,21 +673,36 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         }
       });
-    } catch (error) {
+        } catch (error) {
       console.error('Error initializing attendance chart:', error);
     }
   } else {
-    console.warn('Attendance chart canvas element not found');
+        console.warn('Attendance chart canvas element not found or Chart.js not loaded');
   }
 
   // Hide loading overlay when page is fully loaded
-  window.addEventListener('load', function() {
     if (loadingOverlay) {
-      loadingOverlay.style.opacity = '0';
-      setTimeout(() => {
-        loadingOverlay.style.display = 'none';
-      }, 300);
+        loadingOverlay.style.opacity = '0';
+        setTimeout(() => {
+            loadingOverlay.style.display = 'none';
+        }, 300);
     }
-  });
+
+  // Handle celebrations card collapse/expand with chevron rotation
+  const celebrationsCollapse = document.getElementById('celebrationsCollapse');
+  const celebrationsChevron = document.getElementById('celebrationsChevron');
+  
+  if (celebrationsCollapse && celebrationsChevron) {
+    celebrationsCollapse.addEventListener('show.bs.collapse', function() {
+      celebrationsChevron.style.transform = 'rotate(0deg)';
+    });
+    
+    celebrationsCollapse.addEventListener('hide.bs.collapse', function() {
+      celebrationsChevron.style.transform = 'rotate(-90deg)';
+    });
+  }
 });
 </script>
+
+<!-- Include the main footer (closes layout and loads libraries) -->
+<?php require_once __DIR__ . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'footer.php'; ?>

@@ -5,19 +5,26 @@ if (isset($_POST['id'])) {
     try {
         $id = $_POST['id'];
         
-        $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.middle_name, e.last_name, e.designation, e.user_image, b.name as branch_name 
-                              FROM attendance_logs a 
-                              INNER JOIN employees e ON a.emp_Id = e.emp_id 
-                              INNER JOIN branches b ON e.branch = b.id 
-                              WHERE a.id = :id");
+    $stmt = $pdo->prepare("SELECT a.*, e.first_name, e.middle_name, e.last_name, e.designation, e.user_image, b.name as branch_name 
+                  FROM attendance_logs a 
+                  INNER JOIN employees e ON a.emp_id = e.emp_id 
+                  INNER JOIN branches b ON e.branch = b.id 
+                  WHERE a.id = :id");
         $stmt->execute(['id' => $id]);
         $record = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($record) {
-            // Process the manual reason
-            $parts = explode(' || ', $record['manual_reason']);
-            $record['reason_code'] = trim($parts[0]);
-            $record['remarks'] = isset($parts[1]) ? trim($parts[1]) : '';
+            // Process the manual reason with support for both '||' and '|'
+            $raw = (string)$record['manual_reason'];
+            $reasonCode = trim($raw);
+            $remarks = '';
+            if (strpos($raw, '||') !== false) {
+                [$reasonCode, $remarks] = array_map('trim', explode('||', $raw, 2));
+            } elseif (strpos($raw, '|') !== false) {
+                [$reasonCode, $remarks] = array_map('trim', explode('|', $raw, 2));
+            }
+            $record['reason_code'] = $reasonCode;
+            $record['remarks'] = $remarks;
             
             echo json_encode([
                 'status' => 'success',

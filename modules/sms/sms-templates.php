@@ -119,7 +119,7 @@ try {
         $stmt = $pdo->prepare("
             SELECT t.*, e.first_name as created_by_name
             FROM sms_templates t 
-            LEFT JOIN employees e ON t.created_by = e.id 
+            LEFT JOIN employees e ON t.created_by = e.emp_id 
             ORDER BY t.created_at DESC
         ");
         $stmt->execute();

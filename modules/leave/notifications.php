@@ -224,40 +224,97 @@ HRMS System";
       /**
      * Get employee details
      */
-    private function getEmployeeDetails($employee_id) {
-        $query = "SELECT * FROM employees WHERE id = ?";
+    private function getEmployeeDetails($employee_emp_id) {
+        // Use emp_id (string PK used throughout the app) to fetch employee details
+        $query = "SELECT * FROM employees WHERE emp_id = ?";
         $stmt = $this->connection->prepare($query);
-        $stmt->execute([$employee_id]);
+        $stmt->execute([$employee_emp_id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
       /**
      * Get recipients who should receive approval notifications
      */
-    private function getApprovalRecipients($employee_id, $department_id) {
+    private function getApprovalRecipients($employee_emp_id, $department_id) {
         $recipients = [];
-        
-        // Get supervisors and HR personnel
-        $query = "
-            SELECT DISTINCT e.email, e.first_name, e.last_name
-            FROM employees e
-            WHERE (e.role IN ('supervisor', 'hr', 'admin') 
-                   OR (e.role = 'supervisor' AND e.department_id = ?))
-                AND e.status = 'active'
-                AND e.email IS NOT NULL
-                AND e.email != ''
-                AND e.id != ?
-        ";
-        
-        $stmt = $this->connection->prepare($query);
-        $stmt->execute([$department_id, $employee_id]);
-        
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $recipients[] = [
-                'email' => $row['email'],
-                'name' => $row['first_name'] . ' ' . $row['last_name']
-            ];
+        $addedEmails = [];
+
+        // 1) Direct supervisor of the requester (if any)
+        // We join requester by emp_id and resolve supervisor via numeric e.id linkage used in the app
+                $supervisorSql = "
+                        SELECT s.email, s.first_name, s.last_name
+                        FROM employees r
+                        JOIN employees s ON r.supervisor_id = s.emp_id
+                        WHERE r.emp_id = ?
+                            AND s.status = 'active'
+                            AND COALESCE(s.login_access, 1) = 1
+                            AND s.email IS NOT NULL AND s.email <> ''
+                ";
+        try {
+            $stmt = $this->connection->prepare($supervisorSql);
+            $stmt->execute([$employee_emp_id]);
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $email = $row['email'];
+                if (!isset($addedEmails[$email])) {
+                    $recipients[] = [
+                        'email' => $email,
+                        'name' => trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''))
+                    ];
+                    $addedEmails[$email] = true;
+                }
+            }
+        } catch (Exception $e) {
+            // Fall through silently; supervisor may not exist
         }
-        
+
+        // 2) Admins (role_id = 1) and HR (role_id = 2)
+        $adminHrSql = "
+            SELECT e.email, e.first_name, e.last_name
+            FROM employees e
+            WHERE e.role_id IN (1, 2)
+              AND e.status = 'active'
+              AND COALESCE(e.login_access, 1) = 1
+              AND e.email IS NOT NULL AND e.email <> ''
+              AND e.emp_id <> ?
+        ";
+        $stmt = $this->connection->prepare($adminHrSql);
+        $stmt->execute([$employee_emp_id]);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $email = $row['email'];
+            if (!isset($addedEmails[$email])) {
+                $recipients[] = [
+                    'email' => $email,
+                    'name' => trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''))
+                ];
+                $addedEmails[$email] = true;
+            }
+        }
+
+        // 3) Optional: HR in same department (if department_id provided)
+        if (!empty($department_id)) {
+            $deptHrSql = "
+                SELECT e.email, e.first_name, e.last_name
+                FROM employees e
+                WHERE e.role_id = 2
+                  AND e.department_id = ?
+                  AND e.status = 'active'
+                  AND COALESCE(e.login_access, 1) = 1
+                  AND e.email IS NOT NULL AND e.email <> ''
+                  AND e.emp_id <> ?
+            ";
+            $stmt = $this->connection->prepare($deptHrSql);
+            $stmt->execute([$department_id, $employee_emp_id]);
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $email = $row['email'];
+                if (!isset($addedEmails[$email])) {
+                    $recipients[] = [
+                        'email' => $email,
+                        'name' => trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''))
+                    ];
+                    $addedEmails[$email] = true;
+                }
+            }
+        }
+
         return $recipients;
     }
     
@@ -289,20 +346,45 @@ HRMS System";
      * In production, consider using PHPMailer or similar library
      */
     private function sendEmail($to_email, $subject, $body, $to_name = '') {
-        $headers = "From: {$this->from_name} <{$this->from_email}>\r\n";
-        $headers .= "Reply-To: {$this->from_email}\r\n";
-        $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        $headers .= "X-Mailer: PHP/" . phpversion();
-        
-        // Log email attempt
+        // Log attempt first
         $this->logEmailAttempt($to_email, $subject);
-        
-        // Send email
-        $sent = mail($to_email, $subject, $body, $headers);
-        
+
+        // Prefer PHPMailer helper if available (avoids mail() SMTP on localhost/Windows)
+        $sent = false;
+        try {
+            // Try to include the helper once
+            $helperPath = __DIR__ . '/../../includes/mail_helper.php';
+            if (file_exists($helperPath)) {
+                include_once $helperPath;
+            }
+            if (function_exists('send_email')) {
+                // send_email($to, $subject, $message, $fromName = 'HRMS System', $replyTo = '', $attachments = [])
+                $sent = send_email($to_email, $subject, $body, $this->from_name, $this->from_email);
+            } else {
+                // Graceful fallback to PHP mail(), suppress warnings to avoid noisy logs on localhost
+                $headers = "From: {$this->from_name} <{$this->from_email}>\r\n";
+                $headers .= "Reply-To: {$this->from_email}\r\n";
+                $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+                $headers .= "X-Mailer: PHP/" . phpversion();
+                $sent = @mail($to_email, $subject, $body, $headers);
+            }
+        } catch (Throwable $e) {
+            // Capture helper-related failures
+            error_log('LeaveEmailNotifier sendEmail error: ' . $e->getMessage());
+            // Last resort fallback without emitting warnings
+            try {
+                $headers = "From: {$this->from_name} <{$this->from_email}>\r\n";
+                $headers .= "Reply-To: {$this->from_email}\r\n";
+                $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+                $headers .= "X-Mailer: PHP/" . phpversion();
+                $sent = @mail($to_email, $subject, $body, $headers);
+            } catch (Throwable $e2) {
+                $sent = false;
+            }
+        }
+
         // Log result
         $this->logEmailResult($to_email, $subject, $sent);
-        
         return $sent;
     }
     

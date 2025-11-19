@@ -44,9 +44,7 @@ function checkAndRedirectToSetup() {
  * Redirect to setup page with reason
  */
 function redirectToSetupPage($reason = '') {
-    if ($reason) {
-        error_log("Redirecting to setup: " . $reason, 3, dirname(__DIR__) . '/debug_log.txt');
-    }
+    // (Removed verbose debug logging)
     
     $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'];

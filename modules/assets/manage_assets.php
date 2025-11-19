@@ -25,240 +25,352 @@ include '../../includes/header.php';
       </button>
     </div>
   </div>
-  
-  <!-- Assets Table Card -->
-  <div class="card border-0 shadow-sm">
+
+  <div class="card mb-4 shadow-sm">
     <div class="card-body">
-      <!-- Filter controls -->
-      <div class="filter-controls p-3 mb-4">
-        <div class="row">
-          <div class="col-md-3">
-            <label for="statusFilter" class="form-label fw-bold">Status Filter</label>
-            <select id="statusFilter" class="form-select" title="Filter by status">
-              <option value="">All Statuses</option>
-              <option value="Available">Available</option>
-              <option value="Maintenance">Maintenance</option>
-              <option value="Assigned">Assigned</option>
-              <option value="Disposed">Disposed</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label for="categoryFilter" class="form-label fw-bold">Category Filter</label>
-            <select id="categoryFilter" class="form-select" title="Filter by category">
-              <option value="">All Categories</option>
-              <?php foreach ($categories as $category): ?>
-                <option value="<?php echo htmlspecialchars($category['CategoryName']); ?>"><?php echo htmlspecialchars($category['CategoryName']); ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label for="searchFilter" class="form-label fw-bold">Search</label>
-            <div class="input-group">
-              <input type="text" id="searchFilter" class="form-control" placeholder="Search assets...">
-              <button class="btn btn-outline-secondary" type="button" id="clearSearch">
-                <i class="fas fa-times"></i>
-              </button>
-            </div>
-          </div>
-          <div class="col-md-3 d-flex align-items-end">
-            <button type="button" id="resetFilters" class="btn btn-outline-secondary">
-              <i class="fas fa-redo-alt me-1"></i> Reset Filters
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-4 col-md-6">
+          <label for="searchFilter" class="form-label">Search</label>
+          <div class="input-group">
+            <input type="text" class="form-control" id="searchFilter" placeholder="Search by name, serial or remarks">
+            <button class="btn btn-outline-secondary" type="button" id="clearSearch">
+              <i class="fas fa-times"></i>
             </button>
           </div>
         </div>
+        <div class="col-lg-3 col-md-6">
+          <label for="categoryFilter" class="form-label">Category</label>
+          <select class="form-select" id="categoryFilter">
+            <option value="">All categories</option>
+            <?php foreach ($categories as $category): ?>
+              <option value="<?php echo (int) $category['CategoryID']; ?>">
+                <?php echo htmlspecialchars($category['CategoryName']); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label for="statusFilter" class="form-label">Status</label>
+          <select class="form-select" id="statusFilter">
+            <option value="">Any status</option>
+            <?php foreach (['Available', 'Assigned', 'Maintenance', 'Disposed', 'Lost'] as $statusOption): ?>
+              <option value="<?php echo htmlspecialchars($statusOption); ?>">
+                <?php echo htmlspecialchars($statusOption); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label for="deletedFilter" class="form-label">Archive</label>
+          <select class="form-select" id="deletedFilter">
+            <option value="active" selected>Active only</option>
+            <option value="deleted">Deleted only</option>
+            <option value="all">Active + Deleted</option>
+          </select>
+        </div>
+        <div class="col-lg-1 col-md-4 d-flex">
+          <button type="button" class="btn btn-outline-secondary ms-auto w-100" id="resetFilters">
+            <i class="fas fa-undo me-2"></i> Reset
+          </button>
+        </div>
       </div>
+    </div>
+  </div>
 
+  <div class="card shadow-sm">
+    <div class="card-body">
       <div class="table-responsive">
-        <table id="assetsTable" class="table table-hover">
-          <thead>
+        <table id="assetsTable" class="table table-hover align-middle w-100">
+          <thead class="text-muted text-uppercase small">
             <tr>
-              <th title="Unique serial number for each asset">Serial Number</th>
-              <th title="Asset name and image">Asset</th>
-              <th title="Date of purchase">Purchase Date</th>
-              <th title="Purchase cost in NPR">Purchase Cost</th>
-              <th title="Warranty end date">Warranty End Date</th>
-              <th title="Current condition of asset">Condition</th>
-              <th class="text-center" title="Current status (Available, Maintenance, Assigned, etc.)">Status</th>
+              <th>Serial</th>
+              <th>Asset</th>
+              <th>Purchase Date</th>
+              <th>Purchase Cost</th>
+              <th>Warranty End</th>
+              <th>Condition</th>
+              <th>Status</th>
               <th class="text-center">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            <?php foreach ($assets as $asset): ?>
-              <tr data-category="<?php echo htmlspecialchars($asset['CategoryName']); ?>">
-                <td class="align-middle"><?php echo $asset['AssetSerial']; ?></td>
-                <td>
-                  <div class="d-flex align-items-center">
-                    <?php if (!empty($asset['AssetImage']) && file_exists($asset['AssetImage'])): ?>
-                      <img src="<?php echo $asset['AssetImage']; ?>" 
-                          alt="<?php echo htmlspecialchars($asset['AssetName']); ?>" 
-                          class="rounded me-3" 
-                          style="width: 40px; height: 40px; object-fit: cover;">
-                    <?php else: ?>
-                      <div class="default-asset-icon no-image-icon rounded me-3" style="width: 40px; height: 40px; font-size:14px;">
-                        <i class="fas fa-boxes"></i>
-                      </div>
-                    <?php endif; ?>
-                    <div>
-                      <div class="fw-bold"><?php echo htmlspecialchars($asset['AssetName']); ?></div>
-                      <small class="text-muted"><?php echo htmlspecialchars($asset['CategoryName']); ?></small>
-                    </div>
-                  </div>
-                </td>
-                <td class="align-middle"><?php echo date('M d, Y', strtotime($asset['PurchaseDate'])); ?></td>
-                <td class="align-middle">Rs. <?php echo number_format($asset['PurchaseCost'], 2); ?></td>
-                <td class="align-middle"><?php echo $asset['WarrantyEndDate'] ? date('M d, Y', strtotime($asset['WarrantyEndDate'])) : '-'; ?></td>
-                <td class="align-middle"><?php echo htmlspecialchars($asset['AssetCondition'] ? $asset['AssetCondition'] : '-'); ?></td>
-                <td class="text-center align-middle">
-                  <span class="badge <?php 
-                      echo $asset['Status'] == 'Available' ? 'bg-success' : 
-                          ($asset['Status'] == 'Maintenance' ? 'bg-warning' : 'bg-danger'); 
-                  ?>">
-                    <?php echo $asset['Status']; ?>
-                  </span>
-                </td>
-                <td class="text-center align-middle">
-                  <div class="dropdown">
-                    <a href="#" class="text-secondary" role="button" id="dropdownMenuButton<?php echo $asset['AssetID']; ?>" data-bs-toggle="dropdown" aria-expanded="false">
-                      <i class="fas fa-ellipsis-v"></i>
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton<?php echo $asset['AssetID']; ?>">
-                      <li><a class="dropdown-item view-asset" href="#" data-bs-toggle="modal" data-bs-target="#viewAssetModal"
-                            data-id="<?php echo $asset['AssetID']; ?>"
-                            data-name="<?php echo htmlspecialchars($asset['AssetName']); ?>"
-                            data-category="<?php echo htmlspecialchars($asset['CategoryName']); ?>"
-                            data-serial="<?php echo $asset['AssetSerial']; ?>"
-                            data-purchase-date="<?php echo date('d M Y', strtotime($asset['PurchaseDate'])); ?>"
-                            data-purchase-cost="Rs. <?php echo number_format($asset['PurchaseCost'], 2); ?>"
-                            data-warranty-end="<?php echo !empty($asset['WarrantyEndDate']) ? date('d M Y', strtotime($asset['WarrantyEndDate'])) : '-'; ?>"
-                            data-condition="<?php echo htmlspecialchars($asset['AssetCondition'] ?? ''); ?>"
-                            data-location="<?php echo htmlspecialchars($asset['AssetLocation'] ?? ''); ?>"
-                            data-status="<?php echo $asset['Status'] ?? ''; ?>"
-                            data-description="<?php echo htmlspecialchars($asset['AssetsDescription'] ?? ''); ?>"
-                            data-image="<?php echo !empty($asset['AssetImage']) ? $asset['AssetImage'] : ''; ?>">
-                        <i class="fas fa-eye me-2"></i> View</a></li>
-                      <li><a class="dropdown-item edit-asset" href="#" data-bs-toggle="modal" data-bs-target="#editAssetModal"
-                            data-id="<?php echo $asset['AssetID']; ?>"
-                            data-name="<?php echo htmlspecialchars($asset['AssetName']); ?>"
-                            data-category-id="<?php echo $asset['CategoryID']; ?>"
-                            data-purchase-date="<?php echo $asset['PurchaseDate']; ?>"
-                            data-purchase-cost="<?php echo $asset['PurchaseCost']; ?>"
-                            data-warranty-end="<?php echo $asset['WarrantyEndDate']; ?>"
-                            data-condition="<?php echo htmlspecialchars($asset['AssetCondition'] ?? ''); ?>"
-                            data-location="<?php echo htmlspecialchars($asset['AssetLocation'] ?? ''); ?>"
-                            data-description="<?php echo htmlspecialchars($asset['AssetsDescription'] ?? ''); ?>"
-                            data-image="<?php echo !empty($asset['AssetImage']) ? $asset['AssetImage'] : ''; ?>">
-                        <i class="fas fa-edit me-2"></i> Edit</a></li>
-                      <li><a class="dropdown-item print-sticker" href="#"
-                              data-id="<?php echo $asset['AssetID']; ?>"
-                              data-name="<?php echo htmlspecialchars($asset['AssetName']); ?>"
-                              data-serial="<?php echo $asset['AssetSerial']; ?>">
-                        <i class="fas fa-print me-2"></i> Print Sticker</a></li>
-                      <li><hr class="dropdown-divider"></li>
-                      <li><a class="dropdown-item text-danger delete-asset" href="#" data-bs-toggle="modal" data-bs-target="#deleteAssetModal"
-                            data-id="<?php echo $asset['AssetID']; ?>"
-                            data-name="<?php echo htmlspecialchars($asset['AssetName']); ?>">
-                        <i class="fas fa-trash me-2"></i> Delete</a></li>
-                    </ul>
-                  </div>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
+          <tbody></tbody>
         </table>
       </div>
     </div>
   </div>
-</div> <!-- /.container-fluid -->
-
-<?php 
-include '../../includes/footer.php';
-?>
-
-<!-- Page Specific Scripts - moved after footer include -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+</div>
 
 <script>
-$(document).ready(function() {
-  // Initialize DataTable with consistent styling as employees.php
+document.addEventListener('DOMContentLoaded', function() {
+  const escapeHtmlFallback = (value = '') => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const escapeHtml = (typeof window !== 'undefined' && typeof window.escapeHtml === 'function')
+    ? window.escapeHtml
+    : escapeHtmlFallback;
+
+  const formatDate = (value) => {
+    if (!value) {
+      return '-';
+    }
+
+    const normalized = String(value).split(' ')[0];
+    const parts = normalized.split('-');
+    if (parts.length === 3) {
+      const [year, month, day] = parts.map((part) => parseInt(part, 10));
+      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+        const date = new Date(Date.UTC(year, month - 1, day));
+        return date.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+    }
+
+    const parsedDate = new Date(value);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    return value;
+  };
+
+  const formatCurrency = (value) => {
+    if (value === null || value === undefined || value === '') {
+      return '-';
+    }
+    const numericValue = Number(value);
+    return Number.isNaN(numericValue) ? value : `Rs. ${numericValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+  const formatDateTime = (value) => {
+    if (!value) {
+      return '-';
+    }
+    const normalized = String(value).replace(' ', 'T');
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString('en-GB', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  const statusClass = (status) => {
+    switch (status) {
+      case 'Available':
+        return 'bg-success';
+      case 'Maintenance':
+        return 'bg-warning text-dark';
+      case 'Assigned':
+        return 'bg-info text-dark';
+      case 'Disposed':
+        return 'bg-secondary';
+      default:
+        return 'bg-danger';
+    }
+  };
+  const toInputDate = (value) => {
+    if (!value) {
+      return '';
+    }
+    return value.substring(0, 10);
+  };
+  const isRowDeleted = (row) => !!(row && row.deleted_at);
+
+  const viewModalEl = document.getElementById('viewAssetModal');
+  const editModalEl = document.getElementById('editAssetModal');
+  const deleteModalEl = document.getElementById('deleteAssetModal');
+  const restoreModalEl = document.getElementById('restoreAssetModal');
+
+  const showModal = (element) => {
+    if (!element) {
+      console.warn('Attempted to open a modal that does not exist in the DOM.');
+      return;
+    }
+    bootstrap.Modal.getOrCreateInstance(element).show();
+  };
+
+  if (typeof DataTable === 'undefined') {
+    console.error('DataTable library is not available on this page.');
+    return;
+  }
+
   const assetsTable = new DataTable('#assetsTable', {
     responsive: true,
     lengthChange: true,
     autoWidth: false,
-    order: [[2, 'desc']], // Sort by purchase date
+    order: [[2, 'desc']],
     pageLength: 10,
+    ajax: {
+      url: 'api/assets.php',
+      dataSrc: (json) => (json && json.data) ? json.data : [],
+      data: function(params) {
+        params.status = $('#statusFilter').val();
+        params.category = $('#categoryFilter').val();
+        params.search = $('#searchFilter').val();
+        params.per_page = 250;
+        params.include_deleted = 0;
+        params.only_deleted = 0;
+        const deletedFilter = $('#deletedFilter').val();
+        if (deletedFilter === 'deleted') {
+          params.only_deleted = 1;
+        } else if (deletedFilter === 'all') {
+          params.include_deleted = 1;
+        }
+      },
+      error: function(xhr) {
+        console.error('Failed to load assets', xhr.responseText);
+      }
+    },
+    columns: [
+      {
+        data: 'AssetSerial',
+        render: (data) => escapeHtml(data || 'N/A')
+      },
+      {
+        data: null,
+        render: (row) => {
+          const deleted = isRowDeleted(row);
+          const image = row.AssetImage
+            ? `<img src="${escapeHtml(row.AssetImage)}" class="me-3 rounded" style="width:48px;height:48px;object-fit:cover;" alt="${escapeHtml(row.AssetName || 'Asset Image')}">`
+            : '<div class="default-asset-icon me-3"><i class="fas fa-boxes"></i></div>';
+          const name = escapeHtml(row.AssetName || 'Unnamed asset');
+          const category = escapeHtml(row.CategoryName || 'Uncategorized');
+          const deletedMeta = deleted
+            ? `<div class="text-danger small">Deleted ${formatDateTime(row.deleted_at)}${row.deleted_reason ? ' · ' + escapeHtml(row.deleted_reason) : ''}</div>`
+            : '';
+          return `<div class="d-flex align-items-center">${image}<div><div class="fw-bold">${name}</div><small class="text-muted">${category}</small>${deletedMeta}</div></div>`;
+        }
+      },
+      {
+        data: 'PurchaseDate',
+        render: (data) => formatDate(data)
+      },
+      {
+        data: 'PurchaseCost',
+        render: (data) => formatCurrency(data)
+      },
+      {
+        data: 'WarrantyEndDate',
+        render: (data) => formatDate(data)
+      },
+      {
+        data: 'AssetCondition',
+        render: (data) => escapeHtml(data || 'Unknown')
+      },
+      {
+        data: 'Status',
+        className: 'text-center',
+        render: (data, type, row) => {
+          const deleted = isRowDeleted(row);
+          const label = deleted ? 'Deleted' : (data || 'Unknown');
+          const badgeClass = deleted ? 'bg-dark' : statusClass(data);
+          return `<span class="badge ${badgeClass}">${escapeHtml(label)}</span>`;
+        }
+      },
+      {
+        data: null,
+        className: 'text-center',
+        orderable: false,
+        render: (data, type, row) => {
+          const deleted = isRowDeleted(row);
+          const menuItems = deleted
+            ? `
+              <button type="button" class="dropdown-item view-asset">
+                <i class="fas fa-eye me-2"></i> View
+              </button>
+              <button type="button" class="dropdown-item restore-asset">
+                <i class="fas fa-undo me-2"></i> Restore
+              </button>
+            `
+            : `
+              <button type="button" class="dropdown-item view-asset">
+                <i class="fas fa-eye me-2"></i> View
+              </button>
+              <button type="button" class="dropdown-item edit-asset">
+                <i class="fas fa-edit me-2"></i> Edit
+              </button>
+              <button type="button" class="dropdown-item delete-asset">
+                <i class="fas fa-trash me-2 text-danger"></i> Delete
+              </button>
+              <div class="dropdown-divider"></div>
+              <button type="button" class="dropdown-item print-sticker">
+                <i class="fas fa-print me-2"></i> Print Sticker
+              </button>
+            `;
+
+          return `
+            <div class="dropdown">
+              <a href="#" class="text-secondary" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-ellipsis-v"></i>
+              </a>
+              <div class="dropdown-menu dropdown-menu-end">
+                ${menuItems}
+              </div>
+            </div>
+          `;
+        }
+      }
+    ],
     language: {
       paginate: {
         previous: '<i class="fas fa-chevron-left"></i>',
         next: '<i class="fas fa-chevron-right"></i>'
       }
+    },
+    rowCallback: function(row, data) {
+      if (isRowDeleted(data)) {
+        $(row).addClass('table-warning');
+      } else {
+        $(row).removeClass('table-warning');
+      }
     }
   });
-  
-  // Add Asset button handler (update for the new button ID)
-  $('#add-asset-btn').on('click', function() {
-    const modal = new bootstrap.Modal(document.getElementById('addAssetModal'));
-    modal.show();
-  });
-  
-  // Status filter change event
-  $('#statusFilter').on('change', function() {
-    const table = assetsTable;
-    const status = this.value;
-    
-    // Custom filtering function for status column
-    $.fn.dataTable.ext.search.push(
-      function(settings, data, dataIndex) {
-        if (!status || status === '') {
-          return true;
-        }
-        // Extract the status text from the badge in the 6th column (index 6)
-        const statusCell = $(table.row(dataIndex).node()).find('td:eq(6)');
-        const statusText = statusCell.find('.badge').text().trim();
-        return statusText === status;
-      }
-    );
-    
-    table.draw();
-    $.fn.dataTable.ext.search.pop();
-  });
-  
-  // Category filter change event
-  $('#categoryFilter').on('change', function() {
-    const table = assetsTable;
-    const category = this.value;
-    
-    // Custom filtering function for category
-    $.fn.dataTable.ext.search.push(
-      function(settings, data, dataIndex) {
-        if (!category || category === '') {
-          return true;
-        }
-        const tr = table.row(dataIndex).node();
-        const rowCategory = $(tr).data('category');
-        return rowCategory === category;
-      }
-    );
-    
-    table.draw();
-    $.fn.dataTable.ext.search.pop();
+
+  const reloadAssets = () => assetsTable.ajax.reload(null, false);
+
+  $('#statusFilter, #categoryFilter, #deletedFilter').on('change', reloadAssets);
+
+  let searchDebounce;
+  $('#searchFilter').on('input', function() {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(reloadAssets, 300);
   });
 
-  // Search filter functionality
-  $('#searchFilter').on('keyup', function() {
-    assetsTable.search(this.value).draw();
-  });
-  
-  // Clear search button
   $('#clearSearch').on('click', function() {
-    $('#searchFilter').val('').trigger('keyup');
+    clearTimeout(searchDebounce);
+    $('#searchFilter').val('');
+    reloadAssets();
   });
-  
-  // Reset all filters button
+
   $('#resetFilters').on('click', function() {
-    $('#statusFilter').val('').trigger('change');
-    $('#categoryFilter').val('').trigger('change');
-    $('#searchFilter').val('').trigger('keyup');
+    clearTimeout(searchDebounce);
+    $('#statusFilter').val('');
+    $('#categoryFilter').val('');
+    $('#searchFilter').val('');
+    $('#deletedFilter').val('active');
+    reloadAssets();
   });
+
+  const getRowData = (trigger) => {
+    let $row = $(trigger).closest('tr');
+    if ($row.length === 0) {
+      return null;
+    }
+    let data = assetsTable.row($row).data();
+    if (!data && $row.hasClass('child')) {
+      const parentRow = $row.prevAll('tr.parent').first();
+      if (parentRow.length) {
+        data = assetsTable.row(parentRow).data();
+      }
+    }
+    return data;
+  };
 
   let cropper;
   let currentImageInput;
@@ -380,56 +492,76 @@ $(document).ready(function() {
   });
 
   // View asset button click - updated for Bootstrap 5
-  $(document).on('click', '.view-asset', function() {
-    const assetData = $(this).data();
-    
-    // Update modal content
-    $('#viewAssetName').text(assetData.name);
-    $('#viewCategory').text(assetData.category);
-    $('#viewSerial').text(assetData.serial);
-    $('#viewPurchaseDate').text(assetData.purchaseDate);
-    $('#viewPurchaseCost').text(assetData.purchaseCost);
-    $('#viewWarrantyEnd').text(assetData.warrantyEnd);
-    $('#viewCondition').text(assetData.condition);
-    $('#viewLocation').text(assetData.location);
-    $('#viewStatus').text(assetData.status);
-    $('#viewDescription').text(assetData.description);
-    
-    // Update image
-    const imagePath = assetData.image;
-    if (imagePath && imagePath.length > 0) {
+  $(document).on('click', '.view-asset', function(e) {
+    e.preventDefault();
+    const assetData = getRowData(this);
+    if (!assetData) {
+      console.warn('Unable to resolve asset data for view action');
+      return;
+    }
+
+    $('#viewAssetName').text(assetData.AssetName || 'N/A');
+    $('#viewCategory').text(assetData.CategoryName || 'N/A');
+    $('#viewSerial').text(assetData.AssetSerial || 'N/A');
+    $('#viewPurchaseDate').text(formatDate(assetData.PurchaseDate));
+    $('#viewPurchaseCost').text(formatCurrency(assetData.PurchaseCost));
+    $('#viewWarrantyEnd').text(formatDate(assetData.WarrantyEndDate));
+    $('#viewCondition').text(assetData.AssetCondition || 'N/A');
+    $('#viewLocation').text(assetData.AssetLocation || 'N/A');
+    $('#viewStatus').text(assetData.Status || 'N/A');
+    $('#viewDescription').text(assetData.AssetsDescription || '');
+
+    if (assetData.deleted_at) {
+      $('#viewDeletedAt').text(formatDateTime(assetData.deleted_at));
+      $('#viewDeletedReason').text(assetData.deleted_reason ? assetData.deleted_reason : 'Not provided');
+      $('#viewDeletedInfo').removeClass('d-none');
+    } else {
+      $('#viewDeletedInfo').addClass('d-none');
+    }
+
+    const imagePath = assetData.AssetImage;
+    if (imagePath) {
       $('#viewAssetImage').attr('src', imagePath).show();
       $('#viewDefaultIcon').hide();
     } else {
       $('#viewAssetImage').hide();
       $('#viewDefaultIcon').show();
     }
+
+    showModal(viewModalEl);
   });
 
   // Edit asset button click - updated for Bootstrap 5
-  $(document).on('click', '.edit-asset', function() {
-    const assetData = $(this).data();
-    $('#editAssetId').val(assetData.id);
-    $('#editAssetName').val(assetData.name);
-    $('#editCategoryId').val(assetData.categoryId);
-    $('#editPurchaseDate').val(assetData.purchaseDate);
-    $('#editPurchaseCost').val(assetData.purchaseCost);
-    $('#editWarrantyEndDate').val(assetData.warrantyEnd);
-    $('#editAssetCondition').val(assetData.condition);
-    $('#editAssetLocation').val(assetData.location);
-    $('#editDescription').val(assetData.description);
-    $('#currentImage').val(assetData.image);
-    $('#editStatus').val(assetData.status);
-    
-    // Update edit modal image
-    const imagePath = assetData.image;
-    if (imagePath && imagePath.length > 0) {
+  $(document).on('click', '.edit-asset', function(e) {
+    e.preventDefault();
+    const assetData = getRowData(this);
+    if (!assetData) {
+      console.warn('Unable to resolve asset data for edit action');
+      return;
+    }
+
+    $('#editAssetId').val(assetData.AssetID);
+    $('#editAssetName').val(assetData.AssetName);
+    $('#editCategoryId').val(assetData.CategoryID);
+    $('#editPurchaseDate').val(toInputDate(assetData.PurchaseDate));
+    $('#editPurchaseCost').val(assetData.PurchaseCost);
+    $('#editWarrantyEndDate').val(toInputDate(assetData.WarrantyEndDate));
+    $('#editAssetCondition').val(assetData.AssetCondition);
+    $('#editAssetLocation').val(assetData.AssetLocation);
+    $('#editDescription').val(assetData.AssetsDescription);
+    $('#currentImage').val(assetData.AssetImage || '');
+    $('#editStatus').val(assetData.Status);
+
+    const imagePath = assetData.AssetImage;
+    if (imagePath) {
       $('#editAssetImage').attr('src', imagePath).show();
       $('#editDefaultIcon').hide();
     } else {
       $('#editAssetImage').hide();
       $('#editDefaultIcon').show();
     }
+
+    showModal(editModalEl);
   });
 
   // Handle edit form submission
@@ -460,28 +592,45 @@ $(document).ready(function() {
   });
 
   // Delete asset button click
-  $(document).on('click', '.delete-asset', function() {
-    const assetData = $(this).data();
-    $('#deleteAssetId').val(assetData.id);
-    $('#deleteAssetName').text(assetData.name);
+  $(document).on('click', '.delete-asset', function(e) {
+    e.preventDefault();
+    const assetData = getRowData(this);
+    if (!assetData) {
+      console.warn('Unable to resolve asset data for delete action');
+      return;
+    }
+    $('#deleteAssetId').val(assetData.AssetID);
+    $('#deleteAssetName').text(assetData.AssetName);
+    showModal(deleteModalEl);
+  });
+
+  $(document).on('click', '.restore-asset', function(e) {
+    e.preventDefault();
+    const assetData = getRowData(this);
+    if (!assetData) {
+      console.warn('Unable to resolve asset data for restore action');
+      return;
+    }
+    $('#restoreAssetId').val(assetData.AssetID);
+    $('#restoreAssetName').text(assetData.AssetName || 'this asset');
+    showModal(restoreModalEl);
   });
 
   // Print Sticker button click
   $(document).on('click', '.print-sticker', function(e) {
     e.preventDefault();
-    const button = $(this);
-    const assetData = button.data();
-    const assetName = assetData.name;
-    const serialNumber = assetData.serial;
-
-    if (!assetName || !serialNumber) {
-      console.error("Error: Could not retrieve name or serial from button data.", assetData);
-      alert("Error retrieving asset details for printing. Please try again.");
+    const assetData = getRowData(this);
+    if (!assetData) {
+      console.warn('Unable to resolve asset data for print action');
       return;
     }
 
-    // Directly call the function to open the print window
-    printSticker(assetName, serialNumber);
+    if (!assetData.AssetName || !assetData.AssetSerial) {
+      alert('Asset data incomplete. Unable to print sticker.');
+      return;
+    }
+
+    printSticker(assetData.AssetName, assetData.AssetSerial);
   });
 });
 </script>
@@ -497,6 +646,7 @@ $(document).ready(function() {
       <form method="POST" action="manage_assets.php" enctype="multipart/form-data">
         <div class="modal-body">
           <input type="hidden" name="action" value="add">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
           <div class="row">
             <div class="col-md-4 text-center">
               <div class="asset-image-container">
@@ -599,6 +749,7 @@ $(document).ready(function() {
           <input type="hidden" name="assetId" id="editAssetId">
           <input type="hidden" name="currentImage" id="currentImage">
           <input type="hidden" name="status" id="editStatus">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
           <div class="row">
             <div class="col-md-4 text-center">
               <div class="asset-image-container">
@@ -689,6 +840,10 @@ $(document).ready(function() {
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <div id="viewDeletedInfo" class="alert alert-warning d-none">
+          <p class="mb-1"><strong>Deleted On:</strong> <span id="viewDeletedAt"></span></p>
+          <p class="mb-0"><strong>Reason:</strong> <span id="viewDeletedReason"></span></p>
+        </div>
         <div class="row">
           <div class="col-md-4 text-center">
             <div id="viewImageContainer">
@@ -788,12 +943,38 @@ $(document).ready(function() {
         <div class="modal-body">
           <input type="hidden" name="action" value="delete">
           <input type="hidden" name="assetId" id="deleteAssetId">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
           <p>Are you sure you want to delete the asset: <strong id="deleteAssetName"></strong>?</p>
-          <p class="text-danger">This action cannot be undone. All related assignments and maintenance records will also be deleted.</p>
+          <p class="text-danger">The asset will move to the archive and can be restored later from the Deleted filter.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-danger">Delete Asset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Restore Asset Modal -->
+<div class="modal fade" id="restoreAssetModal" tabindex="-1" aria-labelledby="restoreAssetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="restoreAssetModalLabel">Restore Asset</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="manage_assets.php">
+        <div class="modal-body">
+          <input type="hidden" name="action" value="restore">
+          <input type="hidden" name="assetId" id="restoreAssetId">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+          <p>Restore asset <strong id="restoreAssetName"></strong> back to the active list?</p>
+          <p class="text-muted mb-0">The asset will become available for assignment again.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Restore Asset</button>
         </div>
       </form>
     </div>
@@ -1120,6 +1301,4 @@ $(document).ready(function() {
   }
 }
 </style>
-
-</body>
-</html>
+  <?php include '../../includes/footer.php'; ?>

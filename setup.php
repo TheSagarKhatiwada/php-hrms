@@ -166,8 +166,8 @@ if ($step == 1) {
         $installer = new DatabaseInstaller();
         $requirements = $installer->checkRequirements();
     } catch (Exception $e) {
-        $error = 'Configuration Error: ' . $e->getMessage();
-        error_log("Setup error: " . $e->getMessage(), 3, __DIR__ . '/debug_log.txt');
+    $error = 'Configuration Error: ' . $e->getMessage();
+    // (Removed verbose debug logging to debug_log.txt)
         
         // Create requirements array with proper structure for error state
         $requirements = [

@@ -6,6 +6,7 @@ $page = "Dashboard";
 require_once 'includes/header.php';
 require_once 'includes/db_connection.php';
 require_once 'includes/settings.php'; // Include settings to get timezone
+require_once 'includes/utilities.php';
 
 // Ensure database is connected before proceeding
 requireDatabaseConnection();
@@ -39,8 +40,8 @@ try {
     $userData = $stmt->fetch(PDO::FETCH_ASSOC);
     
     // Get current user's attendance for today
-    $stmt = $pdo->prepare("SELECT * FROM attendance_logs WHERE emp_Id = ? AND date = ? ORDER BY time DESC LIMIT 1");
-    $stmt->execute([$userData['emp_id'], $today]);
+    $stmt = $pdo->prepare("SELECT * FROM attendance_logs WHERE emp_id = ? AND date = ? ORDER BY time DESC LIMIT 1");
+    $stmt->execute([($userData['emp_id'] ?? ''), $today]);
     $todayAttendance = $stmt->fetch(PDO::FETCH_ASSOC);
     
     // Get attendance for last 7 days
@@ -48,13 +49,94 @@ try {
         SELECT date, 
            MIN(time) AS clock_in, 
            MAX(time) AS clock_out, 
-           GROUP_CONCAT(method ORDER BY time LIMIT 1) AS method
+           SUBSTRING_INDEX(GROUP_CONCAT(method ORDER BY time ASC SEPARATOR ','), ',', 1) AS method
         FROM attendance_logs 
-        WHERE emp_Id = ? 
+    WHERE emp_id = ? 
         AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)
         GROUP BY date
         ORDER BY date DESC
     ");
+    $stmt->execute([($userData['emp_id'] ?? '')]);
+    $recentAttendance = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+} catch (PDOException $e) {
+    error_log("Database error: " . $e->getMessage() ."\n");
+    $_SESSION['error'] = "Error retrieving user data" . $e->getMessage();
+    $userData = [];
+    $todayAttendance = [];
+    $recentAttendance = [];
+}
+
+$canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendance'] ?? 0) === 1;
+?>
+
+<!-- Dashboard Styles -->
+<style>
+    /* Clock icon styling */
+    .clock-icon-placeholder { display: none; }
+</style>
+
+<!-- Dashboard Scripts -->
+<script>window.__EMP_ID__ = <?php echo json_encode($userData['emp_id'] ?? ''); ?>;</script>
+<script src="build/js/dashboard.js"></script>
+<?php
+// Set page title
+$page = "Dashboard";
+
+// Include required files
+require_once 'includes/header.php';
+require_once 'includes/db_connection.php';
+require_once 'includes/settings.php'; // Include settings to get timezone
+require_once 'includes/utilities.php';
+
+// Ensure database is connected before proceeding
+requireDatabaseConnection();
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    // User not logged in, redirect to login page
+    header('Location: index.php');
+    exit();
+}
+
+// Get timezone from settings
+$timezone = get_setting('timezone', 'UTC');
+date_default_timezone_set($timezone);
+
+// Get current date
+$today = date('Y-m-d');
+
+// Get current user data
+$userId = $_SESSION['user_id'];
+
+try {
+    // Get user data with designation title
+    $stmt = $pdo->prepare("
+        SELECT e.*, d.title as designation_title 
+        FROM employees e
+        LEFT JOIN designations d ON e.designation = d.id
+        WHERE e.emp_id = ?
+    ");
+    $stmt->execute([$userId]);
+    $userData = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Get current user's attendance for today
+    $stmt = $pdo->prepare("SELECT * FROM attendance_logs WHERE emp_id = ? AND date = ? ORDER BY time DESC LIMIT 1");
+    $stmt->execute([$userData['emp_id'], $today]);
+    $todayAttendance = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Get attendance for last 7 days
+        $stmt = $pdo->prepare("
+            SELECT date, 
+               MIN(time) AS clock_in, 
+               MAX(time) AS clock_out, 
+               SUBSTRING_INDEX(GROUP_CONCAT(method ORDER BY time ASC SEPARATOR ','), ',', 1) AS method
+            FROM attendance_logs 
+        WHERE emp_id = ? 
+            AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)
+            GROUP BY date
+            ORDER BY date DESC
+        ");
     $stmt->execute([$userData['emp_id']]);
     $recentAttendance = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -65,6 +147,8 @@ try {
     $todayAttendance = [];
     $recentAttendance = [];
 }
+
+$canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendance'] ?? 0) === 1;
 ?>
 
 <!-- Dashboard Styles -->
@@ -398,8 +482,9 @@ try {
         <div>
             <?php 
                 // Get user information
-                $firstName = $userData['first_name'] ?? 'User'; // Default value
-                
+                $firstNameRaw = isset($userData['first_name']) ? trim((string)$userData['first_name']) : '';
+                $firstNameToken = $firstNameRaw !== '' ? preg_split('/\s+/', $firstNameRaw)[0] : 'User';
+                $firstName = htmlspecialchars($firstNameToken, ENT_QUOTES, 'UTF-8');
                 echo "<h1 class='mb-1'>Welcome, {$firstName}!</h1>";
             ?>
         </div>
@@ -437,18 +522,23 @@ try {
                         <div class="d-flex flex-column justify-content-center align-items-center h-100 p-4"
                              style="background: linear-gradient(135deg, var(--primary-color), #4e73df);"> 
                             <div class="position-relative mx-auto mb-4">                                <img src="<?php 
-                                  $imagePath = $userData['user_image'] ?? 'resources/userimg/default-image.jpg';
-                                  // If the image path doesn't start with ../ or http, it might be stored without proper path
-                                  if (!empty($userData['user_image']) && !str_starts_with($userData['user_image'], 'resources/') && !str_starts_with($userData['user_image'], 'http')) {
-                                    $imagePath = $userData['user_image'];
-                                  }
+                                                                    $imagePath = $userData['user_image'] ?? 'resources/userimg/default-image.jpg';
+                                                                    // If the image path doesn't start with resources/ or http, keep as-is; PHP 7 compatible checks
+                                                                    if (!empty($userData['user_image'])) {
+                                                                        $val = (string)$userData['user_image'];
+                                                                        $startsWithResources = substr($val, 0, 10) === 'resources/';
+                                                                        $startsWithHttp = substr($val, 0, 4) === 'http';
+                                                                        if (!$startsWithResources && !$startsWithHttp) {
+                                                                            $imagePath = $val;
+                                                                        }
+                                                                    }
                                   echo htmlspecialchars($imagePath);
                                 ?>" 
                                      class="rounded-circle img-thumbnail border-4 shadow"
                                      style="width: 130px; height: 130px; object-fit: cover;"
                                      onerror="this.src='resources/userimg/default-image.jpg'">
                                 <div class="position-absolute bottom-0 end-0 translate-middle-y">
-                                    <div class="rounded-circle border-3 border-white d-flex align-items-center justify-content-center bg-<?php echo !empty($userData['exit_date']) ? 'danger' : 'success'; ?>"
+                                    <div class="rounded-circle border-3 border-white d-flex align-items-center justify-content-center bg-<?php echo !empty($userData['exit_date'] ?? null) ? 'danger' : 'success'; ?>"
                                          style="width: 32px; height: 32px;">
                                         <i class="fas fa-<?php echo !empty($userData['exit_date']) ? 'times' : 'check'; ?> fa-sm text-white"></i>
                                     </div>
@@ -456,7 +546,7 @@ try {
                             </div>
                             
                             <h5 class="fw-bold mb-1">
-                                <?php echo htmlspecialchars($userData['first_name'] . ' ' . $userData['last_name']); ?>
+                                <?php echo htmlspecialchars(trim(($userData['first_name'] ?? '') . ' ' . ($userData['last_name'] ?? ''))); ?>
                             </h5>
                             <p class="opacity-75 mb-4"><?php echo htmlspecialchars($userData['designation_title'] ?? 'Not Assigned'); ?></p>
                             <a href="profile.php" class="btn btn-light btn-sm rounded-pill px-4 shadow-sm fw-medium">
@@ -470,8 +560,8 @@ try {
                         <div class="p-4">
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h5 class="fw-bold mb-0">Profile Information</h5>
-                                <span class="badge bg-<?php echo !empty($userData['exit_date']) ? 'danger' : 'success'; ?> rounded-pill py-1 px-3">
-                                    <?php echo !empty($userData['exit_date']) ? 'Inactive' : 'Active'; ?>
+                                <span class="badge bg-<?php echo !empty($userData['exit_date'] ?? null) ? 'danger' : 'success'; ?> rounded-pill py-1 px-3">
+                                    <?php echo !empty($userData['exit_date'] ?? null) ? 'Inactive' : 'Active'; ?>
                                 </span>
                             </div>
                             
@@ -479,13 +569,13 @@ try {
                                 <div class="col-sm-6">
                                     <div class="border-start border-primary ps-3 py-1">
                                         <small class="text-muted d-block">Email Address</small>
-                                        <span class="fw-medium"><?php echo htmlspecialchars($userData['email']); ?></span>
+                                        <span class="fw-medium"><?php echo htmlspecialchars($userData['email'] ?? ''); ?></span>
                                     </div>
                                 </div>
                                 <div class="col-sm-6">
                                     <div class="border-start border-success ps-3 py-1">
                                         <small class="text-muted d-block">Employee ID</small>
-                                        <span class="fw-medium"><?php echo htmlspecialchars($userData['emp_id']); ?></span>
+                                        <span class="fw-medium"><?php echo htmlspecialchars($userData['emp_id'] ?? ''); ?></span>
                                     </div>
                                 </div>
                                 <div class="col-sm-6">
@@ -533,7 +623,7 @@ try {
                                                 try {
                                                     $stmt = $pdo->prepare("SELECT COUNT(*) FROM leaves WHERE emp_id = ? AND status = 'approved'");
                                                     if ($stmt) {
-                                                        $stmt->execute([$userData['emp_id']]);
+                                                        $stmt->execute([($userData['emp_id'] ?? '')]);
                                                         $leaveCount = $stmt->fetchColumn() ?: 0;
                                                     }
                                                 } catch (PDOException $e) {
@@ -642,7 +732,7 @@ try {
                         </table>
                     </div>
                     <div class="text-end mt-3">
-                        <a href="attendance.php" class="btn btn-outline-primary btn-sm">
+                        <a href="modules/attendance/attendance.php" class="btn btn-outline-primary btn-sm">
                             <i class="fas fa-calendar-alt me-1"></i> View Full Attendance
                         </a>
                     </div>
@@ -665,18 +755,20 @@ try {
                         <h6 class="text-muted">Current Time</h6>
                         <div class="clock-display" id="digital-clock">00:00:00</div>
                         <div class="mt-3">
-                            <?php if (empty($todayAttendance)): ?>
-                                <button id="clockInBtn" class="btn btn-success btn-attendance">
-                                    <i class="fas fa-sign-in-alt me-2"></i> Clock In
-                                </button>
-                            <?php else: ?>
-                                <div class="text-success mb-3">
-                                    <i class="fas fa-check-circle me-1"></i>
-                                    You clocked in at <?php echo !empty($todayAttendance['time']) ? date('h:i A', strtotime($todayAttendance['time'])) : 'N/A'; ?>
-                                </div>
-                                <button id="clockOutBtn" class="btn btn-primary btn-attendance">
-                                    <i class="fas fa-sign-out-alt me-2"></i> Clock Out
-                                </button>
+                            <?php if ($canUseWebAttendance): ?>
+                                <?php if (empty($todayAttendance)): ?>
+                                    <button id="clockInBtn" class="btn btn-success btn-attendance">
+                                        <i class="fas fa-sign-in-alt me-2"></i> Clock In
+                                    </button>
+                                <?php else: ?>
+                                    <div class="text-success mb-3">
+                                        <i class="fas fa-check-circle me-1"></i>
+                                        You clocked in at <?php echo !empty($todayAttendance['time']) ? date('h:i A', strtotime($todayAttendance['time'])) : 'N/A'; ?>
+                                    </div>
+                                    <button id="clockOutBtn" class="btn btn-primary btn-attendance">
+                                        <i class="fas fa-sign-out-alt me-2"></i> Clock Out
+                                    </button>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -704,7 +796,7 @@ try {
                 </div>
                 <div class="card-body p-0">
                     <div class="quick-links-grid">
-                        <a href="attendance.php" class="quick-link-card">
+                        <a href="modules/attendance/attendance.php" class="quick-link-card">
                             <div class="quick-link-icon bg-primary-light">
                                 <i class="fas fa-calendar-alt text-primary"></i>
                             </div>
@@ -757,16 +849,52 @@ try {
                 </div>
             </div>
             
-            <!-- Upcoming Events Card -->
+            <!-- Upcoming Celebrations Card -->
+            <?php 
+                $userBranchId = null;
+                try {
+                    if (!empty($userData['branch'])) { $userBranchId = (int)$userData['branch']; }
+                } catch (Throwable $e) {}
+                try { $dashCelebrations = get_upcoming_celebrations(30, 6, $userBranchId); } catch (Throwable $e) { $dashCelebrations = []; }
+            ?>
             <div class="card modern-card">
-                <div class="card-header bg-transparent border-bottom">
-                    <h5 class="card-title mb-0">Upcoming Events</h5>
+                <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Upcoming Celebrations</h5>
+                    <span class="badge rounded-pill bg-primary"><?php echo count($dashCelebrations); ?></span>
                 </div>
                 <div class="card-body">
-                    <div class="text-center py-4">
-                        <i class="far fa-calendar-alt fa-3x text-muted mb-3"></i>
-                        <p class="mb-0">No upcoming events at this time.</p>
-                    </div>
+                    <?php if (empty($dashCelebrations)): ?>
+                        <div class="text-center py-4">
+                            <i class="far fa-calendar-alt fa-3x text-muted mb-3"></i>
+                            <p class="mb-0">No upcoming celebrations in the next 30 days.</p>
+                        </div>
+                    <?php else: ?>
+                        <ul class="list-group list-group-flush">
+                            <?php foreach ($dashCelebrations as $c): ?>
+                                <?php 
+                                    $isBirthday = $c['celebration_type'] === 'birthday';
+                                    $icon = $isBirthday ? 'fa-birthday-cake' : 'fa-award';
+                                    $badge = $isBirthday ? 'bg-primary' : 'bg-info';
+                                    $timeMsg = $c['days_until'] === 0 ? ($isBirthday ? 'Today 🎂' : 'Today 🎊') : ($c['days_until'] === 1 ? 'Tomorrow' : ($c['days_until'] . ' days'));
+                                    if (!$isBirthday && isset($c['years_completed']) && $c['days_until'] === 0) { $timeMsg .= " ({$c['years_completed']} years)"; }
+                                    $img = !empty($c['user_image']) ? $c['user_image'] : 'resources/images/default-user.png';
+                                ?>
+                                <li class="list-group-item d-flex align-items-center">
+                                    <img src="<?php echo htmlspecialchars($img); ?>" class="rounded-circle me-3" alt="<?php echo htmlspecialchars($c['first_name']); ?>" width="40" height="40" style="object-fit: cover;">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong><?php echo htmlspecialchars(trim($c['first_name'] . ' ' . ($c['middle_name'] ?? '') . ' ' . $c['last_name'])); ?></strong>
+                                                <small class="text-muted ms-2"><?php echo htmlspecialchars($c['designation_name'] ?? ''); ?></small>
+                                            </div>
+                                            <span class="badge <?php echo $badge; ?>"> <i class="fas <?php echo $icon; ?> me-1"></i><?php echo $isBirthday ? 'Birthday' : 'Anniversary'; ?></span>
+                                        </div>
+                                        <small class="text-muted"><i class="far fa-calendar-alt me-1"></i><?php echo htmlspecialchars($c['display_date']); ?> • <?php echo $timeMsg; ?></small>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -849,6 +977,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle attendance button clicks (both clock in and clock out)
     const clockInBtn = document.getElementById('clockInBtn');
     const clockOutBtn = document.getElementById('clockOutBtn');
+    const webAttendanceEnabled = <?php echo $canUseWebAttendance ? 'true' : 'false'; ?>;
+
+    if (!webAttendanceEnabled) {
+        return;
+    }
     
     function recordAttendance() {
         // Determine if this is a clock-in or clock-out button press
@@ -866,7 +999,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Make an AJAX request to record attendance
-        fetch('record_attendance.php', {
+    fetch('modules/attendance/record_attendance.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -958,5 +1091,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<!-- Dashboard Scripts -->
+<script>window.__EMP_ID__ = <?php echo json_encode($userData['emp_id'] ?? ''); ?>;</script>
+<script src="build/js/dashboard.js"></script>
 
 <?php require_once 'includes/footer.php'; ?>
