@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password']) && iss
 
 // Get empId from the query parameter
 $empId = $_GET['empId'] ?? '';
+$transferHistory = [];
 
 // Fetch employee details from the database
 if ($empId) {
@@ -61,6 +62,26 @@ if ($empId) {
     // Use $employee['id'] which is the primary key for the employees table and likely the foreign key in AssetAssignments
     $assigned_assets_stmt->execute(['employee_id' => $employee['emp_id']]); 
     $assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    try {
+      $transfer_stmt = $pdo->prepare("SELECT t.*, 
+          fb.name AS from_branch_name,
+          tb.name AS to_branch_name,
+          CONCAT(fs.first_name, ' ', fs.last_name) AS from_supervisor_name,
+          CONCAT(ts.first_name, ' ', ts.last_name) AS to_supervisor_name
+        FROM employee_branch_transfers t
+        LEFT JOIN branches fb ON t.from_branch_id = fb.id
+        LEFT JOIN branches tb ON t.to_branch_id = tb.id
+        LEFT JOIN employees fs ON t.from_supervisor_id = fs.emp_id
+        LEFT JOIN employees ts ON t.to_supervisor_id = ts.emp_id
+        WHERE t.employee_id = :emp_id
+        ORDER BY t.effective_date DESC, t.created_at DESC");
+      $transfer_stmt->execute([':emp_id' => $employee['emp_id']]);
+      $transferHistory = $transfer_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+      error_log('Transfer history fetch failed: ' . $e->getMessage());
+      $transferHistory = [];
+    }
 
     // Check if employee image is empty and set default image
     if (empty($employee['user_image'])) {
@@ -607,6 +628,91 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
                 </div>
                 <div>
                   <i class="far fa-clock bg-gray"></i>
+                </div>
+              </div>
+
+              <div class="card mt-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h5 class="card-title m-0">
+                    <i class="fas fa-random me-2"></i>Branch Transfer History
+                  </h5>
+                  <span class="badge <?php echo !empty($transferHistory) ? 'bg-primary' : 'bg-secondary'; ?>">
+                    <?php echo !empty($transferHistory) ? count($transferHistory) . ' record(s)' : 'No transfers yet'; ?>
+                  </span>
+                </div>
+                <div class="card-body p-0">
+                  <?php if (!empty($transferHistory)): ?>
+                  <div class="table-responsive">
+                    <table class="table table-striped table-hover table-sm mb-0">
+                      <thead class="table-light">
+                        <tr>
+                          <th style="width: 15%;">Effective</th>
+                          <th style="width: 25%;">Branch Move</th>
+                          <th style="width: 20%;">Supervisor</th>
+                          <th style="width: 20%;">Schedule</th>
+                          <th>Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <?php foreach ($transferHistory as $transfer): 
+                          $effectiveDisplay = $transfer['effective_date'] ? date('d M Y', strtotime($transfer['effective_date'])) : '-';
+                          $lastDayDisplay = $transfer['last_day_in_previous_branch'] ? date('d M Y', strtotime($transfer['last_day_in_previous_branch'])) : null;
+                          $fromBranch = $transfer['from_branch_name'] ?: 'Unassigned';
+                          $toBranch = $transfer['to_branch_name'] ?: 'Unassigned';
+                          $fromSupervisor = $transfer['from_supervisor_name'] ?: ($transfer['from_supervisor_id'] ?: 'Not set');
+                          $toSupervisor = $transfer['to_supervisor_name'] ?: ($transfer['to_supervisor_id'] ?: 'Not set');
+                          $supervisorChange = ($transfer['to_supervisor_id'] && $transfer['to_supervisor_id'] !== $transfer['from_supervisor_id']);
+                          $prevStart = !empty($transfer['previous_work_start_time']) ? date('H:i', strtotime($transfer['previous_work_start_time'])) : null;
+                          $prevEnd = !empty($transfer['previous_work_end_time']) ? date('H:i', strtotime($transfer['previous_work_end_time'])) : null;
+                          $newStart = !empty($transfer['new_work_start_time']) ? date('H:i', strtotime($transfer['new_work_start_time'])) : null;
+                          $newEnd = !empty($transfer['new_work_end_time']) ? date('H:i', strtotime($transfer['new_work_end_time'])) : null;
+                          $scheduleChanged = $newStart || $newEnd;
+                        ?>
+                        <tr>
+                          <td>
+                            <div class="fw-semibold"><?php echo $effectiveDisplay; ?></div>
+                            <?php if ($lastDayDisplay): ?>
+                              <small class="text-muted">Last day: <?php echo $lastDayDisplay; ?></small>
+                            <?php endif; ?>
+                          </td>
+                          <td>
+                            <div class="fw-semibold"><?php echo htmlspecialchars($fromBranch); ?> <i class="fas fa-long-arrow-alt-right mx-1"></i> <?php echo htmlspecialchars($toBranch); ?></div>
+                            <small class="text-muted">Logged by <?php echo htmlspecialchars($transfer['processed_by'] ?: 'System'); ?></small>
+                          </td>
+                          <td>
+                            <?php if ($supervisorChange): ?>
+                              <div><?php echo htmlspecialchars($fromSupervisor); ?> <i class="fas fa-arrow-right mx-1"></i> <?php echo htmlspecialchars($toSupervisor); ?></div>
+                            <?php else: ?>
+                              <span class="text-muted">Unchanged</span>
+                            <?php endif; ?>
+                          </td>
+                          <td>
+                            <?php if ($scheduleChanged): ?>
+                              <div class="small">
+                                <span class="text-muted">Prev:</span> <?php echo htmlspecialchars(($prevStart ?: '--') . ' - ' . ($prevEnd ?: '--')); ?><br>
+                                <span class="text-muted">New:</span> <?php echo htmlspecialchars(($newStart ?: '--') . ' - ' . ($newEnd ?: '--')); ?>
+                              </div>
+                            <?php else: ?>
+                              <span class="text-muted">No change</span>
+                            <?php endif; ?>
+                          </td>
+                          <td>
+                            <div class="small"><?php echo nl2br(htmlspecialchars($transfer['reason'] ?: '--')); ?></div>
+                            <?php if (!empty($transfer['notify_stakeholders'])): ?>
+                              <span class="badge bg-info text-dark mt-1"><i class="fas fa-bell me-1"></i>Notified</span>
+                            <?php endif; ?>
+                          </td>
+                        </tr>
+                        <?php endforeach; ?>
+                      </tbody>
+                    </table>
+                  </div>
+                  <?php else: ?>
+                  <div class="text-center text-muted py-4">
+                    <i class="fas fa-route fa-2x mb-2"></i>
+                    <p class="mb-0">No branch movements have been recorded for this employee.</p>
+                  </div>
+                  <?php endif; ?>
                 </div>
               </div>
             </div>

@@ -123,9 +123,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get all departments with manager names
 try {
     $sql = "SELECT d.*, CONCAT(e.first_name, ' ', COALESCE(e.middle_name, ''), ' ', e.last_name) AS manager_name 
-            FROM departments d 
-            LEFT JOIN employees e ON d.manager_id = e.id 
-            ORDER BY d.name ASC";
+        FROM departments d 
+        LEFT JOIN employees e ON d.manager_id = e.emp_id 
+        ORDER BY d.name ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
     $departments = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -241,7 +241,7 @@ require_once __DIR__ . '/includes/header.php';
                             <?php
                             // Fetch all active employees
                             try {
-                                $sql = "SELECT id, CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name) AS full_name FROM employees WHERE exit_date IS NULL ORDER BY first_name ASC";
+                                $sql = "SELECT emp_id AS id, CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name) AS full_name FROM employees WHERE exit_date IS NULL ORDER BY first_name ASC";
                                 $stmt = $pdo->prepare($sql);
                                 $stmt->execute();
                                 
@@ -293,7 +293,7 @@ require_once __DIR__ . '/includes/header.php';
                             <?php
                             // Fetch all active employees
                             try {
-                                $sql = "SELECT id, CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name) AS full_name FROM employees WHERE exit_date IS NULL ORDER BY first_name ASC";
+                                $sql = "SELECT emp_id AS id, CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name) AS full_name FROM employees WHERE exit_date IS NULL ORDER BY first_name ASC";
                                 $stmt = $pdo->prepare($sql);
                                 $stmt->execute();
                                 

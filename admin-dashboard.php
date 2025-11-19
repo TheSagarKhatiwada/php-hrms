@@ -419,10 +419,10 @@ try {
                                     <div class="border rounded-3 p-3 h-100 d-flex align-items-center">
                                         <img src="<?php echo htmlspecialchars($img); ?>" class="rounded-circle me-3 flex-shrink-0" alt="<?php echo htmlspecialchars($c['first_name']); ?>" width="44" height="44" style="object-fit: cover;">
                                         <div class="flex-grow-1">
-                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <div class="d-flex justify-content-between align-items-center">
                                                 <div>
-                                                    <strong><?php echo htmlspecialchars(trim($c['first_name'] . ' ' . ($c['middle_name'] ?? '') . ' ' . $c['last_name'])); ?></strong>
-                                                    <small class="text-muted ms-2"><?php echo htmlspecialchars($c['designation_name'] ?? ''); ?></small>
+                                                    <strong><?php echo htmlspecialchars(trim($c['first_name'] . ' ' . ($c['middle_name'] ?? '') . ' ' . $c['last_name'])); ?></strong></br>
+                                                    <small class="text-muted"><?php echo htmlspecialchars($c['designation_name'] ?? ''); ?></small>
                                                 </div>
                                                 <span class="badge <?php echo $badge; ?>"> <i class="fas <?php echo $icon; ?> me-1"></i><?php echo $isBirthday ? 'Birthday' : 'Anniversary'; ?></span>
                                             </div>

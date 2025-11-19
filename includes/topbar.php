@@ -168,6 +168,7 @@
           $isClockedInTop = false;
           $empIdTop = null;
           $attendanceUrl = (isset($home) ? $home : './') . 'modules/attendance/record_attendance.php';
+          $canUseWebAttendanceTop = false;
           try {
             if (isset($_SESSION['user_id'])) {
               $empIdTop = $_SESSION['user_id'];
@@ -177,23 +178,36 @@
               $stmtTop = $pdo->prepare("SELECT COUNT(*) FROM attendance_logs WHERE emp_id = ? AND date = ?");
               $stmtTop->execute([$empIdTop, $todayTop]);
               $isClockedInTop = ((int)$stmtTop->fetchColumn()) > 0;
+
+              if (isset($user) && array_key_exists('allow_web_attendance', $user)) {
+                $canUseWebAttendanceTop = ((int)$user['allow_web_attendance'] === 1);
+              } else {
+                $stmtAllow = $pdo->prepare("SELECT allow_web_attendance FROM employees WHERE emp_id = ? LIMIT 1");
+                $stmtAllow->execute([$empIdTop]);
+                $canUseWebAttendanceTop = ((int)$stmtAllow->fetchColumn() === 1);
+              }
             }
           } catch (Throwable $e) { /* ignore */ }
         ?>
         <!-- Topbar Clock In/Out Button -->
+        <?php
+          $attendanceBtnTitle = $isClockedInTop ? 'Clock Out' : 'Clock In';
+        ?>
+        <?php if ($canUseWebAttendanceTop): ?>
         <li class="nav-item me-1">
           <button
             id="topbarAttendanceBtn"
             class="nav-link btn-icon btn-icon-auto rounded-pill px-3"
-            title="<?php echo $isClockedInTop ? 'Clock Out' : 'Clock In'; ?>"
-            aria-label="<?php echo $isClockedInTop ? 'Clock Out' : 'Clock In'; ?>"
+            title="<?php echo $attendanceBtnTitle; ?>"
+            aria-label="<?php echo $attendanceBtnTitle; ?>"
             data-action="<?php echo $isClockedInTop ? 'CO' : 'CI'; ?>"
             data-emp-id="<?php echo htmlspecialchars((string)$empIdTop); ?>"
             data-url="<?php echo htmlspecialchars($attendanceUrl); ?>">
             <i class="fas <?php echo $isClockedInTop ? 'fa-sign-out-alt text-primary' : 'fa-sign-in-alt text-success'; ?>"></i>
-            <span class="d-none d-lg-inline ms-2 <?php echo $isClockedInTop ? 'text-primary' : 'text-success'; ?>"><?php echo $isClockedInTop ? 'Clock Out' : 'Clock In'; ?></span>
+            <span class="d-none d-lg-inline ms-2 <?php echo $isClockedInTop ? 'text-primary' : 'text-success'; ?>"><?php echo $attendanceBtnTitle; ?></span>
           </button>
         </li>
+        <?php endif; ?>
 
         
         

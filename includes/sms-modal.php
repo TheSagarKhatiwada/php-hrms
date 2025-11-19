@@ -196,51 +196,94 @@ function sendSMS() {
     formData.append('phone_numbers', JSON.stringify(numbers));
     formData.append('action', 'send_sms');
     
-    // Show loading state
-    const sendButton = event.target;
-    const originalText = sendButton.innerHTML;
-    sendButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Sending...';
-    sendButton.disabled = true;
+    // Show loading state (find the send button reliably instead of relying on global event)
+    const modal = document.getElementById('sendSMSModal');
+    const sendButton = modal ? modal.querySelector('button.btn-primary') : null;
+    const originalText = sendButton ? sendButton.innerHTML : 'Send SMS';
+    if (sendButton) {
+        sendButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Sending...';
+        sendButton.disabled = true;
+    }
     
     // Determine the endpoint based on current page
     const endpoint = getSMSEndpoint();
     
     fetch(endpoint, {
         method: 'POST',
+        credentials: 'same-origin', // include cookies so PHP session is sent with the request
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            let message = 'SMS sent successfully!';
-            if (data.results && data.results.length > 1) {
-                const successful = data.results.filter(r => r.success).length;
-                const failed = data.results.length - successful;
-                message = `SMS sending completed: ${successful} sent successfully, ${failed} failed`;
+    .then(async response => {
+        const text = await response.text();
+        // Try to parse as JSON; if server prepended HTML, attempt to extract trailing JSON object
+        try {
+            const data = JSON.parse(text);
+            return { ok: true, data };
+        } catch (e) {
+            // Fallback: extract last JSON object in the response (useful when HTML is prepended)
+            const jsonMatch = text.match(/\{[\s\S]*\}\s*$/);
+            if (jsonMatch) {
+                try {
+                    const data = JSON.parse(jsonMatch[0]);
+                    console.warn('Extracted JSON from mixed HTML response');
+                    return { ok: true, data };
+                } catch (e2) {
+                    // fall through
+                }
             }
-            
-            // Show success message
-            showSMSAlert(message, 'success');
-            
-            // Close modal and reset form
-            bootstrap.Modal.getInstance(document.getElementById('sendSMSModal')).hide();
-            resetSMSForm();
-            
-            // Refresh page if we're on SMS logs or dashboard
-            if (window.location.pathname.includes('sms-')) {
-                setTimeout(() => location.reload(), 1000);
+            return { ok: false, text };
+        }
+    })
+    .then(result => {
+        if (result.ok && result.data) {
+            const data = result.data;
+            if (data.success) {
+                let message = 'SMS sent successfully!';
+                if (data.results && data.results.length > 1) {
+                    const successful = data.results.filter(r => r.success).length;
+                    const failed = data.results.length - successful;
+                    message = `SMS sending completed: ${successful} sent successfully, ${failed} failed`;
+                }
+
+                // Show success message
+                showSMSAlert(message, 'success');
+
+                // Close modal and reset form
+                bootstrap.Modal.getInstance(document.getElementById('sendSMSModal')).hide();
+                resetSMSForm();
+
+                // Refresh page if we're on SMS logs or dashboard
+                if (window.location.pathname.includes('sms-')) {
+                    setTimeout(() => location.reload(), 1000);
+                }
+                return;
             }
+
+            // Backend returned JSON but with success=false
+            const errMsg = data.error || JSON.stringify(data);
+            showSMSAlert('Failed to send SMS: ' + errMsg, 'error');
         } else {
-            showSMSAlert('Failed to send SMS: ' + data.error, 'error');
+            // Non-JSON or HTML response (likely an error page or redirect). Show a friendly message and log raw text to console
+            const text = result.text || '';
+            console.error('Non-JSON response from SMS endpoint:', text);
+            let short = text.trim().substring(0, 500);
+            // If it looks like an HTML page, show a concise message
+            if (short.startsWith('<!DOCTYPE') || short.startsWith('<html') || short.includes('<html')) {
+                showSMSAlert('Server returned an unexpected HTML response. Check server logs or session/authentication.', 'error');
+            } else {
+                showSMSAlert('Unexpected response from server: ' + short, 'error');
+            }
         }
     })
     .catch(error => {
-        showSMSAlert('Error: ' + error.message, 'error');
+        showSMSAlert('Network error: ' + (error.message || error), 'error');
     })
     .finally(() => {
         // Restore button state
-        sendButton.innerHTML = originalText;
-        sendButton.disabled = false;
+        if (sendButton) {
+            sendButton.innerHTML = originalText;
+            sendButton.disabled = false;
+        }
     });
 }
 

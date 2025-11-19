@@ -1,10 +1,14 @@
 <?php
 // API to generate attendance reports (daily / periodic) and store metadata in session
 // Use unified session configuration to ensure same session name (HRMS_SESSION)
-require_once '../includes/session_config.php';
+require_once __DIR__.'/../includes/session_config.php';
 header('Content-Type: application/json');
-require_once '../includes/db_connection.php';
-require_once '../includes/utilities.php';
+require_once __DIR__.'/../includes/db_connection.php';
+require_once __DIR__.'/../includes/utilities.php';
+// Settings helper (defines get_setting(), save_setting(), etc.)
+require_once __DIR__.'/../includes/settings.php';
+// Schedule helpers: prefetch overrides & resolve schedule per employee/date
+require_once __DIR__.'/../includes/schedule_helpers.php';
 
 // Basic debug logging helper (silent if unwritable)
 function ar_debug($msg){
@@ -75,6 +79,7 @@ $typeLabel = $typeLabelMap[$reportType] ?? ucfirst($reportType);
 
 // Build employees label
 $employeesLabel = 'All';
+$employeesHidden = '';
 if(!empty($employeeIds)) {
   $in  = str_repeat('?,', count($employeeIds)-1) . '?';
   try {
@@ -88,9 +93,12 @@ if(!empty($employeeIds)) {
     // If too many, compress
     if(count($names) > 15) {
       $shown = array_slice($names,0,15);
+      $hiddenChunk = array_slice($names,15);
+      $employeesHidden = implode(', ', $hiddenChunk);
       $employeesLabel = implode(', ', $shown).' +'.(count($names)-15).' more';
     } else {
       $employeesLabel = implode(', ', $names);
+      $employeesHidden = '';
     }
   } catch(Exception $e) { $employeesLabel = implode(', ', $employeeIds); }
 }
@@ -108,30 +116,35 @@ if($reportType === 'daily') {
   $empConds = [];
   $empParams = [];
   if($branch !== '') { $empConds[] = 'e.branch = ?'; $empParams[] = $branch; }
+  $empConds[] = '(e.mach_id_not_applicable IS NULL OR e.mach_id_not_applicable = 0)';
   $empConds[] = '(e.exit_date IS NULL OR e.exit_date >= ?)'; $empParams[] = $reportdate;
   if(!empty($employeeIds)) { $empConds[] = 'e.emp_id IN ('.implode(',', array_fill(0,count($employeeIds),'?')).')'; $empParams = array_merge($empParams, $employeeIds); }
-  $sqlEmployees = "SELECT e.emp_id, CONCAT(e.first_name,' ', e.middle_name,' ', e.last_name) AS employee_name, b.name AS branch, e.exit_date, e.branch AS branch_id FROM employees e LEFT JOIN branches b ON e.branch = b.id";
+  $sqlEmployees = "SELECT e.emp_id, CONCAT(e.first_name,' ', e.middle_name,' ', e.last_name) AS employee_name, b.name AS branch, e.exit_date, e.branch AS branch_id, e.work_start_time, e.work_end_time FROM employees e LEFT JOIN branches b ON e.branch = b.id";
   if($empConds) { $sqlEmployees .= ' WHERE '.implode(' AND ', $empConds); }
   $stmtEmp = $pdo->prepare($sqlEmployees);
   $stmtEmp->execute($empParams);
   $employeesData = $stmtEmp->fetchAll(PDO::FETCH_ASSOC);
 
+  // Prefetch overrides for the employees in this dataset for the report date
+  $empIdsForPrefetch = array_map(function($r){ return $r['emp_id']; }, $employeesData);
+  $overridesMap = prefetch_schedule_overrides($pdo, $empIdsForPrefetch, $reportdate, $reportdate);
+
     // Attendance logs map
   $sqlAtt = "SELECT a.emp_Id, MIN(a.time) AS in_time, MAX(a.time) AS out_time, GROUP_CONCAT(a.method ORDER BY a.time ASC SEPARATOR ', ') AS methods_used, GROUP_CONCAT(a.manual_reason ORDER BY a.time ASC SEPARATOR '; ') AS manual_reasons, COUNT(a.id) AS punch_count FROM attendance_logs a WHERE a.date = ?";
   $attParams = [$reportdate];
   if(!empty($employeeIds)) { $sqlAtt .= ' AND a.emp_Id IN ('.implode(',', array_fill(0,count($employeeIds),'?')).')'; $attParams = array_merge($attParams, $employeeIds); }
-  if($branch !== '') { $sqlAtt .= ' AND a.emp_Id IN (SELECT emp_id FROM employees WHERE branch = ?)'; $attParams[] = $branch; }
+  if($branch !== '') { $sqlAtt .= ' AND a.emp_Id IN (SELECT emp_id FROM employees WHERE branch = ? AND (mach_id_not_applicable IS NULL OR mach_id_not_applicable = 0))'; $attParams[] = $branch; }
   $sqlAtt .= ' GROUP BY a.emp_Id';
   $stmtAtt = $pdo->prepare($sqlAtt);
   $stmtAtt->execute($attParams);
     $attendanceMap = [];
     foreach($stmtAtt->fetchAll(PDO::FETCH_ASSOC) as $att){ $attendanceMap[$att['emp_Id']] = $att; }
 
-    // Defaults
-    $scheduled_in = new DateTime('09:30');
-    $scheduled_out = new DateTime('18:00');
-    $working_hours = new DateInterval('PT8H30M');
-    $formatted_working_hours = sprintf('%02d:%02d',$working_hours->h,$working_hours->i);
+  // Defaults (fallback when employee-specific times are not set)
+  $default_work_start = get_setting('work_start_time', '09:00');
+  $default_work_end = get_setting('work_end_time', '18:00');
+  // Working hours default interval will be computed per-employee from start/end when available
+  $formatted_working_hours = sprintf('%02d:%02d', 8, 30); // fallback display
     $dataRows = [];
     foreach($employeesData as $emp){
       $empid = $emp['emp_id'];
@@ -139,6 +152,24 @@ if($reportType === 'daily') {
       $holiday = is_holiday($reportdate, $emp['branch_id'] ?? null);
       $isHoliday = $holiday !== false;
       $isWeekend = (date('N', strtotime($reportdate)) == 6);
+      
+      // Resolve schedule (check overrides first)
+      $empOverrides = $overridesMap[$empid] ?? [];
+      $sched = resolve_schedule_for_emp_date($emp, $reportdate, $empOverrides, $default_work_start, $default_work_end);
+      
+      try {
+        $scheduled_in = new DateTime($sched['start']);
+        $scheduled_out = new DateTime($sched['end']);
+        $working_interval = $scheduled_in->diff($scheduled_out);
+        $formatted_working_hours = sprintf('%02d:%02d', $working_interval->h, $working_interval->i);
+      } catch (Exception $e) {
+        // fallback to default times
+        $scheduled_in = new DateTime($default_work_start);
+        $scheduled_out = new DateTime($default_work_end);
+        $working_interval = $scheduled_in->diff($scheduled_out);
+        $formatted_working_hours = sprintf('%02d:%02d', $working_interval->h, $working_interval->i);
+      }
+
       $row = [
         'emp_id'=>$empid,
         'employee_name'=>$emp['employee_name'],
@@ -154,11 +185,12 @@ if($reportType === 'daily') {
         $att = $attendanceMap[$empid];
         $in_time = new DateTime($att['in_time']);
         $out_time = new DateTime($att['out_time']);
+        
         $row['in_time'] = $in_time->format('H:i');
         $row['out_time'] = ($out_time != $in_time) ? $out_time->format('H:i') : '';
         $worked = $in_time->diff($out_time);
         if($out_time != $in_time) { $row['worked_duration'] = $worked->format('%H:%I'); }
-        $total_minutes = ($worked->h*60)+$worked->i; $scheduled_minutes = ($working_hours->h*60)+$working_hours->i;
+  $total_minutes = ($worked->h*60)+$worked->i; $scheduled_minutes = ($working_interval->h*60)+$working_interval->i;
         $overtime_minutes = ($isHoliday||$isWeekend)?$total_minutes:max(0,$total_minutes-$scheduled_minutes);
         $row['over_time'] = $overtime_minutes>0 ? sprintf('%02d:%02d', floor($overtime_minutes/60), $overtime_minutes%60):'';
         if(!$isWeekend && !$isHoliday){
@@ -167,18 +199,21 @@ if($reportType === 'daily') {
           $row['early_in'] = ($in_time < $scheduled_in)?$in_time->diff($scheduled_in)->format('%H:%I'):'';
           $row['late_out'] = ($out_time > $scheduled_out)?$scheduled_out->diff($out_time)->format('%H:%I'):'';
         }
-        $methodsArray = explode(', ', $att['methods_used'] ?? '');
-        $reasonsArray = explode('; ', $att['manual_reasons'] ?? '');
-        $punchCount = $att['punch_count'] ?? 1;
-        $methodMap=['0'=>'A','1'=>'M','2'=>'W'];
+    $methodsArray = explode(', ', $att['methods_used'] ?? '');
+    $reasonsArray = explode('; ', $att['manual_reasons'] ?? '');
+    $punchCount = $att['punch_count'] ?? 1;
+    $methodMap=['0'=>'A','1'=>'M','2'=>'W'];
   $firstMethod = $methodsArray[0] ?? '';
   $inMethodLetter = isset($methodMap[$firstMethod]) ? $methodMap[$firstMethod] : $firstMethod;
-        $outMethodLetter='';
-        if($punchCount>1){ $lastMethod=end($methodsArray); $outMethodLetter = isset($methodMap[$lastMethod])?$methodMap[$lastMethod]:$lastMethod; }
-        $inReasonRaw=$reasonsArray[0]??''; $outReasonRaw=''; if($punchCount>1){ $outReasonRaw=end($reasonsArray); }
-        if(function_exists('hrms_format_reason_for_report')){ $inReason=hrms_format_reason_for_report($inReasonRaw); $outReason=hrms_format_reason_for_report($outReasonRaw); } else { $inReason=$inReasonRaw; $outReason=$outReasonRaw; }
-        $row['methods']=$inMethodLetter.($outMethodLetter?" | ".$outMethodLetter:'');
-        $row['remarks']=$inReason.($outReason?" | ".$outReason:'');
+    $outMethodLetter='';
+    if($punchCount>1){ $lastMethod=end($methodsArray); $outMethodLetter = isset($methodMap[$lastMethod])?$methodMap[$lastMethod]:$lastMethod; }
+    $inReasonRaw=$reasonsArray[0]??''; $outReasonRaw=''; if($punchCount>1){ $outReasonRaw=end($reasonsArray); }
+    if(function_exists('hrms_format_reason_for_report')){ $inReason=hrms_format_reason_for_report($inReasonRaw); $outReason=hrms_format_reason_for_report($outReasonRaw); } else { $inReason=$inReasonRaw; $outReason=$outReasonRaw; }
+    $row['methods']=$inMethodLetter.($outMethodLetter?" | ".$outMethodLetter:'');
+    // Build remarks only for the entries that actually have text and avoid duplicates
+    $remarkParts = array_filter([trim($inReason), trim($outReason)], function($v){ return $v !== null && $v !== ''; });
+    $remarkParts = array_values(array_unique($remarkParts));
+    $row['remarks'] = implode(' | ', $remarkParts);
         if($isHoliday){ $row['marked_as']='Present (Holiday)'; $row['remarks']=($holiday['name']??'Holiday').' - Worked as OT'; }
         elseif($isWeekend){ $row['marked_as']='Present (Weekend)'; $row['remarks']='Weekend - Worked as OT'; }
         else { $row['marked_as']='Present'; }
@@ -271,10 +306,11 @@ if($reportType === 'daily') {
     $empParams = [];
     $empWhere = [];
     if($branch !== '') { $empWhere[] = 'e.branch = ?'; $empParams[] = $branch; }
+    $empWhere[] = '(e.mach_id_not_applicable IS NULL OR e.mach_id_not_applicable = 0)';
     if(!empty($employeeIds)) { $empWhere[] = 'e.emp_id IN ('.implode(',', array_fill(0,count($employeeIds),'?')).')'; $empParams = array_merge($empParams, $employeeIds); }
     // Include active employees whose exit_date is null or after start
     $empWhere[] = '(e.exit_date IS NULL OR e.exit_date >= ?)'; $empParams[] = $startDate;
-    $sqlEmployees = "SELECT e.emp_id, CONCAT(e.first_name,' ',e.middle_name,' ',e.last_name) AS employee_name, d.title AS designation, b.name AS branch, e.exit_date, e.branch AS branch_id, dept.name AS department
+    $sqlEmployees = "SELECT e.emp_id, CONCAT(e.first_name,' ',e.middle_name,' ',e.last_name) AS employee_name, d.title AS designation, b.name AS branch, e.exit_date, e.branch AS branch_id, dept.name AS department, e.work_start_time, e.work_end_time
       FROM employees e
       LEFT JOIN branches b ON e.branch = b.id
       LEFT JOIN designations d ON e.designation = d.id
@@ -282,21 +318,50 @@ if($reportType === 'daily') {
       ($empWhere?(' WHERE '.implode(' AND ',$empWhere)):'').' ORDER BY e.emp_id';
     $stmtEmp = $pdo->prepare($sqlEmployees); $stmtEmp->execute($empParams); $employeesData = $stmtEmp->fetchAll(PDO::FETCH_ASSOC);
   ar_debug('Periodic employees count='.count($employeesData));
+  // Prefetch overrides/assignments for date range and these employees
+  $empIdsForPrefetch = array_map(function($r){ return $r['emp_id']; }, $employeesData);
+  $overridesMap = prefetch_schedule_overrides($pdo, $empIdsForPrefetch, $startDate, $endDate);
 
     // Attendance logs grouped by emp & date in range
     $attParams = [$startDate,$endDate];
     $attWhere = 'a.date BETWEEN ? AND ?';
     if(!empty($employeeIds)) { $attWhere .= ' AND a.emp_Id IN ('.implode(',', array_fill(0,count($employeeIds),'?')).')'; $attParams = array_merge($attParams, $employeeIds); }
-    if($branch !== '') { $attWhere .= ' AND a.emp_Id IN (SELECT emp_id FROM employees WHERE branch = ?)'; $attParams[] = $branch; }
+    if($branch !== '') { $attWhere .= ' AND a.emp_Id IN (SELECT emp_id FROM employees WHERE branch = ? AND (mach_id_not_applicable IS NULL OR mach_id_not_applicable = 0))'; $attParams[] = $branch; }
     $sqlAtt = "SELECT a.emp_Id, a.date, MIN(a.time) AS in_time, MAX(a.time) AS out_time, GROUP_CONCAT(a.method ORDER BY a.time ASC SEPARATOR ', ') AS methods_used, GROUP_CONCAT(a.manual_reason ORDER BY a.time ASC SEPARATOR '; ') AS manual_reasons, COUNT(a.id) AS punch_count FROM attendance_logs a WHERE $attWhere GROUP BY a.emp_Id, a.date";
     $stmtAtt = $pdo->prepare($sqlAtt); $stmtAtt->execute($attParams); $attendanceMap = [];
     foreach($stmtAtt->fetchAll(PDO::FETCH_ASSOC) as $att) { $attendanceMap[$att['emp_Id']][$att['date']] = $att; }
   ar_debug('Periodic attendance rows='.array_reduce($attendanceMap,function($c,$v){return $c+count($v);},0));
 
-    $scheduled_in = new DateTime('09:30');
-    $scheduled_out = new DateTime('18:00');
-    $working_hours = new DateInterval('PT8H30M');
-    $formatted_working_hours = sprintf('%02d:%02d',$working_hours->h,$working_hours->i);
+    // Prefetch holidays for the date range per branch to avoid per-employee/per-day DB calls
+    $holidaysByBranch = []; // branch_id|null => [ 'YYYY-MM-DD' => holidayRow ]
+    try {
+      // collect unique branch ids from employeesData
+      $branchIds = [null];
+      foreach($employeesData as $ed){ $bid = $ed['branch_id'] ?? null; if(!in_array($bid,$branchIds,true)) $branchIds[] = $bid; }
+      foreach($branchIds as $bId){
+        $list = get_holidays_in_range($startDate, $endDate, $bId===null?null:$bId);
+        $map = [];
+        foreach($list as $h){ if(!empty($h['effective_date'])){ $map[$h['effective_date']] = $h; } }
+        $bKey = is_null($bId) ? '__global' : (string)$bId;
+        $holidaysByBranch[$bKey] = $map;
+      }
+    } catch(Throwable $e) { ar_debug('Holiday prefetch failed: '.$e->getMessage()); }
+
+    // Load defaults from settings and compute working interval
+    try {
+      $defaultStart = function_exists('get_setting') ? get_setting('work_start_time','09:30') : '09:30';
+      $defaultEnd = function_exists('get_setting') ? get_setting('work_end_time','18:00') : '18:00';
+      $scheduled_in = new DateTime($defaultStart);
+      $scheduled_out = new DateTime($defaultEnd);
+      $working_hours = $scheduled_in->diff($scheduled_out);
+      $formatted_working_hours = sprintf('%02d:%02d', $working_hours->h, $working_hours->i);
+    } catch(Exception $e) {
+      // Fallback to safe defaults in case of malformed settings
+      $scheduled_in = new DateTime('09:30');
+      $scheduled_out = new DateTime('18:00');
+      $working_hours = new DateInterval('PT8H30M');
+      $formatted_working_hours = sprintf('%02d:%02d',$working_hours->h,$working_hours->i);
+    }
     // Build list of dates in range
     try {
       $period = new DatePeriod(new DateTime($startDate), new DateInterval('P1D'), (new DateTime($endDate))->modify('+1 day'));
@@ -321,14 +386,48 @@ if($reportType === 'daily') {
       $empid = $emp['emp_id'];
       $rows = [];
       foreach($dates as $d){
+      }
+      // Per-employee scheduled times: resolve via overrides then employee then defaults
+      try {
+        $empOverrides = $overridesMap[$empid] ?? [];
+        $rs = resolve_schedule_for_emp_date($emp, $d, $empOverrides, $scheduled_in->format('H:i'), $scheduled_out->format('H:i'));
+        $empSchedIn = new DateTime($rs['start']);
+      } catch(Exception $e) { $empSchedIn = clone $scheduled_in; }
+      try {
+        $empOverrides = $overridesMap[$empid] ?? [];
+        $rs2 = isset($rs) ? $rs : resolve_schedule_for_emp_date($emp, $d, $empOverrides, $scheduled_in->format('H:i'), $scheduled_out->format('H:i'));
+        $empSchedOut = new DateTime($rs2['end']);
+      } catch(Exception $e) { $empSchedOut = clone $scheduled_out; }
+      // compute per-employee working hours interval and minutes
+      $empWorkingInterval = $empSchedIn->diff($empSchedOut);
+      $empScheduledMinutes = ($empWorkingInterval->h * 60) + $empWorkingInterval->i;
+      $empFormattedWorkingHours = sprintf('%02d:%02d', $empWorkingInterval->h, $empWorkingInterval->i);
+      foreach($dates as $d){
         $isWeekend = (date('N', strtotime($d)) == 6);
-        $holiday = is_holiday($d, $emp['branch_id'] ?? null); $isHoliday = $holiday !== false;
+        
+        // Re-resolve schedule for each specific date in the loop to handle daily overrides correctly
+        try {
+            $empOverrides = $overridesMap[$empid] ?? [];
+            $rs = resolve_schedule_for_emp_date($emp, $d, $empOverrides, $scheduled_in->format('H:i'), $scheduled_out->format('H:i'));
+            $empSchedIn = new DateTime($rs['start']);
+            $empSchedOut = new DateTime($rs['end']);
+            
+            $empWorkingInterval = $empSchedIn->diff($empSchedOut);
+            $empScheduledMinutes = ($empWorkingInterval->h * 60) + $empWorkingInterval->i;
+            $empFormattedWorkingHours = sprintf('%02d:%02d', $empWorkingInterval->h, $empWorkingInterval->i);
+        } catch(Exception $e) { 
+            // Keep previous values if resolution fails
+        }
+  $branchKey = $emp['branch_id'] ?? null;
+  $bKey = is_null($branchKey) ? '__global' : (string)$branchKey;
+  $holiday = ($holidaysByBranch[$bKey][$d] ?? ($holidaysByBranch['__global'][$d] ?? false));
+        $isHoliday = $holiday !== false;
         $isExited = (!empty($emp['exit_date']) && $d > $emp['exit_date']);
         $row = [
           'date'=>$d,
-          'scheduled_in'=>($isWeekend||$isHoliday)?'-':$scheduled_in->format('H:i'),
-          'scheduled_out'=>($isWeekend||$isHoliday)?'-':$scheduled_out->format('H:i'),
-          'working_hour'=>($isWeekend||$isHoliday)?'-':$formatted_working_hours,
+          'scheduled_in'=>($isWeekend||$isHoliday)?'-':$empSchedIn->format('H:i'),
+          'scheduled_out'=>($isWeekend||$isHoliday)?'-':$empSchedOut->format('H:i'),
+          'working_hour'=>($isWeekend||$isHoliday)?'-':$empFormattedWorkingHours,
           'in_time'=>($isWeekend||$isHoliday)?'-':'',
           'out_time'=>($isWeekend||$isHoliday)?'-':'',
           'worked_duration'=>($isWeekend||$isHoliday)?'-':'',
@@ -338,7 +437,7 @@ if($reportType === 'daily') {
           'early_in'=>($isWeekend||$isHoliday)?'-':'',
           'late_out'=>($isWeekend||$isHoliday)?'-':'',
           'marked_as'=>$isExited?'Exited':($isHoliday?'Holiday':($isWeekend?'Weekend':'Absent')),
-          'methods'=>'',
+          'in_method'=>'', 'out_method'=>'',
           'remarks'=>$isExited?('Employee exited on '.$emp['exit_date']):($isHoliday?($holiday['name']??'Holiday'):'')
         ];
         if(isset($attendanceMap[$empid][$d]) && !$isExited){
@@ -348,14 +447,14 @@ if($reportType === 'daily') {
           $row['in_time'] = $in_time->format('H:i');
           $row['out_time'] = ($out_time != $in_time)?$out_time->format('H:i'):'';
           $worked = $in_time->diff($out_time); if($out_time != $in_time){ $row['worked_duration']=$worked->format('%H:%I'); }
-          $total_minutes = ($worked->h*60)+$worked->i; $scheduled_minutes = ($working_hours->h*60)+$working_hours->i;
+          $total_minutes = ($worked->h*60)+$worked->i; $scheduled_minutes = $empScheduledMinutes;
           $overtime_minutes = ($isHoliday||$isWeekend)?$total_minutes:max(0,$total_minutes-$scheduled_minutes);
           $row['over_time'] = $overtime_minutes>0?sprintf('%02d:%02d', floor($overtime_minutes/60), $overtime_minutes%60):'';
           if(!$isWeekend && !$isHoliday){
-            $row['late_in']=($in_time>$scheduled_in)?$scheduled_in->diff($in_time)->format('%H:%I'):'';
-            if($out_time != $in_time){ $row['early_out']=($out_time<$scheduled_out)?$out_time->diff($scheduled_out)->format('%H:%I'):''; }
-            $row['early_in']=($in_time<$scheduled_in)?$in_time->diff($scheduled_in)->format('%H:%I'):'';
-            $row['late_out']=($out_time>$scheduled_out)?$scheduled_out->diff($out_time)->format('%H:%I'):'';
+            $row['late_in']=($in_time>$empSchedIn)?$empSchedIn->diff($in_time)->format('%H:%I'):'';
+            if($out_time != $in_time){ $row['early_out']=($out_time<$empSchedOut)?$out_time->diff($empSchedOut)->format('%H:%I'):''; }
+            $row['early_in']=($in_time<$empSchedIn)?$in_time->diff($empSchedIn)->format('%H:%I'):'';
+            $row['late_out']=($out_time>$empSchedOut)?$empSchedOut->diff($out_time)->format('%H:%I'):'';
           }
           $methodsArray = explode(', ', $att['methods_used'] ?? '');
           $reasonsArray = explode('; ', $att['manual_reasons'] ?? '');
@@ -364,8 +463,13 @@ if($reportType === 'daily') {
           $inMethod = $methodsArray[0] ?? ''; $outMethod = ($punchCount>1)?end($methodsArray):'';
           $inReasonRaw=$reasonsArray[0]??''; $outReasonRaw=($punchCount>1)?end($reasonsArray):'';
           if(function_exists('hrms_format_reason_for_report')){ $inReason=hrms_format_reason_for_report($inReasonRaw); $outReason=hrms_format_reason_for_report($outReasonRaw);} else { $inReason=$inReasonRaw; $outReason=$outReasonRaw; }
-          $row['methods']=(isset($methodMap[$inMethod])?$methodMap[$inMethod]:$inMethod).($outMethod?(' | '.(isset($methodMap[$outMethod])?$methodMap[$outMethod]:$outMethod)):'');
-          $row['remarks']=$inReason.($outReason?" | ".$outReason:'');
+          $row['in_method'] = (isset($methodMap[$inMethod])?$methodMap[$inMethod]:$inMethod);
+          // Use strict check against empty string because '0' is a valid method code but is falsy in PHP
+          $row['out_method'] = ($outMethod !== '' ? (isset($methodMap[$outMethod])?$methodMap[$outMethod]:$outMethod) : '');
+          // Build remarks only for the entries that actually have text and avoid duplicates
+          $remarkParts = array_filter([trim($inReason), trim($outReason)], function($v){ return $v !== null && $v !== ''; });
+          $remarkParts = array_values(array_unique($remarkParts));
+          $row['remarks'] = implode(' | ', $remarkParts);
           if($isHoliday){ $row['marked_as']='Present (Holiday)'; $row['remarks']=($holiday['name']??'Holiday').' - Worked as OT'; }
           elseif($isWeekend){ $row['marked_as']='Present (Weekend)'; $row['remarks']='Weekend - Worked as OT'; }
           else { $row['marked_as']='Present'; }
@@ -445,10 +549,11 @@ if($reportType === 'daily') {
     // Corner logo & global title removed per request
   $pdf->SetFont('helvetica','',6); // minimal spacing before first employee table
 
-    // Column layout (16 columns) similar to UI
-    $headers1 = ['SN','Date','In','Out','Work','In','Out','Actual','OT','LateIn','EarlyOut','EarlyIn','LateOut','Marked As','Methods','Remarks'];
-    // relative widths tuned for periodic (Date narrower than Employee in daily)
-    $rel=[7,30,14,14,14,14,14,16,14,14,16,14,14,24,20,34];
+  // Column layout (16 columns) similar to UI - Methods combined into single column (In | Out)
+  $headers1 = ['SN','Date','In','Out','Work','In','Out','Actual','OT','LateIn','EarlyOut','EarlyIn','LateOut','Marked As','Methods','Remarks'];
+  // relative widths tuned for periodic (Date narrower than Employee in daily)
+  // Note: Methods column consolidated (20)
+  $rel=[7,30,14,14,14,14,14,16,14,14,16,14,14,24,20,34];
     $usableWidth = $pdf->getPageWidth()-$pdf->getMargins()['left']-$pdf->getMargins()['right'];
     $relSum = array_sum($rel); $widths=[]; foreach($rel as $r){ $widths[]=round($usableWidth*($r/$relSum),2);}    
 
@@ -481,14 +586,14 @@ if($reportType === 'daily') {
   $pdf->Cell($widths[9]+$widths[10]+$widths[11]+$widths[12],6,'Branch: '.($meta['branch']??''),$metaBorder,0,'L'); // colspan 4
   $pdf->Cell($widths[13]+$widths[14]+$widths[15],6,'Department: '.($meta['department']??''),$metaBorder,1,'L'); // colspan 3
       // Group header row
-      $pdf->SetFont('helvetica','B',8.5);
-      $pdf->Cell($widths[0],6,'',1,0,'C');
-      $pdf->Cell($widths[1],6,'',1,0,'C');
-      $pdf->Cell($widths[2]+$widths[3]+$widths[4],6,'Planned Time',1,0,'C');
-      $pdf->Cell($widths[5]+$widths[6]+$widths[7],6,'Worked Time',1,0,'C');
-      $pdf->Cell($widths[8],6,'OT',1,0,'C');
-      $pdf->Cell($widths[9]+$widths[10]+$widths[11]+$widths[12],6,'Deviations',1,0,'C');
-      $pdf->Cell($widths[13]+$widths[14]+$widths[15],6,'Status / Notes',1,1,'C');
+  $pdf->SetFont('helvetica','B',8.5);
+  $pdf->Cell($widths[0],6,'',1,0,'C');
+  $pdf->Cell($widths[1],6,'',1,0,'C');
+  $pdf->Cell($widths[2]+$widths[3]+$widths[4],6,'Planned Time',1,0,'C');
+  $pdf->Cell($widths[5]+$widths[6]+$widths[7],6,'Worked Time',1,0,'C');
+  $pdf->Cell($widths[8],6,'OT',1,0,'C');
+  $pdf->Cell($widths[9]+$widths[10]+$widths[11]+$widths[12],6,'Deviations',1,0,'C');
+  $pdf->Cell($widths[13]+$widths[14]+$widths[15],6,'Status / Notes',1,1,'C');
   // Second header row (sub columns) enhanced: bold, shaded, alignment tweaks
   $pdf->SetFont('helvetica','B',7.2); // slightly larger for clarity
   $pdf->SetFillColor(245,245,245); // light gray shade
@@ -517,7 +622,10 @@ if($reportType === 'daily') {
           switch($r['marked_as']){
             case 'Absent': $absent++; break; case 'Weekend': $weekend++; break; case 'Holiday': $holiday++; break; case 'Paid Leave': $paid++; break; case 'Unpaid Leave': $unpaid++; break; case 'Missed': $missed++; break; case 'Manual': $manual++; break; default: break; }
         }
-        $line=[ $sn++, date('Y-m-d, l', strtotime($r['date'])), $r['scheduled_in'],$r['scheduled_out'],$r['working_hour'],$r['in_time'],$r['out_time'],$r['worked_duration'],$r['over_time'],$r['late_in'],$r['early_out'],$r['early_in'],$r['late_out'],$r['marked_as'], strip_tags($r['methods']), strip_tags($r['remarks']) ];
+  // Combine in/out methods into single Methods column as 'A | M' when both present
+  $methodsCombined = trim((string)($r['in_method'] ?? ''));
+  if(!empty($r['out_method'])){ $methodsCombined = ($methodsCombined !== '' ? $methodsCombined.' | ' : '').trim((string)$r['out_method']); }
+  $line=[ $sn++, date('Y-m-d, l', strtotime($r['date'])), $r['scheduled_in'],$r['scheduled_out'],$r['working_hour'],$r['in_time'],$r['out_time'],$r['worked_duration'],$r['over_time'],$r['late_in'],$r['early_out'],$r['early_in'],$r['late_out'],$r['marked_as'], strip_tags($methodsCombined), strip_tags($r['remarks']) ];
         $prepared=[]; $heights=[];
         foreach($line as $i=>$val){ $text=(string)$val; if($i==15){ $text=wordwrap($text,60,"\n",true);} $prepared[$i]=$text; $heights[$i]=$pdf->getStringHeight($widths[$i],$text); }
         $rowHeight=max($heights); if($rowHeight<5)$rowHeight=5; $y=$pdf->GetY(); $x=$pdf->GetX();
@@ -608,38 +716,70 @@ if($reportType === 'daily') {
       $endLabel=(new DateTime($endDate))->format('d/m/Y');
       $dateLabel=$startLabel.' - '.$endLabel;
     }
-    // Load settings for work start time
-    $workStart='09:35';
-    try { $st=$pdo->query("SELECT value FROM settings WHERE setting_key='work_start_time' LIMIT 1"); if($st && ($r=$st->fetch(PDO::FETCH_ASSOC))){ $workStart=$r['value']; } } catch(Exception $e){}
+  // Load settings for work start time (fallback to 09:30)
+  $workStart='09:30';
+  try { $st=$pdo->query("SELECT value FROM settings WHERE setting_key='work_start_time' LIMIT 1"); if($st && ($r=$st->fetch(PDO::FETCH_ASSOC))){ $workStart=$r['value']; } } catch(Exception $e){}
     $scheduled_in = new DateTime($workStart);
     // Employees limited to branch (timesheet UI requires branch); if none given treat as all
     $empParams=[]; $where=[];
     if($branch!==''){ $where[]='e.branch = ?'; $empParams[]=$branch; }
+    $where[]='(e.mach_id_not_applicable IS NULL OR e.mach_id_not_applicable = 0)';
     if(!empty($employeeIds)){ $where[]='e.emp_id IN ('.implode(',',array_fill(0,count($employeeIds),'?')).')'; $empParams=array_merge($empParams,$employeeIds);}    
     $where[]='(e.join_date IS NULL OR e.join_date < ?)'; $empParams[]=$startDate;
     $where[]='(e.exit_date IS NULL OR e.exit_date > ?)'; $empParams[]=$endDate;
-    $sqlEmp="SELECT e.emp_id, CONCAT(e.first_name,' ',e.middle_name,' ',e.last_name) AS employee_name, e.join_date, e.exit_date, e.branch AS branch_id, b.name AS branch FROM employees e LEFT JOIN branches b ON e.branch=b.id".($where?(' WHERE '.implode(' AND ',$where)):'').' ORDER BY e.emp_id';
-    $stEmp=$pdo->prepare($sqlEmp); $stEmp->execute($empParams); $employees=$stEmp->fetchAll(PDO::FETCH_ASSOC);
-    // Attendance earliest in_time per day
+  $sqlEmp="SELECT e.emp_id, CONCAT(e.first_name,' ',e.middle_name,' ',e.last_name) AS employee_name, e.join_date, e.exit_date, e.branch AS branch_id, b.name AS branch, e.work_start_time, e.work_end_time FROM employees e LEFT JOIN branches b ON e.branch=b.id".($where?(' WHERE '.implode(' AND ',$where)):'').' ORDER BY e.emp_id';
+  $stEmp=$pdo->prepare($sqlEmp); $stEmp->execute($empParams); $employees=$stEmp->fetchAll(PDO::FETCH_ASSOC);
+  // Prefetch overrides for timesheet employees across the date range
+  $empIdsForPrefetch = array_map(function($r){ return $r['emp_id']; }, $employees);
+  $overridesMap = prefetch_schedule_overrides($pdo, $empIdsForPrefetch, $startDate, $endDate);
+  // Attendance earliest in_time per day
     $attParams=[$startDate,$endDate]; $attWhere='a.date BETWEEN ? AND ?';
     if(!empty($employeeIds)){ $attWhere.=' AND a.emp_id IN ('.implode(',',array_fill(0,count($employeeIds),'?')).')'; $attParams=array_merge($attParams,$employeeIds);}    
-    if($branch!==''){ $attWhere.=' AND a.emp_id IN (SELECT emp_id FROM employees WHERE branch = ?)'; $attParams[]=$branch; }
+    if($branch!==''){ $attWhere.=' AND a.emp_id IN (SELECT emp_id FROM employees WHERE branch = ? AND (mach_id_not_applicable IS NULL OR mach_id_not_applicable = 0))'; $attParams[]=$branch; }
     $sqlAtt="SELECT a.emp_id, a.date, MIN(a.time) AS in_time FROM attendance_logs a WHERE $attWhere GROUP BY a.emp_id,a.date";
     $stAtt=$pdo->prepare($sqlAtt); $stAtt->execute($attParams); $attendance=[]; foreach($stAtt->fetchAll(PDO::FETCH_ASSOC) as $r){ $attendance[$r['emp_id']][$r['date']]=$r; }
     // Build date list
     $dates=[]; foreach(new DatePeriod(new DateTime($startDate), new DateInterval('P1D'), (new DateTime($endDate))->modify('+1 day')) as $d){ $dates[]=$d->format('Y-m-d'); }
+    // Prefetch holidays for the date range per branch to avoid per-employee/per-day DB calls (timesheet)
+    $holidaysByBranch = [];
+    try {
+      $branchIds = [null];
+      foreach($employees as $ed){ $bid = $ed['branch'] ?? null; if(!in_array($bid,$branchIds,true)) $branchIds[] = $bid; }
+      foreach($branchIds as $bId){
+        $list = get_holidays_in_range($startDate, $endDate, $bId===null?null:$bId);
+        $map = [];
+        foreach($list as $h){ if(!empty($h['effective_date'])){ $map[$h['effective_date']] = $h; } }
+        $bKey = is_null($bId) ? '__global' : (string)$bId;
+        $holidaysByBranch[$bKey] = $map;
+      }
+    } catch(Throwable $e) { ar_debug('Timesheet holiday prefetch failed: '.$e->getMessage()); }
+
     // Process employees
     $employeesOut=[]; foreach($employees as $emp){
       $empData=[ 'meta'=>$emp, 'dates'=>[], 'summary'=>['working_days'=>0,'present'=>0,'absent'=>0,'late'=>0,'holidays'=>0] ];
       foreach($dates as $date){
-        $dow=(int)date('N',strtotime($date)); $isSaturday=($dow==6); $holiday=is_holiday($date,$emp['branch_id']??null); $isHoliday=$holiday!==false; $status='A'; // default absent on working days
+        $dow=(int)date('N',strtotime($date)); $isSaturday=($dow==6);
+        // Use pre-fetched holidays map if available (will be populated below)
+  $branchKey = $emp['branch_id'] ?? null;
+  $bKey = is_null($branchKey) ? '__global' : (string)$branchKey;
+  $holiday = ($holidaysByBranch[$bKey][$date] ?? ($holidaysByBranch['__global'][$date] ?? false));
+        $isHoliday = $holiday!==false;
+        $status='A'; // default absent on working days
         $exited=(!empty($emp['exit_date']) && $date > $emp['exit_date']);
         if($exited){ $status='-'; }
         elseif($isSaturday || $isHoliday){ $status='H'; $empData['summary']['holidays']++; }
         else {
           if(isset($attendance[$emp['emp_id']][$date])){
-            $inTime=$attendance[$emp['emp_id']][$date]['in_time']; $inDT=new DateTime($inTime);
-            if($inDT <= $scheduled_in){ $status='P'; $empData['summary']['present']++; }
+            $inTimeRaw = $attendance[$emp['emp_id']][$date]['in_time'];
+            // Normalize both times to H:i (ignore seconds)
+            $inTime = date('H:i', strtotime($inTimeRaw));
+            // Prefer per-employee override/assignment first, else employee field, else configured work start
+            $empOverrides = $overridesMap[$emp['emp_id']] ?? [];
+            $resolved = resolve_schedule_for_emp_date($emp, $date, $empOverrides, $workStart, $workStart);
+            $workStartNorm = date('H:i', strtotime($resolved['start']));
+            $inDT = DateTime::createFromFormat('H:i', $inTime);
+            $scheduled_in_norm = DateTime::createFromFormat('H:i', $workStartNorm);
+            if($inDT <= $scheduled_in_norm){ $status='P'; $empData['summary']['present']++; }
             else { $status='L'; $empData['summary']['late']++; }
           } else {
             // No attendance -> Absent
@@ -657,7 +797,18 @@ if($reportType === 'daily') {
     foreach($employeesOut as &$empObj){
       $present=$empObj['summary']['present']; $absent=$empObj['summary']['absent']; $late=$empObj['summary']['late'];
       $amount = ($late <= 3)?0:(($late-3)*50); // only late beyond 3
-      $workingDays=$empObj['summary']['working_days']; $threshold=floor($workingDays*0.6); $isSelected = ($present >= $threshold && $absent <=2);
+      $workingDays=$empObj['summary']['working_days'];
+      // Lucky draw selection logic per rules:
+      // 1. New employees (joined during/after period) are not eligible
+      $isNew = false;
+      if (!empty($empObj['meta']['join_date'])) {
+        $joinDate = $empObj['meta']['join_date'];
+        if ($joinDate >= $startDate) $isNew = true;
+      }
+      // 2. Must be present at least 50% of working days
+      $threshold = ceil($workingDays * 0.5); // 50% (rounded up)
+      // 3. Absence for up to 2 days is allowed
+  $isSelected = (!$isNew && $present >= $threshold && $late <= 2);
       $empObj['calc_amount']=$amount; $empObj['calc_selected']=$isSelected;
       $amountStrings[] = number_format($amount,0); // no decimals currently shown in body rows
       if($isSelected){ $grandAmount += $amount; $selectedCount++; } else { $hasNotSelected=true; }
@@ -679,7 +830,7 @@ if($reportType === 'daily') {
     // Dynamic column widths: SN + Employee + N dates + 5 summary columns (Present, Absent, Leave, Amount, Status)
     $dateCount=count($dates); $baseWidth=$pdf->getPageWidth()-$pdf->getMargins()['left']-$pdf->getMargins()['right'];
   // Column width tuning with dynamic sizing for Amount & Status
-  $snW=8; $empW=50; // baseline widths
+  $snW=6; $empW=38; // baseline widths
   $pdf->SetFont('helvetica','B',8);
   $amountLabel='Amount'; $statusLabel='Status';
   $maxAmountStr=$amountLabel; foreach($amountStrings as $s){ if(strlen($s) > strlen($maxAmountStr)) $maxAmountStr=$s; }
@@ -699,6 +850,7 @@ if($reportType === 'daily') {
     // Column header line 1 (labels)
   $pdf->SetFont('helvetica','B',8); $pdf->SetFillColor(245,245,245);
   $pdf->Cell($snW,7,'SN',1,0,'C',true); $pdf->Cell($empW,7,'Employee',1,0,'L',true);
+  $pdf->Cell(10,7,'Sch. In',1,0,'C',true);
   foreach($dates as $d){ $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; if($isSat){ $pdf->SetFillColor(255,235,150);} else { $pdf->SetFillColor(245,245,245);} $pdf->Cell($perDate,7,date('d',strtotime($d)),1,0,'C',true); }
     // Reset fill for summary columns
     $pdf->SetFillColor(245,245,245);
@@ -709,12 +861,17 @@ if($reportType === 'daily') {
     static $absColor = null; if($absColor===null){ $absColor='#FFD2D2'; try{ $cs=$pdo->prepare("SELECT value FROM settings WHERE setting_key='timesheet_absent_color' LIMIT 1"); if($cs && $cs->execute() && ($cr=$cs->fetch(PDO::FETCH_ASSOC))){ $val=trim($cr['value']); if(preg_match('/^#?[0-9A-Fa-f]{6}$/',$val)){ if($val[0]!=='#') $val='#'.$val; $absColor=$val; } } }catch(Exception $e){} }
     $hexToRGB=function($hex){ $hex=ltrim($hex,'#'); return [hexdec(substr($hex,0,2)),hexdec(substr($hex,2,2)),hexdec(substr($hex,4,2))]; };
     [$absR,$absG,$absB]=$hexToRGB($absColor);
-  $pdf->SetFont('helvetica','',7.8); $sn=1; $rowIdx=0; foreach($employeesOut as $emp){ $rowStartY=$pdf->GetY(); $alt=($rowIdx % 2)==1; if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); } $pdf->Cell($snW,6,$sn++,1,0,'C',true); if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+  // Reduced row height (previously 6mm) per request
+  $pdf->SetFont('helvetica','',7.4); // slight font reduction for tighter rows
+  $rowH = 5; // unified body row height
+  $sn=1; $rowIdx=0; foreach($employeesOut as $emp){ $rowStartY=$pdf->GetY(); $alt=($rowIdx % 2)==1; if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); } $pdf->Cell($snW,$rowH,$sn++,1,0,'C',true); if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
     // Employee cell bold
-    $pdf->SetFont('helvetica','B',7.8);
-    $pdf->Cell($empW,6,$emp['meta']['emp_id'].' - '.$emp['meta']['employee_name'],1,0,'L',true);
+  $pdf->SetFont('helvetica','B',7.4);
+  $pdf->Cell($empW,$rowH,$emp['meta']['emp_id'].' - '.$emp['meta']['employee_name'],1,0,'L',true);
+    // Scheduled In time
+  $pdf->Cell(10, $rowH, date("g:i", strtotime($emp['meta']['work_start_time'])), 1, 0, 'C', true);
     // Revert font for remaining cells
-    $pdf->SetFont('helvetica','',7.8);
+  $pdf->SetFont('helvetica','',7.4);
     foreach($dates as $d){ $status=$emp['dates'][$d]['status']; $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; $fill=false; // coloring per status (do not apply zebra striping to date cells)
       if($status==='H'){ // Holiday / Weekend (keep yellow)
         $pdf->SetFillColor(255,235,150); $fill=true;
@@ -727,28 +884,29 @@ if($reportType === 'daily') {
       } else {
         $pdf->SetFillColor(245,245,245);
       }
-  $display=$status; $pdf->Cell($perDate,6,$display,1,0,'C',$fill); }
+  $display=$status; $pdf->Cell($perDate,$rowH,$display,1,0,'C',$fill); }
       // compute amount & selection
   $present=$emp['summary']['present']; $absent=$emp['summary']['absent']; $late=$emp['summary']['late'];
   $amount = $emp['calc_amount']; $isSelected = $emp['calc_selected'];
   if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[0],6,$present,1,0,'C',true);
+  $pdf->Cell($summaryW[0],$rowH,$present,1,0,'C',true);
   if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[1],6,$absent,1,0,'C',true);
+  $pdf->Cell($summaryW[1],$rowH,$absent,1,0,'C',true);
   if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[2],6,$late,1,0,'C',true);
+  $pdf->Cell($summaryW[2],$rowH,$late,1,0,'C',true);
   if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[3],6,number_format($amount,0),1,0,'C',true);
+  $pdf->Cell($summaryW[3],$rowH,number_format($amount,0),1,0,'C',true);
   if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-      $pdf->Cell($summaryW[4],6,($isSelected?'Selected':'Not Selected'),1,1,'C',true);
+  $pdf->Cell($summaryW[4],$rowH,($isSelected?'Selected':'Not Selected'),1,1,'C',true);
       $track($pdf,$pageBottoms); if($pdf->GetY()>$pdf->getPageHeight()-20){ $pdf->AddPage(); // reprint headers on new page
-  $pdf->SetFont('helvetica','B',8); $pdf->SetFillColor(245,245,245); $pdf->Cell($snW,7,'SN',1,0,'C',true); $pdf->Cell($empW,7,'Employee',1,0,'L',true); foreach($dates as $d){ $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; if($isSat){ $pdf->SetFillColor(255,235,150);} else { $pdf->SetFillColor(245,245,245);} $pdf->Cell($perDate,7,date('d',strtotime($d)),1,0,'C',true);} $pdf->SetFillColor(245,245,245); foreach($summaryLabels as $i=>$lab){ $pdf->Cell($summaryW[$i],7,$lab,1,0,'C',true);} $pdf->Ln(); $pdf->SetFont('helvetica','',7.8); }
+  $pdf->SetFont('helvetica','B',8); $pdf->SetFillColor(245,245,245); $pdf->Cell($snW,7,'SN',1,0,'C',true); $pdf->Cell($empW,7,'Employee',1,0,'L',true); foreach($dates as $d){ $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; if($isSat){ $pdf->SetFillColor(255,235,150);} else { $pdf->SetFillColor(245,245,245);} $pdf->Cell($perDate,7,date('d',strtotime($d)),1,0,'C',true);} $pdf->SetFillColor(245,245,245); foreach($summaryLabels as $i=>$lab){ $pdf->Cell($summaryW[$i],7,$lab,1,0,'C',true);} $pdf->Ln(); $pdf->SetFont('helvetica','',7.4); }
     $rowIdx++;
     }
   // Footer summary row per date (may need page break)
   if($pdf->GetY()>$pdf->getPageHeight()-24){ $pdf->AddPage(); $pdf->SetFont('helvetica','B',8); $pdf->SetFillColor(245,245,245); $pdf->Cell($snW,7,'SN',1,0,'C',true); $pdf->Cell($empW,7,'Employee',1,0,'L',true); foreach($dates as $d){ $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; if($isSat){ $pdf->SetFillColor(255,235,150);} else { $pdf->SetFillColor(245,245,245);} $pdf->Cell($perDate,7,date('d',strtotime($d)),1,0,'C',true);} $pdf->SetFillColor(245,245,245); foreach($summaryLabels as $i=>$lab){ $pdf->Cell($summaryW[$i],7,$lab,1,0,'C',true);} $pdf->Ln(); }
   // Summary row (match body row height & avoid double border by removing top border)
-  $sumH=5; $pdf->SetFont('helvetica','B',7.2); // increase summary row font size to match body better
+  // Match summary row height to body row height
+  $sumH=$rowH; $pdf->SetFont('helvetica','B',7.0);
   $centerCell=function($w,$h,$txt,$border='LRB',$align='C') use ($pdf){
     $x=$pdf->GetX(); $y=$pdf->GetY();
     $pdf->Cell($w,$h,'',$border,0,$align,false); // draw border
@@ -757,6 +915,7 @@ if($reportType === 'daily') {
     $pdf->SetXY($x,$offsetY); $pdf->Cell($w,$textHeight,$txt,0,0,$align,false);
     $pdf->SetXY($x+$w,$y); // move cursor to original baseline right edge
   };
+  // Summary row content
   $centerCell($snW+$empW,$sumH,'Summary');
     foreach($dates as $d){
       $presentOnly = $dateTotals[$d]['P'] ?? 0;
@@ -766,11 +925,17 @@ if($reportType === 'daily') {
   $centerCell($summaryW[0],$sumH,'');
   $centerCell($summaryW[1],$sumH,'');
   $centerCell($summaryW[2],$sumH,'');
-  $centerCell($summaryW[3],$sumH,number_format($grandAmount,2));
+  // Calculate total sum of all employees' amounts for summary row
+  $totalAmountAll = 0;
+  foreach($employeesOut as $empObj){
+    $totalAmountAll += $empObj['calc_amount'] ?? 0;
+  }
+  $centerCell($summaryW[3],$sumH,number_format($totalAmountAll,0));
   $centerCell($summaryW[4],$sumH,(string)$selectedCount);
   $pdf->Ln(); $track($pdf,$pageBottoms);
-  // Add breathing space before legend & rules
-  if($pdf->GetY() < ($pdf->getPageHeight()-55)) { $pdf->Ln(2); }
+  // Add breathing space before total amount summary and legend & rules
+  if($pdf->GetY() < ($pdf->getPageHeight()-65)) { $pdf->Ln(2); }
+
   // Legend + Rules (moved after entire table as requested)
   $legendText='Legend:  P = Timely Present    ||    L = Late    ||    A = Absent    ||    H = Holiday/Weekend';
     // English rules (Nepali removed due to font rendering issues)
@@ -830,6 +995,7 @@ if($reportType === 'daily') {
       'branch' => $branch,
       'branch_label' => $branchLabel,
       'employees_label' => $employeesLabel,
+      'employees_hidden' => $employeesHidden,
       'employees_raw' => empty($employeeIds)?'*':implode(',', $employeeIds),
       'generated_by' => (string)($_SESSION['fullName'] ?? ($_SESSION['user_id'] ?? 'Unknown')),
       'generated_at' => date('Y-m-d H:i:s'),
@@ -839,7 +1005,7 @@ if($reportType === 'daily') {
     if(count($_SESSION['generated_reports'])>50){ $_SESSION['generated_reports'] = array_slice($_SESSION['generated_reports'], -50); }
     try {
       if(isset($pdo)) {
-        $stmt = $pdo->prepare("INSERT INTO generated_reports (user_id, generated_by, report_type, type_label, date_label, branch_id, branch_label, employees_label, file_url, generated_at) VALUES (?,?,?,?,?,?,?,?,?,?)");
+        $stmt = $pdo->prepare("INSERT INTO generated_reports (user_id, generated_by, report_type, type_label, date_label, branch_id, branch_label, employees_label, employees_hidden, file_url, generated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->execute([
           isset($_SESSION['user_id']) ? (string)$_SESSION['user_id'] : null,
           $tsRecord['generated_by'],
@@ -849,6 +1015,7 @@ if($reportType === 'daily') {
           $branch !== '' ? $branch : null,
           $branchLabel,
           $employeesLabel,
+          $employeesHidden,
           $fileUrl,
           $tsRecord['generated_at']
         ]);
@@ -885,6 +1052,7 @@ $record = [
   'branch' => $branch,
   'branch_label' => $branchLabel,
   'employees_label' => $employeesLabel,
+  'employees_hidden' => $employeesHidden,
   'employees_raw' => empty($employeeIds)?'*':implode(',', $employeeIds),
   'generated_by' => (string)($_SESSION['fullName'] ?? ($_SESSION['user_id'] ?? 'Unknown')),
   'generated_at' => date('Y-m-d H:i:s'),
@@ -896,7 +1064,7 @@ if(count($_SESSION['generated_reports'])>50){ $_SESSION['generated_reports'] = a
 // DB persistence (ignore errors silently if table not migrated yet)
 try {
   if(isset($pdo)) {
-    $stmt = $pdo->prepare("INSERT INTO generated_reports (user_id, generated_by, report_type, type_label, date_label, branch_id, branch_label, employees_label, file_url, generated_at) VALUES (?,?,?,?,?,?,?,?,?,?)");
+    $stmt = $pdo->prepare("INSERT INTO generated_reports (user_id, generated_by, report_type, type_label, date_label, branch_id, branch_label, employees_label, employees_hidden, file_url, generated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
     $stmt->execute([
   isset($_SESSION['user_id']) ? (string)$_SESSION['user_id'] : null,
       $record['generated_by'],
@@ -906,6 +1074,7 @@ try {
       $branch !== '' ? $branch : null,
       $branchLabel,
       $employeesLabel,
+      $employeesHidden,
       $fileUrl,
       $record['generated_at']
     ]);

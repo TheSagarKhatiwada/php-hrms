@@ -354,9 +354,22 @@ class SparrowSMS {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             
-            $status = $response['success'] ? 'sent' : 'failed';
-            $messageId = $response['id'] ?? null;
-            $cost = $response['cost'] ?? 0;
+            $status = !empty($response['success']) ? 'sent' : 'failed';
+            // Map common provider response fields to our schema
+            $messageId = $response['id'] ?? $response['message_id'] ?? null;
+
+            // Cost may be returned under different keys by providers (cost, credit_consumed, credits_consumed)
+            if (isset($response['cost'])) {
+                $cost = floatval($response['cost']);
+            } elseif (isset($response['credit_consumed'])) {
+                $cost = floatval($response['credit_consumed']);
+            } elseif (isset($response['credits_consumed'])) {
+                $cost = floatval($response['credits_consumed']);
+            } elseif (isset($response['credit_used'])) {
+                $cost = floatval($response['credit_used']);
+            } else {
+                $cost = 0;
+            }
             
             $stmt->execute([
                 $to,

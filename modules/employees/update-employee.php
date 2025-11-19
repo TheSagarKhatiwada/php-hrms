@@ -9,6 +9,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // Collect and sanitize input
     $emp_id         = $_POST["emp_id"] ?? '';
     $machId         = trim($_POST['machId'] ?? '');
+    $machIdNotApplicable = isset($_POST['mach_id_not_applicable']) ? 1 : 0;
     $empBranchId    = trim($_POST['empBranchId'] ?? '');
     $empFirstName   = trim($_POST['empFirstName'] ?? '');
     $empMiddleName  = trim($_POST['empMiddleName'] ?? '');
@@ -27,6 +28,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $office_phone   = trim($_POST['office_phone'] ?? '');
     $supervisor_id  = !empty($_POST['supervisor_id']) ? trim($_POST['supervisor_id']) : null;
     $department_id  = !empty($_POST['department_id']) ? trim($_POST['department_id']) : null;
+    $work_start_time = trim($_POST['work_start_time'] ?? '');
+    $work_end_time = trim($_POST['work_end_time'] ?? '');
+    $allowWebAttendance = isset($_POST['allow_web_attendance']) ? 1 : 0;
+    if ($machIdNotApplicable) {
+        $machId = '';
+        $work_start_time = '';
+        $work_end_time = '';
+    }
 
     // Normalize and map gender like add-employee (form uses M/F, DB expects male/female)
     $gender = strtoupper($gender);
@@ -95,6 +104,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // Update employee
     $sql = "UPDATE employees SET
         mach_id = :machId,
+        mach_id_not_applicable = :mach_id_not_applicable,
         branch_id = :empBranchId,
         first_name = :empFirstName,
         middle_name = :empMiddleName,
@@ -112,8 +122,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         role_id = :role_id,
         office_email = :office_email,
         office_phone = :office_phone,
+        work_start_time = :work_start_time,
+        work_end_time = :work_end_time,
         supervisor_id = :supervisor_id,
-        department_id = :department_id
+        department_id = :department_id,
+        allow_web_attendance = :allow_web_attendance
         WHERE emp_id = :emp_id";
     try {
         $stmt = $pdo->prepare($sql);
@@ -139,6 +152,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             ':office_phone' => ($office_phone !== '' ? $office_phone : null),
             ':supervisor_id' => $supervisor_id,
             ':department_id' => $department_id
+            ,':work_start_time' => ($machIdNotApplicable ? null : ($work_start_time !== '' ? $work_start_time : '09:30:00'))
+            ,':work_end_time' => ($machIdNotApplicable ? null : ($work_end_time !== '' ? $work_end_time : '18:00:00'))
+            ,':mach_id_not_applicable' => $machIdNotApplicable
+            ,':allow_web_attendance' => $allowWebAttendance
         ]);
         if ($result) {
             $_SESSION['success'] = "Employee record updated successfully.";

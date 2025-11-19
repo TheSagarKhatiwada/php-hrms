@@ -9,10 +9,19 @@ if (!isset($pdo)) {
     @include_once 'db_connection.php';
 }
 
+// In-memory cache to avoid hitting the settings table repeatedly per request
+if (!isset($GLOBALS['HRMS_SETTINGS_CACHE'])) {
+    $GLOBALS['HRMS_SETTINGS_CACHE'] = [];
+}
+
 // Get a setting value from the database
 if (!function_exists('get_setting')) {
     function get_setting($key, $default = null) {
-        global $pdo;
+        global $pdo, $HRMS_SETTINGS_CACHE;
+
+        if (array_key_exists($key, $HRMS_SETTINGS_CACHE)) {
+            return $HRMS_SETTINGS_CACHE[$key];
+        }
         
         // If database connection is not available, return default value
         if (!isset($pdo) || $pdo === null) {
@@ -25,6 +34,7 @@ if (!function_exists('get_setting')) {
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($result) {
+                $HRMS_SETTINGS_CACHE[$key] = $result['value'];
                 return $result['value'];
             }
         } catch (PDOException $e) {
@@ -32,6 +42,7 @@ if (!function_exists('get_setting')) {
             error_log("Error fetching setting: " . $e->getMessage());
         }
         
+        $HRMS_SETTINGS_CACHE[$key] = $default;
         return $default;
     }
 }
@@ -39,7 +50,7 @@ if (!function_exists('get_setting')) {
 // Save a setting to the database
 if (!function_exists('save_setting')) {
     function save_setting($key, $value) {
-        global $pdo;
+        global $pdo, $HRMS_SETTINGS_CACHE;
         
         // If database connection is not available, return false
         if (!isset($pdo) || $pdo === null) {
@@ -61,6 +72,8 @@ if (!function_exists('save_setting')) {
                 $stmt = $pdo->prepare("INSERT INTO settings (setting_key, value, created_at, modified_at) VALUES (?, ?, NOW(), NOW())");
                 $stmt->execute([$key, $value]);
             }
+
+            $HRMS_SETTINGS_CACHE[$key] = $value;
             
             return true;
         } catch (PDOException $e) {
@@ -73,7 +86,7 @@ if (!function_exists('save_setting')) {
 // Get all settings as an associative array
 if (!function_exists('get_all_settings')) {
     function get_all_settings() {
-        global $pdo;
+        global $pdo, $HRMS_SETTINGS_CACHE;
         $settings = [];
         
         // If database connection is not available, return empty array
@@ -87,6 +100,7 @@ if (!function_exists('get_all_settings')) {
             
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $settings[$row['setting_key']] = $row['value'];
+                $HRMS_SETTINGS_CACHE[$row['setting_key']] = $row['value'];
             }
         } catch (PDOException $e) {
             error_log("Error fetching all settings: " . $e->getMessage());

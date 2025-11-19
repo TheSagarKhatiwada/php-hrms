@@ -240,15 +240,15 @@ HRMS System";
 
         // 1) Direct supervisor of the requester (if any)
         // We join requester by emp_id and resolve supervisor via numeric e.id linkage used in the app
-        $supervisorSql = "
-            SELECT s.email, s.first_name, s.last_name
-            FROM employees r
-            JOIN employees s ON r.supervisor_id = s.id
-            WHERE r.emp_id = ?
-              AND s.status = 'active'
-              AND COALESCE(s.login_access, 1) = 1
-              AND s.email IS NOT NULL AND s.email <> ''
-        ";
+                $supervisorSql = "
+                        SELECT s.email, s.first_name, s.last_name
+                        FROM employees r
+                        JOIN employees s ON r.supervisor_id = s.emp_id
+                        WHERE r.emp_id = ?
+                            AND s.status = 'active'
+                            AND COALESCE(s.login_access, 1) = 1
+                            AND s.email IS NOT NULL AND s.email <> ''
+                ";
         try {
             $stmt = $this->connection->prepare($supervisorSql);
             $stmt->execute([$employee_emp_id]);

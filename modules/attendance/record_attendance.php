@@ -42,12 +42,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         $emp_id_string = $_POST['emp_id'];
         
         // Validate employee exists
-        $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE emp_id = ?");
+        $stmt = $pdo->prepare("SELECT emp_id, allow_web_attendance FROM employees WHERE emp_id = ?");
         $stmt->execute([$emp_id_string]);
         $employee = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$employee) {
             echo json_encode(['success' => false, 'message' => 'Employee not found']);
+            exit();
+        }
+
+        if ((int)($employee['allow_web_attendance'] ?? 0) !== 1) {
+            echo json_encode(['success' => false, 'message' => 'Web clock-in/out is disabled for this account.']);
             exit();
         }
         
@@ -93,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
                         $notifyAction = $isCheckIn ? 'checked_in' : 'checked_out';
                         notify_attendance($emp_id_string, $notifyAction, $today . ' ' . $current_time);
                     }
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     // Just log the error but don't let it affect the success response
                     error_log("Error sending notification: " . $e->getMessage());
                 }

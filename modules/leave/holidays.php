@@ -1,145 +1,106 @@
 <?php
+// Ensure session configuration (custom session name & path) is loaded before any session usage
+require_once '../../includes/session_config.php';
+require_once '../../includes/db_connection.php';
+// Temporary debug helper - visit holidays.php?_debug=1 to log request/session info
+if (isset($_GET['_debug']) && $_GET['_debug'] == '1') {
+    $debug = [];
+    $debug['request_uri'] = $_SERVER['REQUEST_URI'] ?? '';
+    $debug['script_name'] = $_SERVER['SCRIPT_NAME'] ?? '';
+    $debug['php_self'] = $_SERVER['PHP_SELF'] ?? '';
+    $debug['query_string'] = $_SERVER['QUERY_STRING'] ?? '';
+    $debug['session'] = [];
+    // Capture cookies and session information
+    $debug['cookies'] = $_COOKIE ?? [];
+    if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
+    $debug['session_id'] = session_id();
+    foreach (['user_id','redirect_to'] as $k) { $debug['session'][$k] = $_SESSION[$k] ?? null; }
+    // Check for session file existence (session save path configured in session_config.php)
+    $sessSavePath = ini_get('session.save_path') ?: (dirname(__DIR__) . '/sessions');
+    $sessFile = rtrim($sessSavePath, "\/\\") . DIRECTORY_SEPARATOR . 'sess_' . session_id();
+    $debug['session_file'] = ['path' => $sessFile, 'exists' => file_exists($sessFile)];
+    $debug['time'] = date('c');
+    file_put_contents(__DIR__ . '/holidays_debug.log', print_r($debug, true), FILE_APPEND);
+}
+
+// Ensure session is started for flash messages
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+// Handle add holiday
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_holiday'])) {
+    $name = trim($_POST['holiday_name'] ?? '');
+    $startDate = $_POST['holiday_start_date'] ?? '';
+    $endDate = $_POST['holiday_end_date'] ?? $startDate;
+    $type = $_POST['holiday_type'] ?? 'company';
+    $branchId = isset($_POST['branch_id']) && $_POST['branch_id'] !== '' ? (int)$_POST['branch_id'] : null;
+    $description = trim($_POST['holiday_description'] ?? '');
+    $recurringType = $_POST['recurring_type'] ?? 'none';
+    // Ensure recurring day-of-week is stored as integer or NULL (avoid empty string causing SQL error)
+    $recurringDow = (isset($_POST['recurring_day_of_week']) && $_POST['recurring_day_of_week'] !== '') ? (int)$_POST['recurring_day_of_week'] : null;
+    $isRecurring = ($recurringType !== 'none') ? 1 : 0;
+
+    if ($name === '' || $startDate === '') {
+        $_SESSION['error'] = 'Holiday name and date are required.';
+        header('Location: holidays.php');
+        exit;
+    }
+
+    // Insert using extended holidays schema (includes start_date/end_date/branch_id/is_recurring)
+    // Allowed types must match the holidays.type ENUM in the database
+    $allowedTypes = ['national','religious','company'];
+    if (!in_array($type, $allowedTypes, true)) {
+        $type = 'company';
+    }
+    $isRec = ($recurringType !== 'none') ? 1 : 0;
+    // Use 'status' column (enum 'active'/'inactive') and store canonical date in start_date/end_date
+    $insertStmt = $pdo->prepare("INSERT INTO holidays (name, start_date, end_date, type, branch_id, description, is_recurring, recurring_type, recurring_day_of_week, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $exec = $insertStmt->execute([
+        $name,
+        $startDate ?: null,
+        $endDate ?: null,
+        $type,
+        $branchId,
+        $description,
+        $isRec,
+        $recurringType,
+        $recurringDow,
+        'active'
+    ]);
+
+    if ($exec) {
+        $_SESSION['success'] = 'Holiday added successfully.';
+    } else {
+        $_SESSION['error'] = 'Failed to add holiday.';
+    }
+    header('Location: holidays.php');
+    exit;
+}
+
+// Handle holiday deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_holiday'], $_POST['holiday_id'])) {
+    $deleteId = (int)$_POST['holiday_id'];
+    $delStmt = $pdo->prepare("DELETE FROM holidays WHERE id = ?");
+    if ($delStmt->execute([$deleteId])) {
+        $_SESSION['success'] = 'Holiday deleted successfully.';
+    } else {
+        $_SESSION['error'] = 'Failed to delete holiday.';
+    }
+    // Redirect to avoid form resubmission
+    header('Location: holidays.php');
+    exit;
+}
+
 $page = 'Holiday Management';
 $home = '../../';
-
-// Include utilities for role check functions
-require_once '../../includes/session_config.php';
-require_once '../../includes/utilities.php';
-
-// Check if user has permission to manage holidays (admin or HR)
-if (!is_admin() && !has_permission('manage_holidays')) {
-    $_SESSION['error'] = "You don't have permission to manage holidays.";
-    header('Location: ../../dashboard.php');
-    exit();
-}
-
-// Include database connection
-include '../../includes/db_connection.php';
-
-// Create holidays table if it doesn't exist
-try {
-    $createTableSQL = "CREATE TABLE IF NOT EXISTS holidays (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(200) NOT NULL,
-        date DATE NOT NULL,
-        type ENUM('national', 'company', 'optional') DEFAULT 'company',
-        description TEXT,
-        is_recurring BOOLEAN DEFAULT FALSE,
-        branch_id BIGINT UNSIGNED NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-    
-    $pdo->exec($createTableSQL);
-} catch (PDOException $e) {
-    error_log("Error creating holidays table: " . $e->getMessage());
-}
-
-// Handle form submissions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['add_holiday'])) {
-        // Add new holiday
-        $name = trim($_POST['holiday_name']);
-        $date = $_POST['holiday_date'];
-    $type = $_POST['holiday_type'];
-        $description = trim($_POST['holiday_description']);
-    $recurring_type = $_POST['recurring_type'] ?? 'none';
-    $recurring_day_of_week = isset($_POST['recurring_day_of_week']) && $_POST['recurring_day_of_week'] !== '' ? (int)$_POST['recurring_day_of_week'] : null;
-    // Back-compat flag
-    $is_recurring = ($recurring_type !== 'none') ? 1 : 0;
-    $branch_id = isset($_POST['branch_id']) && $_POST['branch_id'] !== '' ? (int)$_POST['branch_id'] : null;
-
-        try {
-            $stmt = $pdo->prepare("INSERT INTO holidays (name, date, type, description, is_recurring, branch_id, recurring_type, recurring_day_of_week) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$name, $date, $type, $description, $is_recurring, $branch_id, $recurring_type, $recurring_day_of_week]);
-            $_SESSION['success'] = "Holiday added successfully!";
-        } catch (PDOException $e) {
-            $_SESSION['error'] = "Error adding holiday: " . $e->getMessage();
-        }
-    } elseif (isset($_POST['edit_holiday'])) {
-        // Edit holiday
-        $id = $_POST['holiday_id'];
-        $name = trim($_POST['holiday_name']);
-        $date = $_POST['holiday_date'];
-        $type = $_POST['holiday_type'];
-        $description = trim($_POST['holiday_description']);
-    $recurring_type = $_POST['recurring_type'] ?? 'none';
-    $recurring_day_of_week = isset($_POST['recurring_day_of_week']) && $_POST['recurring_day_of_week'] !== '' ? (int)$_POST['recurring_day_of_week'] : null;
-    $is_recurring = ($recurring_type !== 'none') ? 1 : 0;
-    $branch_id = isset($_POST['branch_id']) && $_POST['branch_id'] !== '' ? (int)$_POST['branch_id'] : null;
-
-        try {
-            $stmt = $pdo->prepare("UPDATE holidays SET name = ?, date = ?, type = ?, description = ?, is_recurring = ?, branch_id = ?, recurring_type = ?, recurring_day_of_week = ? WHERE id = ?");
-            $stmt->execute([$name, $date, $type, $description, $is_recurring, $branch_id, $recurring_type, $recurring_day_of_week, $id]);
-            $_SESSION['success'] = "Holiday updated successfully!";
-        } catch (PDOException $e) {
-            $_SESSION['error'] = "Error updating holiday: " . $e->getMessage();
-        }
-    } elseif (isset($_POST['delete_holiday'])) {
-        // Delete holiday
-        $id = $_POST['holiday_id'];
-
-        try {
-            $stmt = $pdo->prepare("DELETE FROM holidays WHERE id = ?");
-            $stmt->execute([$id]);
-            $_SESSION['success'] = "Holiday deleted successfully!";
-        } catch (PDOException $e) {
-            $_SESSION['error'] = "Error deleting holiday: " . $e->getMessage();
-        }
-    }
-    
-    // Redirect to avoid form resubmission
-    header("Location: holidays.php");
-    exit();
-}
-
-// Fetch holidays for the selected year (default to current year)
-$currentYear = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
-// Basic sanity check to keep year within a reasonable range
-if ($currentYear < 2000 || $currentYear > 2100) {
-    $currentYear = (int)date('Y');
-}
-// View filter: 'all' or 'upcoming'
-$selectedView = isset($_GET['view']) && $_GET['view'] === 'upcoming' ? 'upcoming' : 'all';
-$nowYear = (int)date('Y');
-if ($currentYear < $nowYear) {
-    // Past year: do NOT include recurring holidays
-    $stmt = $pdo->prepare("SELECT h.*, b.name as branch_name 
-                           FROM holidays h 
-                           LEFT JOIN branches b ON h.branch_id = b.id 
-                           WHERE YEAR(h.date) = ?
-                           ORDER BY h.date ASC");
-    $stmt->execute([$currentYear]);
-} elseif ($currentYear === $nowYear) {
-    // Current year: include one-time holidays for this year, and only recurring holidays that still have an occurrence ahead in this year
-    // Annual recurring considered upcoming if month-day >= today
-    $sql = "SELECT h.*, b.name as branch_name
-            FROM holidays h
-            LEFT JOIN branches b ON h.branch_id = b.id
-            WHERE YEAR(h.date) = :yr
-               OR (
-                    h.is_recurring = 1 AND (
-                        h.recurring_type IN ('weekly','monthly','quarterly')
-                        OR (
-                            (h.recurring_type = 'annually' OR h.recurring_type IS NULL)
-                            AND STR_TO_DATE(CONCAT(:yr2, DATE_FORMAT(h.date, '-%m-%d')), '%Y-%m-%d') >= CURDATE()
-                        )
-                    )
-               )
-            ORDER BY h.date ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([':yr' => $currentYear, ':yr2' => (string)$currentYear]);
-} else {
-    // Future year: include recurring holidays and one-time holidays
-    $stmt = $pdo->prepare("SELECT h.*, b.name as branch_name 
-                           FROM holidays h 
-                           LEFT JOIN branches b ON h.branch_id = b.id 
-                           WHERE YEAR(h.date) = ? OR h.is_recurring = 1
-                           ORDER BY h.date ASC");
-    $stmt->execute([$currentYear]);
-}
+// ...existing code...
+$stmt = $pdo->query("SELECT * FROM holidays");
 $holidays = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Initialize year and view filters
+$currentYear = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
+$selectedView = isset($_GET['view']) ? $_GET['view'] : 'all';
 
 // Fetch branches for dropdown
 $branchStmt = $pdo->query("SELECT id, name FROM branches ORDER BY name");
@@ -148,6 +109,20 @@ $branches = $branchStmt->fetchAll(PDO::FETCH_ASSOC);
 // Include the header
 require_once '../../includes/header.php';
 ?>
+
+<style>
+    .accordion-button {
+            transition: background-color 0.2s;
+        }
+        body.dark-mode .accordion-button {
+            background-color: var(--bs-gray-900) !important;
+            color: var(--bs-gray-100) !important;
+            border-color: var(--bs-gray-800) !important;
+        }
+        body.dark-mode .accordion-item {
+            background-color: var(--bs-gray-900) !important;
+        }
+</style>
 
 <!-- Main content -->
 <div class="container-fluid p-4">
@@ -219,179 +194,207 @@ require_once '../../includes/header.php';
         </div>
     </div>
 
-    <!-- Holidays Table -->
-    <div class="card border-0 shadow-sm">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table id="holidays-table" class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Holiday Name</th>
-                            <th class="text-center">Date</th>
-                            <th class="text-center">Day</th>
-                            <th class="text-center">Type</th>
-                            <th>Branch</th>
-                            <th class="text-center">Recurrence</th>
-                            <th>Description</th>
-                            <th class="text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($holidays as $holiday): 
-                            // Compute display date for recurring holidays in the selected year; hide past occurrences for current year
-                            $today = date('Y-m-d');
-                            $nowYear = (int)date('Y');
-                            $isRecurring = (int)($holiday['is_recurring'] ?? 0) === 1;
-                            $rtype = $holiday['recurring_type'] ?? ($isRecurring ? 'annually' : 'none');
-                            $baseDate = $holiday['date'];
-                            $displayDateYmd = $baseDate;
-
-                            if ($isRecurring && !empty($baseDate)) {
-                                $baseTs = strtotime($baseDate);
-                                $baseM = (int)date('n', $baseTs);
-                                $baseD = (int)date('j', $baseTs);
-                                if ($rtype === 'annually') {
-                                    $displayDateYmd = sprintf('%04d-%02d-%02d', (int)$currentYear, (int)date('n', $baseTs), $baseD);
-                                } elseif ($rtype === 'monthly') {
-                                    // Next monthly occurrence in selected year
-                                    $disp = null;
-                                    $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
-                                    for ($m = $startMonth; $m <= 12; $m++) {
-                                        if (checkdate($m, $baseD, (int)$currentYear)) {
-                                            $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
-                                            if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
+    <!-- Monthly-wise Holidays Accordion -->
+    <div class="accordion" id="holidaysAccordion">
+        <?php
+        // Group holidays by month
+        $months = [];
+        foreach ($holidays as $holiday) {
+            // Compute display date for recurring holidays in the selected year
+            $today = date('Y-m-d');
+            $nowYear = (int)date('Y');
+            $isRecurring = (int)($holiday['is_recurring'] ?? 0) === 1;
+            $rtype = $holiday['recurring_type'] ?? ($isRecurring ? 'annually' : 'none');
+    // Prefer start_date when present (range support).
+    $baseDate = $holiday['start_date'] ?? null;
+            $displayDateYmd = $baseDate;
+            if ($isRecurring && !empty($baseDate)) {
+                $baseTs = strtotime($baseDate);
+                $baseM = (int)date('n', $baseTs);
+                $baseD = (int)date('j', $baseTs);
+                if ($rtype === 'annually') {
+                    $displayDateYmd = sprintf('%04d-%02d-%02d', (int)$currentYear, (int)date('n', $baseTs), $baseD);
+                } elseif ($rtype === 'monthly') {
+                    $disp = null;
+                    $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
+                    for ($m = $startMonth; $m <= 12; $m++) {
+                        if (checkdate($m, $baseD, (int)$currentYear)) {
+                            $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
+                            if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
+                        }
+                    }
+                    $displayDateYmd = $disp ?: null;
+                } elseif ($rtype === 'quarterly') {
+                    $disp = null;
+                    $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
+                    for ($m = $startMonth; $m <= 12; $m++) {
+                        if ( (($m - $baseM) % 3) === 0 && checkdate($m, $baseD, (int)$currentYear) ) {
+                            $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
+                            if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
+                        }
+                    }
+                    $displayDateYmd = $disp ?: null;
+                } elseif ($rtype === 'weekly') {
+                    $dowWanted = (int)($holiday['recurring_day_of_week'] ?? date('N', $baseTs));
+                    $startDate = ($currentYear == $nowYear) ? $today : sprintf('%04d-01-01', (int)$currentYear);
+                    $startTs = strtotime($startDate);
+                    $startDow = (int)date('N', $startTs);
+                    $delta = ($dowWanted - $startDow + 7) % 7;
+                    $candTs = strtotime("+$delta day", $startTs);
+                    $cand = date('Y-m-d', $candTs);
+                    if ((int)date('Y', $candTs) === (int)$currentYear) {
+                        $displayDateYmd = ($currentYear > $nowYear || $cand >= $today) ? $cand : null;
+                    } else {
+                        $displayDateYmd = null;
+                    }
+                }
+            }
+            // Apply view filter: upcoming vs all
+            if ($selectedView === 'upcoming') {
+                if ($displayDateYmd === null) { continue; }
+                $boundary = ($currentYear < $nowYear)
+                    ? '9999-12-31'
+                    : (($currentYear > $nowYear)
+                        ? sprintf('%04d-01-01', (int)$currentYear)
+                        : $today);
+                if ($displayDateYmd < $boundary) { continue; }
+            }
+            if ($displayDateYmd === null) continue;
+            $monthNum = (int)date('n', strtotime($displayDateYmd));
+            $months[$monthNum][] = array_merge($holiday, ['display_date' => $displayDateYmd]);
+        }
+        $monthNames = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
+        $currentMonth = (int)date('n');
+        foreach ($monthNames as $mNum => $mName):
+            $monthHolidays = $months[$mNum] ?? [];
+            if (empty($monthHolidays)) continue;
+            $expanded = ($mNum === $currentMonth) ? 'show' : '';
+            $collapsed = ($mNum === $currentMonth) ? '' : 'collapsed';
+            $ariaExpanded = ($mNum === $currentMonth) ? 'true' : 'false';
+        ?>
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="heading<?php echo $mNum; ?>">
+                <button class="accordion-button <?php echo $collapsed; ?>" type="button" data-bs-toggle="collapse" data-bs-target="#collapse<?php echo $mNum; ?>" aria-expanded="<?php echo $ariaExpanded; ?>" aria-controls="collapse<?php echo $mNum; ?>">
+                    <?php echo $mName; ?> <span class="ms-2 badge bg-primary"><?php echo count($monthHolidays); ?></span>
+                </button>
+            </h2>
+            <div id="collapse<?php echo $mNum; ?>" class="accordion-collapse collapse <?php echo $expanded; ?>" aria-labelledby="heading<?php echo $mNum; ?>" data-bs-parent="#holidaysAccordion">
+                <div class="accordion-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Holiday Name</th>
+                                    <th class="text-center">Date</th>
+                                    <th class="text-center">Day</th>
+                                    <th class="text-center">Type</th>
+                                    <th>Branch</th>
+                                    <th class="text-center">Recurrence</th>
+                                    <th>Description</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($monthHolidays as $holiday): ?>
+                                <tr>
+                                    <td class="align-middle">
+                                        <strong><?php echo htmlspecialchars($holiday['name']); ?></strong>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <?php
+                                            $start_raw = $holiday['start_date'] ?? ($holiday['display_date'] ?? null);
+                                            $end_raw = $holiday['end_date'] ?? ($holiday['display_date'] ?? null);
+                                            $start = $start_raw ? date('M d, Y', strtotime($start_raw)) : '';
+                                            $end = $end_raw ? date('M d, Y', strtotime($end_raw)) : '';
+                                            echo ($start === $end) ? $start : ($start . ' - ' . $end);
+                                        ?>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <?php echo date('l', strtotime($holiday['display_date'])); ?>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <?php
+                                        $badgeClass = '';
+                                        switch ($holiday['type']) {
+                                            case 'national':
+                                                $badgeClass = 'bg-success';
+                                                break;
+                                            case 'company':
+                                                $badgeClass = 'bg-info';
+                                                break;
+                                            case 'optional':
+                                                $badgeClass = 'bg-warning';
+                                                break;
                                         }
-                                    }
-                                    $displayDateYmd = $disp ?: null;
-                                } elseif ($rtype === 'quarterly') {
-                                    // Months that align every 3 months from base month
-                                    $disp = null;
-                                    $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
-                                    for ($m = $startMonth; $m <= 12; $m++) {
-                                        if ( (($m - $baseM) % 3) === 0 && checkdate($m, $baseD, (int)$currentYear) ) {
-                                            $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
-                                            if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
-                                        }
-                                    }
-                                    $displayDateYmd = $disp ?: null;
-                                } elseif ($rtype === 'weekly') {
-                                    // Next weekly occurrence (day of week) in selected year
-                                    $dowWanted = (int)($holiday['recurring_day_of_week'] ?? date('N', $baseTs)); // 1..7
-                                    $startDate = ($currentYear == $nowYear) ? $today : sprintf('%04d-01-01', (int)$currentYear);
-                                    $startTs = strtotime($startDate);
-                                    $startDow = (int)date('N', $startTs);
-                                    $delta = ($dowWanted - $startDow + 7) % 7;
-                                    $candTs = strtotime("+$delta day", $startTs);
-                                    $cand = date('Y-m-d', $candTs);
-                                    if ((int)date('Y', $candTs) === (int)$currentYear) {
-                                        $displayDateYmd = ($currentYear > $nowYear || $cand >= $today) ? $cand : null;
-                                    } else {
-                                        $displayDateYmd = null;
-                                    }
-                                }
-                            }
-
-                            // Apply view filter: upcoming vs all
-                            if ($selectedView === 'upcoming') {
-                                // Determine boundary within selected year
-                                if ($displayDateYmd === null) { continue; }
-                                $boundary = ($currentYear < $nowYear)
-                                    ? '9999-12-31'                            // ensures skip all for past years
-                                    : (($currentYear > $nowYear)
-                                        ? sprintf('%04d-01-01', (int)$currentYear) // all in future year are upcoming within that year
-                                        : $today);                               // current year: from today
-                                if ($displayDateYmd < $boundary) { continue; }
-                            }
-                        ?>
-                        <tr>
-                            <td class="align-middle">
-                                <strong><?php echo htmlspecialchars($holiday['name']); ?></strong>
-                            </td>
-                            <td class="text-center align-middle">
-                                <?php echo date('M d, Y', strtotime($displayDateYmd)); ?>
-                            </td>
-                            <td class="text-center align-middle">
-                                <?php echo date('l', strtotime($displayDateYmd)); ?>
-                            </td>
-                            <td class="text-center align-middle">
-                                <?php
-                                $badgeClass = '';
-                                switch ($holiday['type']) {
-                                    case 'national':
-                                        $badgeClass = 'bg-success';
-                                        break;
-                                    case 'company':
-                                        $badgeClass = 'bg-info';
-                                        break;
-                                    case 'optional':
-                                        $badgeClass = 'bg-warning';
-                                        break;
-                                }
-                                ?>
-                                <span class="badge <?php echo $badgeClass; ?>">
-                                    <?php echo ucfirst($holiday['type']); ?>
-                                </span>
-                            </td>
-                            <td class="align-middle">
-                                <?php echo $holiday['branch_name'] ? htmlspecialchars($holiday['branch_name']) : '<span class="text-muted">All Branches</span>'; ?>
-                            </td>
-                            <td class="text-center align-middle">
-                                <?php
-                                    $rt = $holiday['recurring_type'] ?? ($holiday['is_recurring'] ? 'annually' : 'none');
-                                    $labels = [
-                                        'none' => 'One-time',
-                                        'weekly' => 'Weekly',
-                                        'monthly' => 'Monthly',
-                                        'quarterly' => 'Quarterly',
-                                        'annually' => 'Annually'
-                                    ];
-                                    echo '<span class="badge bg-secondary">' . ($labels[$rt] ?? 'One-time') . '</span>';
-                                ?>
-                            </td>
-                            <td class="align-middle">
-                                <?php echo $holiday['description'] ? htmlspecialchars(substr($holiday['description'], 0, 50)) . '...' : '<span class="text-muted">No description</span>'; ?>
-                            </td>
-                            <td class="text-center align-middle">
-                                <div class="dropdown">
-                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                        <i class="fas fa-ellipsis-v"></i>
-                                    </button>
-                                    <ul class="dropdown-menu dropdown-menu-end">
-                                        <li>
-                                            <button class="dropdown-item edit-holiday" 
-                                                    data-id="<?php echo $holiday['id']; ?>"
-                                                    data-name="<?php echo htmlspecialchars($holiday['name']); ?>"
-                                                    data-date="<?php echo $holiday['date']; ?>"
-                                                    data-type="<?php echo $holiday['type']; ?>"
-                                                    data-description="<?php echo htmlspecialchars($holiday['description']); ?>"
-                                                    data-recurring="<?php echo $holiday['is_recurring']; ?>"
-                                                    data-recurring-type="<?php echo htmlspecialchars($holiday['recurring_type'] ?? ($holiday['is_recurring'] ? 'annually' : 'none')); ?>"
-                                                    data-recurring-dow="<?php echo htmlspecialchars($holiday['recurring_day_of_week'] ?? ''); ?>"
-                                                    data-branch="<?php echo $holiday['branch_id']; ?>"
-                                                    data-bs-toggle="modal" 
-                                                    data-bs-target="#editHolidayModal">
-                                                <i class="fas fa-edit me-2"></i> Edit
+                                        ?>
+                                        <span class="badge <?php echo $badgeClass; ?>">
+                                            <?php echo ucfirst($holiday['type']); ?>
+                                        </span>
+                                    </td>
+                                    <td class="align-middle">
+                                        <?php echo (isset($holiday['branch_name']) && $holiday['branch_name']) ? htmlspecialchars($holiday['branch_name']) : '<span class="text-muted">All Branches</span>'; ?>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <?php
+                                            $rt = $holiday['recurring_type'] ?? ($holiday['is_recurring'] ? 'annually' : 'none');
+                                            $labels = [
+                                                'none' => 'One-time',
+                                                'weekly' => 'Weekly',
+                                                'monthly' => 'Monthly',
+                                                'quarterly' => 'Quarterly',
+                                                'annually' => 'Annually'
+                                            ];
+                                            echo '<span class="badge bg-secondary">' . ($labels[$rt] ?? 'One-time') . '</span>';
+                                        ?>
+                                    </td>
+                                    <td class="align-middle">
+                                        <?php echo $holiday['description'] ? htmlspecialchars(substr($holiday['description'], 0, 50)) . '...' : '<span class="text-muted">No description</span>'; ?>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                <i class="fas fa-ellipsis-v"></i>
                                             </button>
-                                        </li>
-                                        <li><hr class="dropdown-divider"></li>
-                                        <li>
-                                            <button class="dropdown-item text-danger delete-holiday" 
-                                                    data-id="<?php echo $holiday['id']; ?>"
-                                                    data-name="<?php echo htmlspecialchars($holiday['name']); ?>"
-                                                    data-bs-toggle="modal" 
-                                                    data-bs-target="#deleteHolidayModal">
-                                                <i class="fas fa-trash me-2"></i> Delete
-                                            </button>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                                            <ul class="dropdown-menu dropdown-menu-end">
+                                                <li>
+                                                    <button class="dropdown-item edit-holiday" 
+                                                            data-id="<?php echo $holiday['id']; ?>"
+                                                            data-name="<?php echo htmlspecialchars($holiday['name']); ?>"
+                                                            data-start_date="<?php echo $holiday['start_date'] ?? ($holiday['display_date'] ?? ''); ?>"
+                                                            data-end_date="<?php echo $holiday['end_date'] ?? ($holiday['display_date'] ?? ''); ?>"
+                                                            data-type="<?php echo $holiday['type']; ?>"
+                                                            data-description="<?php echo htmlspecialchars($holiday['description']); ?>"
+                                                            data-recurring="<?php echo $holiday['is_recurring']; ?>"
+                                                            data-recurring-type="<?php echo htmlspecialchars($holiday['recurring_type'] ?? ($holiday['is_recurring'] ? 'annually' : 'none')); ?>"
+                                                            data-recurring-dow="<?php echo htmlspecialchars($holiday['recurring_day_of_week'] ?? ''); ?>"
+                                                            data-branch="<?php echo $holiday['branch_id']; ?>"
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#editHolidayModal">
+                                                        <i class="fas fa-edit me-2"></i> Edit
+                                                    </button>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <button class="dropdown-item text-danger delete-holiday" 
+                                                            data-id="<?php echo $holiday['id']; ?>"
+                                                            data-name="<?php echo htmlspecialchars($holiday['name']); ?>"
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#deleteHolidayModal">
+                                                        <i class="fas fa-trash me-2"></i> Delete
+                                                    </button>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
+        <?php endforeach; ?>
     </div>
 </div>
 
@@ -406,13 +409,17 @@ require_once '../../includes/header.php';
             <form method="POST">
                 <div class="modal-body">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-7 mb-3">
                             <label for="holiday_name" class="form-label">Holiday Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="holiday_name" name="holiday_name" required>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="holiday_date" class="form-label">Date <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control" id="holiday_date" name="holiday_date" required>
+                        <div class="col-md-5 mb-3 d-flex align-items-end">
+                            <div style="width:100%;">
+                                <label for="holiday_date_range" class="form-label">Date Range <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="holiday_date_range" name="holiday_date_range" required autocomplete="off">
+                                <input type="hidden" id="holiday_start_date" name="holiday_start_date">
+                                <input type="hidden" id="holiday_end_date" name="holiday_end_date">
+                            </div>
                         </div>
                     </div>
                     <div class="row">
@@ -485,13 +492,17 @@ require_once '../../includes/header.php';
                 <div class="modal-body">
                     <input type="hidden" id="edit_holiday_id" name="holiday_id">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-7 mb-3">
                             <label for="edit_holiday_name" class="form-label">Holiday Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="edit_holiday_name" name="holiday_name" required>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="edit_holiday_date" class="form-label">Date <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control" id="edit_holiday_date" name="holiday_date" required>
+                        <div class="col-md-5 mb-3 d-flex align-items-end">
+                            <div style="width:100%;">
+                                <label for="edit_holiday_date_range" class="form-label">Date Range <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="edit_holiday_date_range" name="edit_holiday_date_range" required autocomplete="off">
+                                <input type="hidden" id="edit_holiday_start_date" name="holiday_start_date">
+                                <input type="hidden" id="edit_holiday_end_date" name="holiday_end_date">
+                            </div>
                         </div>
                     </div>
                     <div class="row">
@@ -581,10 +592,36 @@ require_once '../../includes/header.php';
 <!-- DataTables CSS & JS (paths fixed relative to $home) -->
 <link rel="stylesheet" href="<?php echo $home; ?>plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
 <link rel="stylesheet" href="<?php echo $home; ?>plugins/datatables-responsive/css/responsive.bootstrap4.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css">
+<style>
+body.dark-mode .daterangepicker {
+    background: #23272b !important;
+    color: #f8f9fa !important;
+}
+body.dark-mode .daterangepicker .calendar-table {
+    background: #23272b !important;
+    color: #f8f9fa !important;
+}
+body.dark-mode .daterangepicker .calendar-table th,
+body.dark-mode .daterangepicker .calendar-table td {
+    color: #f8f9fa !important;
+}
+body.dark-mode .daterangepicker .ranges li {
+    color: #f8f9fa !important;
+}
+body.dark-mode .daterangepicker .applyBtn,
+body.dark-mode .daterangepicker .cancelBtn {
+    background: #343a40 !important;
+    color: #f8f9fa !important;
+    border-color: #23272b !important;
+}
+</style>
 <script src="<?php echo $home; ?>plugins/datatables/jquery.dataTables.min.js"></script>
 <script src="<?php echo $home; ?>plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
 <script src="<?php echo $home; ?>plugins/datatables-responsive/js/dataTables.responsive.min.js"></script>
 <script src="<?php echo $home; ?>plugins/datatables-responsive/js/responsive.bootstrap4.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 
 <!-- SweetAlert2 Flash Messages -->
 <script>
@@ -618,6 +655,62 @@ require_once '../../includes/header.php';
 <!-- Page specific script -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Daterangepicker for Add Holiday
+    if (window.$ && $('#holiday_date_range').length) {
+        $('#holiday_date_range').daterangepicker({
+            opens: 'center',
+            autoUpdateInput: false,
+            locale: {
+                format: 'DD/MM/YYYY',
+                cancelLabel: 'Clear'
+            },
+            ranges: {
+                'Tomorrow': [moment().add(1, 'days'), moment().add(1, 'days')],
+                'Day After Tomorrow': [moment().add(2, 'days'), moment().add(2, 'days')],
+                'Next Week': [moment().add(1, 'weeks').startOf('week'), moment().add(1, 'weeks').endOf('week')],
+                'Next Month': [moment().add(1, 'months').startOf('month'), moment().add(1, 'months').endOf('month')]
+            }
+        });
+        $('#holiday_date_range').on('apply.daterangepicker', function(ev, picker) {
+            $(this).val(picker.startDate.format('DD/MM/YYYY') + ' - ' + picker.endDate.format('DD/MM/YYYY'));
+            $('#holiday_start_date').val(picker.startDate.format('YYYY-MM-DD'));
+            $('#holiday_end_date').val(picker.endDate.format('YYYY-MM-DD'));
+        });
+        $('#holiday_date_range').on('cancel.daterangepicker', function(ev, picker) {
+            $(this).val('');
+            $('#holiday_start_date').val('');
+            $('#holiday_end_date').val('');
+        });
+    }
+    // Daterangepicker for Edit Holiday
+    if (window.$ && $('#edit_holiday_date_range').length) {
+        $('#edit_holiday_date_range').daterangepicker({
+            opens: 'center',
+            autoUpdateInput: false,
+            locale: {
+                format: 'DD/MM/YYYY',
+                cancelLabel: 'Clear'
+            },
+            ranges: {
+                'This Month': [moment().startOf('month'), moment().endOf('month')],
+                'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')],
+                'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+                'This Quarter': [moment().startOf('quarter'), moment().endOf('quarter')],
+                'Last Quarter': [moment().subtract(1, 'quarter').startOf('quarter'), moment().subtract(1, 'quarter').endOf('quarter')],
+                'Custom Range': []
+            }
+        });
+        $('#edit_holiday_date_range').on('apply.daterangepicker', function(ev, picker) {
+            $(this).val(picker.startDate.format('DD/MM/YYYY') + ' - ' + picker.endDate.format('DD/MM/YYYY'));
+            $('#edit_holiday_start_date').val(picker.startDate.format('YYYY-MM-DD'));
+            $('#edit_holiday_end_date').val(picker.endDate.format('YYYY-MM-DD'));
+        });
+        $('#edit_holiday_date_range').on('cancel.daterangepicker', function(ev, picker) {
+            $(this).val('');
+            $('#edit_holiday_start_date').val('');
+            $('#edit_holiday_end_date').val('');
+        });
+    }
     // Initialize DataTable (support both vanilla DataTables 2 and jQuery DataTables 1.x)
     try {
         if (typeof DataTable === 'function' && (!window.jQuery || !jQuery.fn || !jQuery.fn.DataTable)) {
@@ -661,7 +754,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             document.getElementById('edit_holiday_id').value = button.getAttribute('data-id');
             document.getElementById('edit_holiday_name').value = button.getAttribute('data-name');
-            document.getElementById('edit_holiday_date').value = button.getAttribute('data-date');
+            document.getElementById('edit_holiday_start_date').value = button.getAttribute('data-start_date');
+            document.getElementById('edit_holiday_end_date').value = button.getAttribute('data-end_date');
             document.getElementById('edit_holiday_type').value = button.getAttribute('data-type');
             document.getElementById('edit_holiday_description').value = button.getAttribute('data-description');
             document.getElementById('edit_branch_id').value = button.getAttribute('data-branch') || '';
@@ -754,6 +848,18 @@ body.dark-mode .table td {
 
 body.dark-mode .table-hover tbody tr:hover {
     background-color: var(--bs-gray-700);
+}
+
+.accordion-button {
+    transition: background-color 0.2s;
+}
+body.dark-mode .accordion-button {
+    background-color: var(--bs-gray-900) !important;
+    color: var(--bs-gray-100) !important;
+    border-color: var(--bs-gray-800) !important;
+}
+body.dark-mode .accordion-item {
+    background-color: var(--bs-gray-900) !important;
 }
 
 .badge {

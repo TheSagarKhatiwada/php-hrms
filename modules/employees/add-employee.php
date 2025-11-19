@@ -4,6 +4,7 @@ require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 
 $page = 'Add Employee';
+$page = 'employees';
 
 // Use the standardized role check function
 if (!is_admin() && get_user_role() === '0') {
@@ -15,6 +16,7 @@ include '../../includes/db_connection.php'; // Include the database connection f
 
 // Get query parameters for repopulating form after errors
 $machId = $_GET['machId'] ?? '';
+$machIdNotApplicablePrefill = isset($_GET['mach_id_not_applicable']) ? (int)$_GET['mach_id_not_applicable'] : 0;
 $empBranchId = $_GET['empBranchId'] ?? '';
 $empFirstName = $_GET['empFirstName'] ?? '';
 $empMiddleName = $_GET['empMiddleName'] ?? '';
@@ -32,10 +34,12 @@ $officeEmail = $_GET['office_email'] ?? '';
 $officePhone = $_GET['office_phone'] ?? '';
 $supervisor_id = $_GET['supervisor_id'] ?? '';
 $department_id = $_GET['department_id'] ?? '';
+$allowWebAttendancePrefill = isset($_GET['allow_web_attendance']) ? (int)$_GET['allow_web_attendance'] : 0;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
   // Get form data and trim/validate
   $machId = trim($_POST['machId']);
+  $machIdNotApplicable = isset($_POST['mach_id_not_applicable']) ? 1 : 0;
   $empBranchId = trim($_POST['empBranchId']);
   $empFirstName = trim($_POST['empFirstName']);
   $empMiddleName = trim($_POST['empMiddleName']);
@@ -45,6 +49,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $empPhone = trim($_POST['empPhone']);
   $empHireDate = trim($_POST['empHireDate']);
   $empJoinDate = trim($_POST['empJoinDate']);
+  $workStartTime = trim($_POST['work_start_time'] ?? '');
+  $workEndTime = trim($_POST['work_end_time'] ?? '');
+  if ($machIdNotApplicable) {
+      $machId = '';
+      $workStartTime = '';
+      $workEndTime = '';
+  }
   $designationId = trim($_POST['designationId']); 
   $loginAccess = trim($_POST['login_access']); 
   $croppedImage = $_POST['croppedImage'];
@@ -52,6 +63,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $role = trim($_POST['role']);
   $officeEmail = trim($_POST['office_email']);
   $officePhone = trim($_POST['office_phone']);
+  $allowWebAttendance = isset($_POST['allow_web_attendance']) ? 1 : 0;
   
   // Hierarchy fields
   $supervisor_id = !empty($_POST['supervisor_id']) ? trim($_POST['supervisor_id']) : null;
@@ -105,13 +117,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
   try {
     // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (emp_id, mach_id, branch_id, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation_id, login_access, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id)
-            VALUES (:empId, :machId, :empBranchId, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designationId, :loginAccess, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id)";
+    $sql = "INSERT INTO employees (emp_id, mach_id, branch_id, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation_id, login_access, allow_web_attendance, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id, work_start_time, work_end_time, mach_id_not_applicable)
+      VALUES (:empId, :machId, :empBranchId, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designationId, :loginAccess, :allowWebAttendance, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id, :workStartTime, :workEndTime, :machIdNotApplicable)";
     $stmt = $pdo->prepare($sql);
     
     $result = $stmt->execute([
         ':empId' => $empId,
-        ':machId' => (int)$machId,
+        ':machId' => ($machId !== '' ? (int)$machId : null),
         ':empBranchId' => $empBranchId,
         ':empFirstName' => $empFirstName,
         ':empMiddleName' => $empMiddleName,
@@ -123,6 +135,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':empJoinDate' => $empJoinDate ?: null,
         ':designationId' => (int)$designationId,
         ':loginAccess' => (int)$loginAccess,
+        ':allowWebAttendance' => $allowWebAttendance,
         ':userImage' => $dbPath,
         ':date_of_birth' => $dob ?: null,
         ':role_id' => (int)$role,
@@ -130,6 +143,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':officePhone' => $officePhone ?: null,
         ':supervisor_id' => $supervisor_id,
         ':department_id' => $department_id
+      ,':workStartTime' => ($machIdNotApplicable ? null : ($workStartTime !== '' ? $workStartTime : '09:30:00'))
+      ,':workEndTime' => ($machIdNotApplicable ? null : ($workEndTime !== '' ? $workEndTime : '18:00:00'))
+      ,':machIdNotApplicable' => $machIdNotApplicable
     ]);
 
     // Since employees table uses emp_id as primary key, get the inserted emp_id
@@ -228,8 +244,14 @@ require_once __DIR__ . '/../../includes/header.php';
           <div class="col-md-8">
             <div class="row mb-3">
               <div class="col-md-4">
-                <label for="machId" class="form-label">Machine ID</label>
-                <input type="text" class="form-control" id="machId" name="machId" value="<?php echo htmlspecialchars($machId); ?>" autofocus>
+                <div class="d-flex justify-content-between align-items-center">
+                  <label for="machId" class="form-label mb-0">Machine ID</label>
+                  <div class="form-check form-check-inline m-0 small">
+                    <input class="form-check-input" type="checkbox" id="machIdNotApplicable" name="mach_id_not_applicable" value="1" <?php echo $machIdNotApplicablePrefill ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="machIdNotApplicable">Not Applicable</label>
+                  </div>
+                </div>
+                <input type="text" class="form-control mt-1" id="machId" name="machId" value="<?php echo htmlspecialchars($machId); ?>" autofocus>
               </div>
               <div class="col-md-8">
                 <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
@@ -319,6 +341,17 @@ require_once __DIR__ . '/../../includes/header.php';
                        title="Date when employee actually started working (can be updated later)">
               </div>
             </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="work_start_time" class="form-label">Work Start Time</label>
+                <input type="time" class="form-control" id="work_start_time" name="work_start_time" value="<?php echo htmlspecialchars($_GET['work_start_time'] ?? '09:00'); ?>">
+              </div>
+              <div class="col-md-6">
+                <label for="work_end_time" class="form-label">Work End Time</label>
+                <input type="time" class="form-control" id="work_end_time" name="work_end_time" value="<?php echo htmlspecialchars($_GET['work_end_time'] ?? '18:00'); ?>">
+              </div>
+            </div>
             
             <div class="row mb-3">
               <div class="col-md-6">
@@ -393,6 +426,17 @@ require_once __DIR__ . '/../../includes/header.php';
                   <option value="1" <?php echo ($loginAccess === '1') ? 'selected' : ''; ?>>Granted</option>
                   <option value="0" <?php echo ($loginAccess === '0') ? 'selected' : ''; ?>>Denied</option>
                 </select>
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Web Check-In/Checkout</label>
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo $allowWebAttendancePrefill ? 'checked' : ''; ?>>
+                  <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                </div>
+                <small class="text-muted">Leave disabled for employees who must rely on biometric devices only.</small>
               </div>
             </div>
           </div>
@@ -506,4 +550,44 @@ document.getElementById('cropButton').addEventListener('click', function() {
     });
   }
 });
+</script>
+<script>
+(function(){
+  function initMachIdToggle(){
+    const checkbox = document.getElementById('machIdNotApplicable');
+    if(!checkbox) return;
+    const fields = ['machId','work_start_time','work_end_time']
+      .map(id => document.getElementById(id))
+      .filter(Boolean);
+    const rememberValue = (field) => { field.dataset.prevValue = field.value; };
+    fields.forEach(field => {
+      rememberValue(field);
+      field.addEventListener('input', function(){
+        if(!checkbox.checked){ rememberValue(field); }
+      });
+    });
+    const toggleMachineFields = () => {
+      const disableFields = checkbox.checked;
+      fields.forEach(field => {
+        if(disableFields){
+          rememberValue(field);
+          field.value = '';
+          field.setAttribute('disabled','disabled');
+        } else {
+          field.removeAttribute('disabled');
+          if(typeof field.dataset.prevValue !== 'undefined'){
+            field.value = field.dataset.prevValue;
+          }
+        }
+      });
+    };
+    checkbox.addEventListener('change', toggleMachineFields);
+    toggleMachineFields();
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initMachIdToggle);
+  } else {
+    initMachIdToggle();
+  }
+})();
 </script>

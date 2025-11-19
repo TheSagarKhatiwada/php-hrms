@@ -8,7 +8,7 @@ if (!isset($home)) { $home = './'; }
 $roleId = isset($user['role_id']) ? (int)$user['role_id'] : (isset($user['role']) ? (int)$user['role'] : 0);
 // Detect if current page belongs to Leave module, excluding Holiday Management page
 $isLeaveSection = (strpos($_SERVER['REQUEST_URI'] ?? '', 'modules/leave/') !== false)
-  && (basename($_SERVER['PHP_SELF'] ?? '') !== 'holidays.php');
+  
 ?>
 <!-- Main Sidebar Container with Bootstrap 5 -->
 <aside class="sidebar vh-100 position-fixed top-0 start-0 overflow-auto" id="main-sidebar">
@@ -65,16 +65,15 @@ $isLeaveSection = (strpos($_SERVER['REQUEST_URI'] ?? '', 'modules/leave/') !== f
           </a>
         </li>
         <?php endif; ?>
-        
         <li class="nav-item">
           <a href="#employeeSubmenu" data-bs-toggle="collapse" 
-             class="nav-link <?php if($page == 'employees' || $page == 'attendance' || $page == 'Holiday Management'){echo 'active';}?>
-                    <?php if(!($page == 'employees' || $page == 'attendance' || $page == 'Holiday Management')){echo 'collapsed';}?>">
+             class="nav-link <?php if($page == 'employees' || $page == 'attendance' || $page == 'schedule-overrides'){echo 'active';}?>
+                    <?php if(!($page == 'employees' || $page == 'attendance' || $page == 'schedule-overrides')){echo 'collapsed';}?>">
             <i class="nav-icon fas fa-users"></i>
             <span>Employee Management</span>
             <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
-          <div class="collapse <?php if($page == 'employees' || $page == 'attendance' || $page == 'Holiday Management'){echo 'show';}?>" id="employeeSubmenu" data-bs-parent="#sidebarAccordion">
+          <div class="collapse <?php if($page == 'employees' || $page == 'attendance' || $page == 'schedule-overrides'){echo 'show';}?>" id="employeeSubmenu" data-bs-parent="#sidebarAccordion">
             <ul class="nav nav-sub flex-column">
               <li class="nav-item">
                 <a href="<?php echo append_sid($home . 'modules/employees/employees.php'); ?>" class="nav-link <?php if($page == 'employees'){echo 'active';}?>">
@@ -89,21 +88,21 @@ $isLeaveSection = (strpos($_SERVER['REQUEST_URI'] ?? '', 'modules/leave/') !== f
                 </a>
               </li>
               <li class="nav-item">
-                <a href="<?php echo append_sid($home . 'modules/leave/holidays.php'); ?>" class="nav-link <?php if($page == 'Holiday Management'){echo 'active';}?>">
-                  <i class="nav-icon fas fa-calendar-day"></i>
-                  <span>Holiday Management</span>
+                <a href="<?php echo append_sid($home . 'modules/employees/schedule-overrides.php'); ?>" class="nav-link <?php if($page == 'schedule-overrides'){echo 'active';}?>">
+                  <i class="nav-icon fas fa-clipboard-check"></i>
+                  <span>Schedule Overrides</span>
                 </a>
               </li>
             </ul>
           </div>
         </li>
-        
+       
         <!-- Leave Management Module -->
         <li class="nav-item">
        <a href="#leaveSubmenu" data-bs-toggle="collapse" 
          class="nav-link <?php if($isLeaveSection){echo 'active';}?> <?php if(!$isLeaveSection){echo 'collapsed';}?>">
             <i class="nav-icon fas fa-calendar-alt"></i>
-            <span>Leave Management</span>
+            <span>Leaves & Holidays</span>
             <i class="nav-arrow fas fa-chevron-right"></i>
           </a>
           <div class="collapse <?php if($isLeaveSection){echo 'show';}?>" id="leaveSubmenu" data-bs-parent="#sidebarAccordion">
@@ -150,6 +149,13 @@ $isLeaveSection = (strpos($_SERVER['REQUEST_URI'] ?? '', 'modules/leave/') !== f
                 <a href="<?php echo append_sid($home . 'modules/leave/accrual.php'); ?>" class="nav-link <?php if(basename($_SERVER['PHP_SELF']) == 'accrual.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
                   <i class="nav-icon fas fa-coins"></i>
                   <span>Accrual Management</span>
+                </a>
+              </li>
+              <!-- Holiday Management Page -->
+              <li class="nav-item">
+                <a href="<?php echo append_sid($home . 'modules/leave/holidays.php'); ?>" class="nav-link  <?php if(basename($_SERVER['PHP_SELF']) == 'holidays.php' && strpos($_SERVER['REQUEST_URI'], 'modules/leave/') !== false){echo 'active';}?>">
+                  <i class="nav-icon fas fa-calendar-day"></i>
+                  <span>Holidays</span>
                 </a>
               </li>
               <?php endif; ?>

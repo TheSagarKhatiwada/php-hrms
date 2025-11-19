@@ -66,11 +66,15 @@ try {
     $todayAttendance = [];
     $recentAttendance = [];
 }
+
+$canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendance'] ?? 0) === 1;
 ?>
 
 <!-- Dashboard Styles -->
 <style>
     /* Clock icon styling */
+    .clock-icon-placeholder { display: none; }
+</style>
 
 <!-- Dashboard Scripts -->
 <script>window.__EMP_ID__ = <?php echo json_encode($userData['emp_id'] ?? ''); ?>;</script>
@@ -143,6 +147,8 @@ try {
     $todayAttendance = [];
     $recentAttendance = [];
 }
+
+$canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendance'] ?? 0) === 1;
 ?>
 
 <!-- Dashboard Styles -->
@@ -749,18 +755,20 @@ try {
                         <h6 class="text-muted">Current Time</h6>
                         <div class="clock-display" id="digital-clock">00:00:00</div>
                         <div class="mt-3">
-                            <?php if (empty($todayAttendance)): ?>
-                                <button id="clockInBtn" class="btn btn-success btn-attendance">
-                                    <i class="fas fa-sign-in-alt me-2"></i> Clock In
-                                </button>
-                            <?php else: ?>
-                                <div class="text-success mb-3">
-                                    <i class="fas fa-check-circle me-1"></i>
-                                    You clocked in at <?php echo !empty($todayAttendance['time']) ? date('h:i A', strtotime($todayAttendance['time'])) : 'N/A'; ?>
-                                </div>
-                                <button id="clockOutBtn" class="btn btn-primary btn-attendance">
-                                    <i class="fas fa-sign-out-alt me-2"></i> Clock Out
-                                </button>
+                            <?php if ($canUseWebAttendance): ?>
+                                <?php if (empty($todayAttendance)): ?>
+                                    <button id="clockInBtn" class="btn btn-success btn-attendance">
+                                        <i class="fas fa-sign-in-alt me-2"></i> Clock In
+                                    </button>
+                                <?php else: ?>
+                                    <div class="text-success mb-3">
+                                        <i class="fas fa-check-circle me-1"></i>
+                                        You clocked in at <?php echo !empty($todayAttendance['time']) ? date('h:i A', strtotime($todayAttendance['time'])) : 'N/A'; ?>
+                                    </div>
+                                    <button id="clockOutBtn" class="btn btn-primary btn-attendance">
+                                        <i class="fas fa-sign-out-alt me-2"></i> Clock Out
+                                    </button>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -969,6 +977,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle attendance button clicks (both clock in and clock out)
     const clockInBtn = document.getElementById('clockInBtn');
     const clockOutBtn = document.getElementById('clockOutBtn');
+    const webAttendanceEnabled = <?php echo $canUseWebAttendance ? 'true' : 'false'; ?>;
+
+    if (!webAttendanceEnabled) {
+        return;
+    }
     
     function recordAttendance() {
         // Determine if this is a clock-in or clock-out button press

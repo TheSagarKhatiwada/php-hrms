@@ -68,15 +68,19 @@ $holidays = [];
 
 // Convert holidays to the expected format (date => name)
 foreach ($holidays_data as $holiday) {
-    $holiday_date = $holiday['date'];
-    
+    // Prefer start_date (range-aware) if present
+    $base = $holiday['start_date'] ?? null;
+
     // Handle recurring holidays - adjust year to current year
-    if ($holiday['is_recurring']) {
-        $holiday_date = $current_year . '-' . date('m-d', strtotime($holiday['date']));
+    if (!empty($holiday['is_recurring'])) {
+        // Use base for month/day extraction
+        $holiday_date = $current_year . '-' . date('m-d', strtotime($base));
+    } else {
+        $holiday_date = $base;
     }
-    
+
     // Only include holidays that fall within the current month
-    if (date('Y-m', strtotime($holiday_date)) === sprintf('%04d-%02d', $current_year, $current_month)) {
+    if ($holiday_date && date('Y-m', strtotime($holiday_date)) === sprintf('%04d-%02d', $current_year, $current_month)) {
         $holidays[$holiday_date] = $holiday['name'];
     }
 }

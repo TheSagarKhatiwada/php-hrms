@@ -30,7 +30,6 @@ function adjustBrightness($hex, $steps) {
     $g = max(0, min(255, $g + $steps));
     $b = max(0, min(255, $b + $steps));
 
-    // Convert back to hex
     $r_hex = str_pad(dechex($r), 2, '0', STR_PAD_LEFT);
     $g_hex = str_pad(dechex($g), 2, '0', STR_PAD_LEFT);
     $b_hex = str_pad(dechex($b), 2, '0', STR_PAD_LEFT);
@@ -68,13 +67,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             
             if (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 // Check if the email exists in the database
-                $stmt = $pdo->prepare("SELECT id, first_name, last_name, email FROM employees WHERE email = ? AND login_access = '1'");
+                $stmt = $pdo->prepare("SELECT emp_id, first_name, last_name, email FROM employees WHERE email = ? AND login_access = '1'");
                 $stmt->execute([$email]);
                 $user = $stmt->fetch();
                 
                 if ($user) {
                     // Generate a unique token and store it in the database with expiration time
                     $token = bin2hex(random_bytes(32));
+                    $tokenHash = hash('sha256', $token);
                     $expiry = date('Y-m-d H:i:s', strtotime('+30 minutes'));
                     
                     // Check if a reset token already exists for this user and update it, or insert a new one
@@ -84,11 +84,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     if ($checkStmt->rowCount() > 0) {
                         // Update existing token
                         $updateStmt = $pdo->prepare("UPDATE password_resets SET token = ?, expires_at = ? WHERE employee_id = ?");
-                        $updateStmt->execute([$token, $expiry, $user['id']]);
+                        $updateStmt->execute([$tokenHash, $expiry, $user['id']]);
                     } else {
                         // Insert new token
                         $insertStmt = $pdo->prepare("INSERT INTO password_resets (employee_id, token, expires_at) VALUES (?, ?, ?)");
-                        $insertStmt->execute([$user['id'], $token, $expiry]);
+                        $insertStmt->execute([$user['id'], $tokenHash, $expiry]);
                     }
                     
                     // Build the reset URL
@@ -134,7 +134,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     // Set email headers
                     $headers = "MIME-Version: 1.0" . "\r\n";
                     $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-                    $headers .= "From: " . SYSTEM_EMAIL . "\r\n";
+                    $fromAddress = defined('SYSTEM_EMAIL') ? constant('SYSTEM_EMAIL') : 'no-reply@example.com';
+                    $headers .= "From: " . $fromAddress . "\r\n";
                     
                     // Send the email
                     if (mail($user['email'], $subject, $message, $headers)) {
@@ -144,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     }
                 } else {
                     // For security reasons, we still show a success message even if the email doesn't exist
-                    $_SESSION['success'] = "If your email address exists in our database, you will receive a password reset link at your email address.";
+                    $_SESSION['success'] = "If your account exists, you will receive a password reset link at your email address.";
                 }
                 
                 // Redirect back to the forgot password page to prevent form resubmission
@@ -171,8 +172,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     FROM password_resets pr
                     WHERE pr.token = ? AND pr.expires_at > NOW()
                 ");
-                $stmt->execute([$token]);
+                    $tokenHash = hash('sha256', $token);
+                    $stmt->execute([$tokenHash]);
                 $reset = $stmt->fetch();
+
+                    // Legacy fallback for older unhashed tokens
+                    if (!$reset) {
+                        $legacyStmt = $pdo->prepare("
+                            SELECT pr.employee_id, pr.expires_at, pr.token 
+                            FROM password_resets pr
+                            WHERE pr.token = ? AND pr.expires_at > NOW()
+                        ");
+                        $legacyStmt->execute([$token]);
+                        $legacyReset = $legacyStmt->fetch();
+                        if ($legacyReset) {
+                            $reset = $legacyReset;
+                            // Immediately upgrade stored token to hashed form
+                            $upgradeStmt = $pdo->prepare("UPDATE password_resets SET token = ? WHERE employee_id = ?");
+                            $upgradeStmt->execute([$tokenHash, $legacyReset['employee_id']]);
+                        }
+                    }
                 
                 if ($reset) {
                     // Update the user's password
@@ -205,14 +224,29 @@ $token = '';
 
 if (isset($_GET['token']) && !empty($_GET['token'])) {
     $token = $_GET['token'];
-    
-    // Check if token is valid and not expired
+    $tokenHash = hash('sha256', $token);
+
+    // Check if token is valid and not expired (hashed storage with legacy fallback)
     $stmt = $pdo->prepare("
-        SELECT expires_at FROM password_resets 
+        SELECT employee_id, expires_at FROM password_resets 
         WHERE token = ? AND expires_at > NOW()
     ");
-    $stmt->execute([$token]);
-    
+    $stmt->execute([$tokenHash]);
+
+    if ($stmt->rowCount() === 0) {
+        $legacyStmt = $pdo->prepare("
+            SELECT employee_id, expires_at FROM password_resets 
+            WHERE token = ? AND expires_at > NOW()
+        ");
+        $legacyStmt->execute([$token]);
+        if ($legacyStmt->rowCount() > 0) {
+            $row = $legacyStmt->fetch();
+            $upgradeStmt = $pdo->prepare("UPDATE password_resets SET token = ? WHERE employee_id = ?");
+            $upgradeStmt->execute([$tokenHash, $row['employee_id']]);
+            $stmt = $legacyStmt;
+        }
+    }
+
     if ($stmt->rowCount() > 0) {
         $showResetForm = true;
         $tokenValid = true;

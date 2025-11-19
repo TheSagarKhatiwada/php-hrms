@@ -49,15 +49,28 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
   .input-field { background:var(--input-bg); border:1px solid var(--input-border)!important; }
   .input-field input, .input-field select { background:transparent!important; color:var(--card-text); }
   .input-field input::placeholder { color:var(--muted-text); }
+  .employee-select-wrapper { padding:2px!important; border-radius:5px; display:flex; align-items:center; gap:.5rem; position:relative; }
+  .employee-select-wrapper i { color:var(--muted-text); font-size:1.2rem!important; }
+  .employee-select-wrapper .employee-multiselect { position:relative; width:100%; }
   .employee-multiselect { position:relative; }
-  .employee-multiselect .ems-display { width:100%; text-align:left; background:var(--input-bg); color:var(--card-text); border:1px solid var(--input-border); padding:6px 34px 6px 10px; border-radius:5px; font-size:.875rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; min-height:38px; }
-  /* When placed inside an input-field wrapper remove double border */
-  .input-field .ems-display { border:0!important; background:transparent!important; padding:4px 32px 4px 4px; min-height:34px; }
-  .input-field .ems-display .ems-right { right:6px; }
-  /* Unified control heights */
+  .employee-multiselect .ems-display {
+    width:100%;
+    background:transparent;
+    color:var(--card-text);
+    border:0;
+    padding:4px 34px 4px 4px;
+    min-height:34px;
+    font-size:.875rem;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    text-align:left;
+    cursor:pointer;
+  }
+  .employee-multiselect .ems-right { display:flex; align-items:center; gap:6px; color:var(--muted-text); }
+  .employee-multiselect .count-badge { background:var(--accent-bg); color:var(--accent); font-size:.65rem; padding:2px 6px; border-radius:10px; }
   .form-section .form-select, .form-section .form-control { min-height:38px; }
   .form-section .input-field { min-height:38px; }
-  .employee-multiselect .ems-display .count-badge { background:var(--accent-bg); color:var(--accent); font-size:.65rem; padding:2px 6px; border-radius:10px; margin-left:6px; }
   .employee-multiselect .ems-menu { position:absolute; top:100%; left:0; width:100%; max-height:260px; overflow:auto; background:var(--dropdown-bg); border:1px solid var(--dropdown-border); border-radius:6px; margin-top:4px; z-index:30; box-shadow:0 4px 14px rgba(0,0,0,.12); display:none; }
   .employee-multiselect.open .ems-menu { display:block; }
   .employee-multiselect .ems-search { padding:6px 8px; border-bottom:1px solid var(--dropdown-border); display:flex; align-items:center; gap:6px; }
@@ -67,6 +80,7 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
   .employee-multiselect .ems-options li { padding:6px 10px; display:flex; align-items:center; gap:6px; font-size:.72rem; cursor:pointer; border-bottom:1px solid var(--dropdown-border); }
   .employee-multiselect .ems-options li:last-child { border-bottom:none; }
   .employee-multiselect .ems-options li:hover { background:var(--dropdown-hover); }
+  .employee-multiselect .ems-options li label { flex:1; cursor:pointer; }
   .employee-multiselect .ems-options li input[type=checkbox] { margin:0; width:14px; height:14px; cursor:pointer; }
   .employee-multiselect .ems-footer { padding:6px 8px; border-top:1px solid var(--dropdown-border); display:flex; justify-content:space-between; gap:4px; background:var(--card-bg); position:sticky; bottom:0; }
   .employee-multiselect .ems-footer button { font-size:.65rem; padding:4px 8px; }
@@ -76,6 +90,7 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
   /* Slightly more line spacing for Generated column two-line layout */
   .gr-generated-stack { line-height:1.15; }
   .gr-generated-stack small { margin-top:2px; }
+  .gr-more-text { color:var(--accent); cursor:help; text-decoration:underline dotted; font-weight:600; white-space:nowrap; }
   /* Date pill for better contrast especially on danger rows */
   .date-pill { display:inline-block; padding:1px 6px; border-radius:12px; font-size:.68rem; background:rgba(0,0,0,.08); color:#222; letter-spacing:.3px; }
   .dark-mode .date-pill { background:rgba(255,255,255,.15); color:#f5f7fa; }
@@ -178,12 +193,12 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
         </div>
   <div class="col-md-3">
           <label class="form-label fw-semibold" for="employeeSelectBox">Employees</label>
-          <div class="input-field themed-field" style="width:100%; border-radius:5px; padding:2px; display:flex; align-items:center; position:relative;">
-            <i class="fas fa-users mr-2" style="font-size:1.25rem;"></i>
-            <div class="employee-multiselect flex-grow-1" id="employeeSelectBox" aria-haspopup="listbox" aria-expanded="false" style="border:0;">
-              <button type="button" class="ems-display" id="emsToggle" style="padding-right:28px;">
+          <div class="input-field themed-field employee-select-wrapper" style="width:100%; border-radius:5px; padding:2px; display:flex; align-items:center;">
+            <i class="fas fa-users mr-2"></i>
+            <div class="employee-multiselect flex-grow-1" id="employeeSelectBox" aria-haspopup="listbox" aria-expanded="false">
+              <button type="button" class="ems-display" id="emsToggle">
                 <span class="ems-label">All Employees</span>
-                <span class="ems-right d-flex align-items-center" style="position:absolute; top:50%; transform:translateY(-50%); right:6px;"><span class="count-badge" id="emsCount">ALL</span><i class="fas fa-chevron-down ms-2 small"></i></span>
+                <span class="ems-right d-flex align-items-center"><span class="count-badge" id="emsCount">ALL</span><i class="fas fa-chevron-down ms-2 small"></i></span>
               </button>
               <div class="ems-menu" role="listbox" aria-multiselectable="true">
                 <div class="ems-search">
@@ -340,7 +355,10 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
     else if(value==='timesheet') iconEl.classList.add('fa-clock');
     else iconEl.classList.add('fa-clipboard-list');
   }
-  reportType.addEventListener('change', toggleDateInputs);
+  reportType.addEventListener('change', function(){
+    toggleDateInputs();
+    loadEmployees();
+  });
   toggleDateInputs();
   updateReportTypeIcon();
 
@@ -452,7 +470,7 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
           <td>${escapeHtml(r.type_label)}</td>
           <td>${escapeHtml(r.date_label)}</td>
           <td>${escapeHtml(r.branch_label)}</td>
-          <td>${escapeHtml(r.employees_label)}</td>
+          <td>${buildEmployeesCell(r)}</td>
           <td>
             <div class="d-flex align-items-center gap-2">
               <img src="${escapeAttr(r.generated_by_avatar||'')}" alt="" onerror="this.src='../../resources/userimg/default-image.jpg'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"> 
@@ -481,6 +499,7 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
              aria-label=\"Delete report ${escapeAttr(r.type_label)} ${escapeAttr(r.date_label)}\">&times;</button>`:''}`}
           </td>
         </tr>`).join('');
+        activateTooltipElements(tbody);
         buildPagination(res.pagination);
         // Reveal show-deleted switch if admin
         if(typeof res.is_admin !== 'undefined'){ const wrap=document.getElementById('grShowDeletedWrap'); if(wrap) wrap.style.display = res.is_admin ? 'block':'none'; }
@@ -520,6 +539,39 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
     const monthLabel = monthNames[parseInt(Mo,10)-1] || Mo;
     let h = parseInt(H,10); const ampm = h>=12 ? 'PM':'AM'; h = h%12; if(h===0) h=12;
     return `${D} ${monthLabel} ${Y} ${h}:${Mi} ${ampm}`; // 17 Aug 2025 1:32 PM
+  }
+  function buildEmployeesCell(record){
+    const label = record && record.employees_label ? record.employees_label : '';
+    if(!label) return '';
+    const hiddenRaw = record && record.employees_hidden ? record.employees_hidden : '';
+    const hiddenList = hiddenRaw.split(',').map(n=>n.trim()).filter(Boolean);
+    const plusMatch = label.match(/^(.*?)(\s*\+\d+\s+more)$/i);
+    if(!hiddenList.length || !plusMatch){
+      return escapeHtml(label);
+    }
+    const visiblePart = plusMatch[1].replace(/\s+$/, '');
+    const morePart = plusMatch[2].trim();
+    const tooltipText = hiddenList.join('\n');
+    const beforeHtml = visiblePart ? escapeHtml(visiblePart) : '';
+    const tooltipAttr = escapeAttr(tooltipText);
+    const moreHtml = `<span class="gr-more-text" data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltipAttr}">${escapeHtml(morePart)}</span>`;
+    if(beforeHtml){
+      return `${beforeHtml} ${moreHtml}`;
+    }
+    return moreHtml;
+  }
+  function activateTooltipElements(scope){
+    if(!(window.bootstrap && window.bootstrap.Tooltip)) return;
+    const ctx = scope || document;
+    ctx.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el=>{
+      const existing = window.bootstrap.Tooltip.getInstance(el);
+      if(existing){ existing.dispose(); }
+      new window.bootstrap.Tooltip(el);
+    });
+  }
+  function getCsrfToken(){
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? (meta.getAttribute('content') || '') : '';
   }
   function buildStackedDate(ts){
     if(!ts) return '';
@@ -654,16 +706,34 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
 
   function renderEmployees(list){
     emsOptions.innerHTML='';
-    // All toggle row
     const liAll=document.createElement('li');
     liAll.dataset.text='all employees';
-    liAll.innerHTML='<input type="checkbox" id="emsAllChk" checked><label for="emsAllChk" class="mb-0">All Employees</label>';
+    const allChk=document.createElement('input');
+    allChk.type='checkbox';
+    allChk.id='emsAllChk';
+    allChk.checked=true;
+    const allLabel=document.createElement('label');
+    allLabel.setAttribute('for','emsAllChk');
+    allLabel.className='mb-0 flex-grow-1';
+    allLabel.textContent='All Employees';
+    liAll.append(allChk, allLabel);
     emsOptions.appendChild(liAll);
+
     list.forEach(emp=>{
       const li=document.createElement('li');
       li.dataset.text=(emp.emp_id+' - '+emp.name).toLowerCase();
       const id='ems_'+emp.emp_id;
-      li.innerHTML='<input type="checkbox" id="'+id+'" data-val="'+emp.emp_id+'" checked><label for="'+id+'" class="mb-0">'+emp.emp_id+' - '+emp.name+'</label>';
+      const checkbox=document.createElement('input');
+      checkbox.type='checkbox';
+      checkbox.id=id;
+      checkbox.dataset.val=emp.emp_id;
+      checkbox.dataset.label=emp.emp_id+' - '+emp.name;
+      checkbox.checked=true;
+      const label=document.createElement('label');
+      label.setAttribute('for', id);
+      label.className='mb-0 flex-grow-1';
+      label.textContent=emp.emp_id+' - '+emp.name;
+      li.append(checkbox, label);
       emsOptions.appendChild(li);
     });
     updateSummary();
@@ -671,8 +741,38 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
 
   function loadEmployees(){
     const branch = document.getElementById('branchSelect').value;
-    fetch('../../api/fetch-employees-by-branch.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({branch})})
-      .then(r=>r.json()).then(data=>{ if(Array.isArray(data)){ renderEmployees(data); hiddenValues.value='*'; } })
+    const payload = {
+      branch,
+      report_type: reportType.value || 'daily'
+    };
+    if(payload.report_type === 'daily'){
+      payload.date = document.getElementById('reportdate').value;
+    } else if(dateRangeInput){
+      payload.range = dateRangeInput.value;
+    }
+    const csrf = getCsrfToken();
+    if(csrf) payload.csrf_token = csrf;
+
+    fetch('../../api/fetch-employees-by-branch.php', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      credentials:'include',
+      body:new URLSearchParams(payload)
+    })
+      .then(async r=>{
+        const text = await r.text();
+        try { return JSON.parse(text); }
+        catch(err){ console.error('Employee fetch parse error', text); throw err; }
+      })
+      .then(data=>{
+        if(Array.isArray(data)){
+          renderEmployees(data);
+          hiddenValues.value='*';
+        } else if(data && data.status === 'error'){
+          notifyError(data.message || 'Failed to load employees');
+          renderEmployees([]);
+        }
+      })
       .catch(()=>{ renderEmployees([]); });
   }
   loadEmployees();

@@ -28,9 +28,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Add supervisor_id column if it doesn't exist
             $stmt = $pdo->query("SHOW COLUMNS FROM employees LIKE 'supervisor_id'");
             if ($stmt->rowCount() == 0) {
-                $pdo->exec("ALTER TABLE employees ADD COLUMN supervisor_id INT(11) NULL AFTER role_id");
-                $pdo->exec("ALTER TABLE employees ADD CONSTRAINT employees_supervisor_fk FOREIGN KEY (supervisor_id) REFERENCES employees(id) ON DELETE SET NULL");
+                // Use VARCHAR(20) to match employees.emp_id schema
+                $pdo->exec("ALTER TABLE employees ADD COLUMN supervisor_id VARCHAR(20) NULL AFTER role_id");
                 $pdo->exec("CREATE INDEX idx_employees_supervisor ON employees(supervisor_id)");
+                // Attempt to add a foreign key to employees(emp_id) if possible
+                try {
+                    $pdo->exec("ALTER TABLE employees ADD CONSTRAINT employees_supervisor_fk FOREIGN KEY (supervisor_id) REFERENCES employees(emp_id) ON DELETE SET NULL");
+                } catch (Exception $fkEx) {
+                    // Proceed without FK if it fails due to existing data or engine constraints
+                }
             }
             
             // Add department_id column if it doesn't exist
@@ -64,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 
-                $stmt = $pdo->prepare("UPDATE employees SET supervisor_id = ? WHERE id = ?");
+                $stmt = $pdo->prepare("UPDATE employees SET supervisor_id = ? WHERE emp_id = ?");
                 $stmt->execute([$supervisor_id, $emp_id]);
                 $success_count++;
             } catch (Exception $e) {
@@ -95,13 +101,13 @@ try {
 $employees = [];
 if (!$migration_needed) {
     $stmt = $pdo->query("
-        SELECT e.*, d.title as designation_title, dept.name as department_name,
-               s.first_name as supervisor_first_name, s.last_name as supervisor_last_name
+          SELECT e.*, d.title as designation_title, dept.name as department_name,
+              s.first_name as supervisor_first_name, s.middle_name as supervisor_middle_name, s.last_name as supervisor_last_name
         FROM employees e
         LEFT JOIN designations d ON e.designation = d.id
-        LEFT JOIN departments dept ON e.department_id = dept.id
-        LEFT JOIN employees s ON e.supervisor_id = s.id
-        WHERE e.exit_date IS NULL
+    LEFT JOIN departments dept ON e.department_id = dept.id
+    LEFT JOIN employees s ON e.supervisor_id = s.emp_id
+    WHERE (e.exit_date IS NULL OR e.exit_date = '0000-00-00' OR e.exit_date = '')
         ORDER BY dept.name, e.first_name, e.last_name
     ");
     $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -111,9 +117,9 @@ if (!$migration_needed) {
 $potential_supervisors = [];
 if (!$migration_needed) {
     $stmt = $pdo->query("
-        SELECT id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as full_name
+                SELECT emp_id, CONCAT(CONCAT_WS(' ', first_name, middle_name, last_name), ' (', emp_id, ')') as full_name
         FROM employees 
-        WHERE exit_date IS NULL AND login_access = 1
+        WHERE (exit_date IS NULL OR exit_date = '0000-00-00' OR exit_date = '')
         ORDER BY first_name, last_name
     ");
     $potential_supervisors = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -242,7 +248,7 @@ if (!$migration_needed) {
                                                 <img src="<?php echo $employee['user_image'] ?: 'resources/userimg/default-image.jpg'; ?>" 
                                                      alt="Profile" class="rounded-circle me-3" width="40" height="40">
                                                 <div>
-                                                    <strong><?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']); ?></strong><br>
+                                                    <strong><?php echo htmlspecialchars(trim($employee['first_name'] . ' ' . ($employee['middle_name'] ?? '') . ' ' . $employee['last_name'])); ?></strong><br>
                                                     <small class="text-muted"><?php echo htmlspecialchars($employee['emp_id']); ?></small>
                                                 </div>
                                             </div>
@@ -255,7 +261,7 @@ if (!$migration_needed) {
                                             <?php if ($employee['supervisor_id']): ?>
                                                 <span class="text-success">
                                                     <i class="fas fa-user-tie me-1"></i>
-                                                    <?php echo htmlspecialchars($employee['supervisor_first_name'] . ' ' . $employee['supervisor_last_name']); ?>
+                                                    <?php echo htmlspecialchars(trim(($employee['supervisor_first_name'] ?? '') . ' ' . ($employee['supervisor_middle_name'] ?? '') . ' ' . ($employee['supervisor_last_name'] ?? ''))); ?>
                                                 </span>
                                             <?php else: ?>
                                                 <span class="text-muted">
@@ -264,12 +270,12 @@ if (!$migration_needed) {
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <select name="assignments[<?php echo $employee['id']; ?>]" class="form-select form-select-sm">
+                        <select name="assignments[<?php echo $employee['emp_id']; ?>]" class="form-select form-select-sm">
                                                 <option value="">-- No Supervisor (Top Level) --</option>
                                                 <?php foreach ($potential_supervisors as $supervisor): ?>
-                                                    <?php if ($supervisor['id'] != $employee['id']): // Can't supervise self ?>
-                                                        <option value="<?php echo $supervisor['id']; ?>" 
-                                                                <?php echo ($supervisor['id'] == $employee['supervisor_id']) ? 'selected' : ''; ?>>
+                            <?php if ($supervisor['emp_id'] != $employee['emp_id']): // Can't supervise self ?>
+                            <option value="<?php echo $supervisor['emp_id']; ?>" 
+                                <?php echo ($supervisor['emp_id'] == $employee['supervisor_id']) ? 'selected' : ''; ?>>
                                                             <?php echo htmlspecialchars($supervisor['full_name']); ?>
                                                         </option>
                                                     <?php endif; ?>

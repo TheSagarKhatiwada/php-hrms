@@ -3,8 +3,10 @@ require_once '../../includes/session_config.php';
 require_once '../../includes/db_connection.php';
 require_once '../../includes/utilities.php';
 require_once 'task_helpers.php';
+require_once '../../includes/csrf_protection.php';
 
 $page = 'Create Task';
+$csrf_token = generate_csrf_token();
 
 // Load user data properly
 if (!isset($_SESSION['user_id'])) {
@@ -32,48 +34,86 @@ if (!$user) {
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $title = trim($_POST['title']);
-        $description = trim($_POST['description']);
-        $assigned_to = $_POST['assigned_to'];
-        $priority = $_POST['priority'];
+        // CSRF check
+        $csrf = $_POST['csrf_token'] ?? '';
+        if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
+            throw new Exception('Security token invalid. Please refresh and try again.');
+        }
+
+        $title = trim($_POST['title'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $priority = $_POST['priority'] ?? 'medium';
         $due_date = !empty($_POST['due_date']) ? $_POST['due_date'] : null;
-        $category = trim($_POST['category']);
+        $category = trim($_POST['category'] ?? '');
+        $task_type = $_POST['task_type'] ?? 'assigned';
+        $assigned_to = isset($_POST['assigned_to']) && $_POST['assigned_to'] !== '' ? (int)$_POST['assigned_to'] : null;
+        $target_department_id = isset($_POST['target_department_id']) && $_POST['target_department_id'] !== '' ? (int)$_POST['target_department_id'] : null;
         
         // Validate required fields
-        if (empty($title) || empty($assigned_to)) {
-            throw new Exception("Title and assignee are required.");
+        if ($title === '') {
+            throw new Exception('Title is required.');
         }
-        
-        // Create the task
-        $stmt = $pdo->prepare("
-            INSERT INTO tasks (title, description, assigned_by, assigned_to, priority, due_date, category, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-        ");
-        
+
+        // Validate task_type and targets
+        $allowedTypes = ['assigned','open','department'];
+        if (!in_array($task_type, $allowedTypes, true)) { $task_type = 'assigned'; }
+        if ($task_type === 'assigned' && !$assigned_to) {
+            throw new Exception('Please select an assignee for Assigned tasks.');
+        }
+        if ($task_type === 'department' && !$target_department_id) {
+            throw new Exception('Please select a target department.');
+        }
+
+        // Normalize due date
+        $newDue = null;
+        if (!empty($due_date)) {
+            $d = DateTime::createFromFormat('Y-m-d', substr($due_date,0,10));
+            if ($d) { $newDue = $d->format('Y-m-d'); }
+        }
+
+        // Insert
+        $stmt = $pdo->prepare("INSERT INTO tasks (title, description, assigned_by, assigned_to, priority, due_date, category, task_type, target_department_id, created_at) VALUES (:title,:description,:assigned_by,:assigned_to,:priority,:due_date,:category,:task_type,:target_department_id,NOW())");
         $stmt->execute([
-            $title,
-            $description,
-            $current_user_id,
-            $assigned_to,
-            $priority,
-            $due_date,
-            $category
+            ':title' => $title,
+            ':description' => $description,
+            ':assigned_by' => $current_user_id,
+            ':assigned_to' => $task_type === 'assigned' ? $assigned_to : null,
+            ':priority' => $priority,
+            ':due_date' => $newDue,
+            ':category' => $category,
+            ':task_type' => $task_type,
+            ':target_department_id' => $task_type === 'department' ? $target_department_id : null,
         ]);
         
         $task_id = $pdo->lastInsertId();
-        
+
         // Add to task history
-        $stmt = $pdo->prepare("
-            INSERT INTO task_history (task_id, employee_id, action, new_value, created_at) 
-            VALUES (?, ?, 'created', ?, NOW())
-        ");
-        $stmt->execute([$task_id, $current_user_id, "Task created and assigned"]);
-        
+        $stmt = $pdo->prepare("INSERT INTO task_history (task_id, employee_id, action, new_value, created_at) VALUES (?, ?, 'created', ?, NOW())");
+        $createdCtx = json_encode(['task_type'=>$task_type,'assigned_to'=>$assigned_to,'target_department_id'=>$target_department_id]);
+        $stmt->execute([$task_id, $current_user_id, $createdCtx]);
+
+        // Modal/AJAX flow
+        $isQuick = !empty($_POST['quick_create']);
+        $wantsJson = $isQuick || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false) || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+        if ($wantsJson) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'task_id' => (int)$task_id]);
+            exit;
+        }
+
+        // Legacy page flow
         $_SESSION['success'] = "Task created successfully!";
         header("Location: view_task.php?id=" . $task_id);
         exit();
         
     } catch (Exception $e) {
+        $isQuick = !empty($_POST['quick_create']);
+        $wantsJson = $isQuick || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false) || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+        if ($wantsJson) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            exit;
+        }
         $error_message = $e->getMessage();
     }
 }

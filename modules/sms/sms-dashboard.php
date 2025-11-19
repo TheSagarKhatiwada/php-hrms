@@ -4,7 +4,6 @@ require_once __DIR__ . '/../../includes/db_connection.php';
 // Set page title for navigation
 $page = 'SMS Dashboard';
 
-require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/SparrowSMS.php';
 
 $sms = new SparrowSMS();
@@ -48,22 +47,23 @@ if (isset($_POST['action'])) {
             }
             
             $results = [];
-            $overallSuccess = true;
-            
+            $overallSuccess = false; // default to false, we'll set true if any message succeeded
+
             if (count($verifiedNumbers) === 1) {
                 // Single SMS
                 $result = $sms->sendSMS($verifiedNumbers[0], $message, $from);
                 $results[] = $result;
-                $overallSuccess = $result['success'];
+                $overallSuccess = !empty($result['success']);
             } else {
                 // Multiple SMS - send to each number individually for better error tracking
                 foreach ($verifiedNumbers as $number) {
                     $result = $sms->sendSMS($number, $message, $from);
                     $results[] = $result;
-                    if (!$result['success']) {
-                        $overallSuccess = false;
-                    }
                 }
+
+                // Consider the overall operation a success if at least one message was sent
+                $successfulCount = count(array_filter($results, function($r) { return !empty($r['success']); }));
+                $overallSuccess = $successfulCount > 0;
             }
             
             // Prepare response
@@ -107,6 +107,9 @@ try {
     $credit = ['success' => false, 'error' => 'Database not available'];
 }
 
+// Include page header for non-AJAX requests
+require_once __DIR__ . '/../../includes/header.php';
+
 // Get recent SMS logs with error handling
 $recentSMS = [];
 try {
@@ -114,7 +117,7 @@ try {
         $stmt = $pdo->prepare("
             SELECT l.*, e.first_name, e.last_name 
             FROM sms_logs l 
-            LEFT JOIN employees e ON l.employee_id = e.id 
+            LEFT JOIN employees e ON l.employee_id = e.emp_id 
             ORDER BY l.created_at DESC 
             LIMIT 10
         ");

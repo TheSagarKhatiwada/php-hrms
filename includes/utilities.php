@@ -176,6 +176,61 @@ function get_user_role() {
     return isset($_SESSION['user_role']) ? $_SESSION['user_role'] : null;
 }
 
+if (!function_exists('hrms_get_role_permissions')) {
+function hrms_get_role_permissions($forceRefresh = false) {
+    static $runtimeCache = [];
+    static $runtimeRoleId = null;
+
+    $roleId = isset($_SESSION['user_role_id']) ? (int)$_SESSION['user_role_id'] : null;
+    if (!$roleId) {
+        return [];
+    }
+
+    if (!$forceRefresh) {
+        if ($runtimeRoleId === $roleId && !empty($runtimeCache)) {
+            return $runtimeCache;
+        }
+
+        if (isset($_SESSION['permission_cache']) &&
+            isset($_SESSION['permission_cache']['role_id']) &&
+            (int)$_SESSION['permission_cache']['role_id'] === $roleId) {
+            $runtimeCache = $_SESSION['permission_cache']['permissions'] ?? [];
+            $runtimeRoleId = $roleId;
+            return $runtimeCache;
+        }
+    }
+
+    $permissions = [];
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+
+        $sql = "SELECT p.code 
+                FROM role_permissions rp 
+                JOIN permissions p ON rp.permission_id = p.id 
+                WHERE rp.role_id = :role_id";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':role_id', $roleId, PDO::PARAM_INT);
+        $stmt->execute();
+        $permissions = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } catch (PDOException $e) {
+        error_log('Permission cache load error: ' . $e->getMessage(), 3, 'error_log.txt');
+    }
+
+    $_SESSION['permission_cache'] = [
+        'role_id' => $roleId,
+        'permissions' => $permissions,
+        'loaded_at' => time(),
+    ];
+
+    $runtimeCache = $permissions;
+    $runtimeRoleId = $roleId;
+
+    return $permissions;
+}
+}
+
 /**
  * Check if the current user has a specific permission
  * 
@@ -183,36 +238,16 @@ function get_user_role() {
  * @return bool True if user has permission, false otherwise
  */
 function has_permission($permission_code) {
-    // Admin always has all permissions
     if (is_admin()) {
         return true;
     }
-    
-    // If user is not logged in or role is not set, they have no permissions
+
     if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_role_id'])) {
         return false;
     }
-    
-    // Check the database for permission
-    try {
-        require_once __DIR__ . '/db_connection.php';
-        global $pdo;
-        
-        $sql = "SELECT COUNT(*) 
-                FROM role_permissions rp 
-                JOIN permissions p ON rp.permission_id = p.id 
-                WHERE rp.role_id = :role_id AND p.code = :permission_code";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':role_id', $_SESSION['user_role_id'], PDO::PARAM_INT);
-        $stmt->bindParam(':permission_code', $permission_code, PDO::PARAM_STR);
-        $stmt->execute();
-        
-        return $stmt->fetchColumn() > 0;
-    } catch (PDOException $e) {
-        error_log('Permission check error: ' . $e->getMessage(), 3, 'error_log.txt');
-        return false;
-    }
+
+    $permissions = hrms_get_role_permissions();
+    return in_array($permission_code, $permissions, true);
 }
 
 /**
@@ -222,18 +257,17 @@ function has_permission($permission_code) {
  * @return bool True if user has any of the permissions, false otherwise
  */
 function has_any_permission(array $permission_codes) {
-    // Admin always has all permissions
     if (is_admin()) {
         return true;
     }
-    
-    // Check each permission
+
+    $permissions = hrms_get_role_permissions();
     foreach ($permission_codes as $code) {
-        if (has_permission($code)) {
+        if (in_array($code, $permissions, true)) {
             return true;
         }
     }
-    
+
     return false;
 }
 
@@ -244,18 +278,17 @@ function has_any_permission(array $permission_codes) {
  * @return bool True if user has all the permissions, false otherwise
  */
 function has_all_permissions(array $permission_codes) {
-    // Admin always has all permissions
     if (is_admin()) {
         return true;
     }
-    
-    // Check each permission
+
+    $permissions = hrms_get_role_permissions();
     foreach ($permission_codes as $code) {
-        if (!has_permission($code)) {
+        if (!in_array($code, $permissions, true)) {
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -265,29 +298,11 @@ function has_all_permissions(array $permission_codes) {
  * @return array Array of permission codes the user has
  */
 function get_user_permissions() {
-    // If not logged in, return empty array
     if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_role_id'])) {
         return [];
     }
-    
-    try {
-        require_once __DIR__ . '/db_connection.php';
-        global $pdo;
-        
-        $sql = "SELECT p.code 
-                FROM role_permissions rp 
-                JOIN permissions p ON rp.permission_id = p.id 
-                WHERE rp.role_id = :role_id";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':role_id', $_SESSION['user_role_id'], PDO::PARAM_INT);
-        $stmt->execute();
-        
-        return $stmt->fetchAll(PDO::FETCH_COLUMN);
-    } catch (PDOException $e) {
-        error_log('Getting user permissions error: ' . $e->getMessage(), 3, 'error_log.txt');
-        return [];
-    }
+
+    return hrms_get_role_permissions();
 }
 
 /**
@@ -302,26 +317,26 @@ function is_holiday($date, $branch_id = null) {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
 
-        // Build SQL with optional branch filter and support for recurring types
-        $sql = "SELECT * FROM holidays WHERE (date = :dateExact)";
-        // Include recurring via recurring_type (new) and fallback to is_recurring (legacy)
-        $sql .= " OR (
-                    (recurring_type IS NOT NULL AND recurring_type <> 'none')
-                    OR (COALESCE(is_recurring,0) = 1)
-                 )";
+        // We'll select rows that either cover the date as a range, or have recurring flags
+        // Use positional parameters and an arguments array to avoid driver-specific named
+        // parameter binding quirks that can result in "Invalid parameter number" errors.
+        $sql = "SELECT * FROM holidays WHERE (
+                          (start_date IS NOT NULL AND start_date <= ? AND (end_date IS NULL OR end_date >= ?))
+                          OR (recurring_type IS NOT NULL AND recurring_type <> 'none')
+                          OR (COALESCE(is_recurring,0) = 1)
+                      )";
+
+        $params = [$date, $date];
 
         if (!is_null($branch_id)) {
-            $sql .= " AND (branch_id IS NULL OR branch_id = :branch_id)";
+            $sql .= " AND (branch_id IS NULL OR branch_id = ? )";
+            $params[] = (int)$branch_id;
         }
 
         $sql .= " ORDER BY branch_id IS NOT NULL ASC"; // prefer global if both exist
 
         $stmt = $pdo->prepare($sql);
-        $stmt->bindValue(':dateExact', $date);
-        if (!is_null($branch_id)) {
-            $stmt->bindValue(':branch_id', $branch_id, PDO::PARAM_INT);
-        }
-        $stmt->execute();
+        $stmt->execute($params);
 
         $dateTs = strtotime($date);
         $y = (int)date('Y', $dateTs);
@@ -330,37 +345,42 @@ function is_holiday($date, $branch_id = null) {
         $dow = (int)date('N', $dateTs); // 1=Mon..7=Sun
 
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            // Exact date
-            if ($row['date'] === $date) {
-                return $row;
+            // If the holiday is a range and includes the date
+            if (!empty($row['start_date'])) {
+                $start = $row['start_date'];
+                $end = !empty($row['end_date']) ? $row['end_date'] : $row['start_date'];
+                if ($start <= $date && $date <= $end) {
+                    return $row;
+                }
             }
 
-            // New recurring types
-            $rtype = $row['recurring_type'] ?? 'none';
-            if ($rtype && $rtype !== 'none') {
-                $base = strtotime($row['date']);
+            // Recurring types based on start_date
+            $baseDate = $row['start_date'] ?? null;
+            if ($baseDate) {
+                $base = strtotime($baseDate);
                 $baseM = (int)date('n', $base);
                 $baseD = (int)date('j', $base);
                 $baseQ = (int)ceil($baseM / 3);
                 $currQ = (int)ceil($m / 3);
 
-                if ($rtype === 'weekly') {
-                    $rowDow = (int)($row['recurring_day_of_week'] ?? date('N', $base));
-                    if ($rowDow === $dow) return $row;
-                } elseif ($rtype === 'monthly') {
-                    if ($baseD === $d) return $row;
-                } elseif ($rtype === 'quarterly') {
-                    if ($currQ === $baseQ && $baseD === $d) return $row;
-                } elseif ($rtype === 'annually') {
-                    if ($baseM === $m && $baseD === $d) return $row;
+                $rtype = $row['recurring_type'] ?? 'none';
+                if ($rtype && $rtype !== 'none') {
+                    if ($rtype === 'weekly') {
+                        $rowDow = (int)($row['recurring_day_of_week'] ?? date('N', $base));
+                        if ($rowDow === $dow) return $row;
+                    } elseif ($rtype === 'monthly') {
+                        if ($baseD === $d) return $row;
+                    } elseif ($rtype === 'quarterly') {
+                        if ($currQ === $baseQ && $baseD === $d) return $row;
+                    } elseif ($rtype === 'annually') {
+                        if ($baseM === $m && $baseD === $d) return $row;
+                    }
                 }
-            }
-
-            // Legacy recurring (annual same month/day)
-            if (!empty($row['is_recurring'])) {
-                $base = strtotime($row['date']);
-                if (date('n', $base) == $m && date('j', $base) == $d) {
-                    return $row;
+                // Legacy recurring (annual same month/day)
+                if (!empty($row['is_recurring'])) {
+                    if ((int)date('n', $base) == $m && (int)date('j', $base) == $d) {
+                        return $row;
+                    }
                 }
             }
         }
@@ -384,53 +404,69 @@ function get_holidays_for_month($month, $year, $branch_id = null) {
     try {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
-
-        $sql = "SELECT * FROM holidays WHERE (
-                    (YEAR(date) = ? AND MONTH(date) = ?)
-                    OR (recurring_type IN ('monthly','quarterly','annually'))
-                    OR (COALESCE(is_recurring,0) = 1)
-                )";
-        $params = [(int)$year, (int)$month];
+        // Fetch all holidays (we'll filter in PHP to correctly handle ranges and recurring rules)
+        $sql = "SELECT * FROM holidays";
+        $params = [];
         if (!is_null($branch_id)) {
-            $sql .= " AND (branch_id IS NULL OR branch_id = ?)";
+            $sql .= " WHERE (branch_id IS NULL OR branch_id = ? )";
             $params[] = (int)$branch_id;
         }
-        $sql .= " ORDER BY DAY(date) ASC";
-
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        // Filter to the requested month for recurring types
+
         $out = [];
+        $firstOfMonth = sprintf('%04d-%02d-01', $year, $month);
+        $lastOfMonth = date('Y-m-d', strtotime(sprintf('%s +1 month -1 day', $firstOfMonth)));
+
         foreach ($rows as $row) {
-            $dateStr = $row['date'];
+            // If it's a date range and overlaps the month, include
+            if (!empty($row['start_date'])) {
+                $start = $row['start_date'];
+                $end = !empty($row['end_date']) ? $row['end_date'] : $row['start_date'];
+                if (!empty($start) && !empty($end) && $start <= $lastOfMonth && $end >= $firstOfMonth) {
+                    $out[] = $row;
+                    continue;
+                }
+                // single-date non-recurring
+                if ($start && date('Y', strtotime($start)) == $year && date('n', strtotime($start)) == $month && ($row['recurring_type'] === 'none' || empty($row['recurring_type']))) {
+                    $out[] = $row;
+                    continue;
+                }
+            }
+
+            // Recurring handling based on start_date
             $rtype = $row['recurring_type'] ?? 'none';
-            if ($rtype === 'monthly' || (!empty($row['is_recurring']))) {
-                // same day every month
-                if ((int)date('n', strtotime("$year-" . str_pad($month,2,'0',STR_PAD_LEFT) . "-01")) == (int)$month) {
-                    $out[] = $row;
+            if ($rtype !== 'none') {
+                if ($rtype === 'monthly') {
+                    $out[] = $row; // monthly recurs every month
+                    continue;
+                } elseif ($rtype === 'quarterly') {
+                    // include if month is in same quarter as base
+                    if (!empty($row['start_date'])) {
+                        $baseM = (int)date('n', strtotime($row['start_date']));
+                        $baseQ = (int)ceil($baseM / 3);
+                        $currQ = (int)ceil($month / 3);
+                        if ($baseQ === $currQ) { $out[] = $row; continue; }
+                    } else {
+                        $out[] = $row;
+                        continue;
+                    }
+                } elseif ($rtype === 'annually') {
+                    if (!empty($row['start_date']) && (int)date('n', strtotime($row['start_date'])) === (int)$month) {
+                        $out[] = $row; continue;
+                    }
                 }
-            } elseif ($rtype === 'quarterly') {
-                // show if any day in month matches the base day and month falls in same quarter offset
-                $baseM = (int)date('n', strtotime($dateStr));
-                $baseD = (int)date('j', strtotime($dateStr));
-                $currQ = (int)ceil($month / 3);
-                $baseQ = (int)ceil($baseM / 3);
-                if ($currQ === $baseQ) {
-                    $out[] = $row;
-                }
-            } elseif ($rtype === 'annually') {
-                if ((int)date('n', strtotime($dateStr)) === (int)$month) {
-                    $out[] = $row;
-                }
-            } else {
-                // non-recurring in this month
-                if ((int)date('n', strtotime($dateStr)) === (int)$month && (int)date('Y', strtotime($dateStr)) === (int)$year) {
-                    $out[] = $row;
+            }
+
+            // Legacy recurring
+            if (!empty($row['is_recurring']) && !empty($row['start_date'])) {
+                if ((int)date('n', strtotime($row['start_date'])) === (int)$month) {
+                    $out[] = $row; continue;
                 }
             }
         }
+
         return $out;
     } catch (PDOException $e) {
         error_log('Get monthly holidays error: ' . $e->getMessage(), 3, 'error_log.txt');
@@ -457,7 +493,7 @@ function get_upcoming_holidays($days = 30, $branch_id = null) {
         if (!is_null($branch_id)) {
             $sql .= " WHERE (branch_id IS NULL OR branch_id = :branch_id)";
         }
-        $sql .= " ORDER BY date ASC";
+        $sql .= " ORDER BY start_date ASC";
 
         $stmt = $pdo->prepare($sql);
         if (!is_null($branch_id)) {
@@ -497,19 +533,106 @@ function get_holidays_in_range($start_date, $end_date, $branch_id = null) {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
 
-        // We’ll reuse is_holiday across the date range for exact, new recurring, and legacy recurring
-        $out = [];
-        $cur = strtotime($start_date);
-        $end = strtotime($end_date);
-        while ($cur <= $end) {
-            $day = date('Y-m-d', $cur);
-            $h = is_holiday($day, $branch_id);
-            if ($h) {
-                $h['effective_date'] = $day;
-                $out[] = $h;
-            }
-            $cur = strtotime('+1 day', $cur);
+        // Fetch all holidays once (optionally filtered by branch). Then expand each
+        // holiday into effective dates that fall within [$start_date, $end_date]. This
+        // avoids calling the DB repeatedly for each day in the range and correctly
+        // supports multi-day holidays, recurring rules and legacy yearly recurrence.
+        $sql = "SELECT * FROM holidays";
+        $params = [];
+        if (!is_null($branch_id)) {
+            $sql .= " WHERE (branch_id IS NULL OR branch_id = ? )";
+            $params[] = (int)$branch_id;
         }
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $out = [];
+        $seen = []; // dedupe by id|date
+        $rangeStartTs = strtotime($start_date);
+        $rangeEndTs = strtotime($end_date);
+
+        foreach ($rows as $row) {
+            $baseDate = $row['start_date'] ?? null;
+
+            // 1) If holiday is a date range and overlaps the requested range, expand it
+            if (!empty($row['start_date'])) {
+                $hStart = $row['start_date'];
+                $hEnd = !empty($row['end_date']) ? $row['end_date'] : $row['start_date'];
+                if ($hStart <= $end_date && $hEnd >= $start_date) {
+                    $from = max($hStart, $start_date);
+                    $to = min($hEnd, $end_date);
+                    for ($ts = strtotime($from); $ts <= strtotime($to); $ts = strtotime('+1 day', $ts)) {
+                        $d = date('Y-m-d', $ts);
+                        $key = ($row['id'] ?? spl_object_hash((object)$row)) . '|' . $d;
+                        if (isset($seen[$key])) continue;
+                        $seen[$key] = true;
+                        $r = $row; $r['effective_date'] = $d;
+                        $out[] = $r;
+                    }
+                }
+            }
+
+            // 2) Handle recurring rules (weekly/monthly/quarterly/annually)
+            $rtype = $row['recurring_type'] ?? 'none';
+            if ($rtype && $rtype !== 'none') {
+                // iterate days in range and emit matches according to recurring type
+                for ($ts = $rangeStartTs; $ts <= $rangeEndTs; $ts = strtotime('+1 day', $ts)) {
+                    $d = date('Y-m-d', $ts);
+                    $y = (int)date('Y', $ts);
+                    $m = (int)date('n', $ts);
+                    $day = (int)date('j', $ts);
+                    $dow = (int)date('N', $ts);
+
+                    if ($baseDate) {
+                        $b = strtotime($baseDate);
+                        $baseM = (int)date('n', $b);
+                        $baseD = (int)date('j', $b);
+                        $baseQ = (int)ceil($baseM / 3);
+                        $currQ = (int)ceil($m / 3);
+                        $match = false;
+                        if ($rtype === 'weekly') {
+                            $rowDow = (int)($row['recurring_day_of_week'] ?? date('N', $b));
+                            if ($rowDow === $dow) $match = true;
+                        } elseif ($rtype === 'monthly') {
+                            if ($baseD === $day) $match = true;
+                        } elseif ($rtype === 'quarterly') {
+                            if ($currQ === $baseQ && $baseD === $day) $match = true;
+                        } elseif ($rtype === 'annually') {
+                            if ($baseM === $m && $baseD === $day) $match = true;
+                        }
+                        if ($match) {
+                            $key = ($row['id'] ?? spl_object_hash((object)$row)) . '|' . $d;
+                            if (!isset($seen[$key])) {
+                                $seen[$key] = true;
+                                $r = $row; $r['effective_date'] = $d; $out[] = $r;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3) Legacy yearly recurring flag (is_recurring)
+            if (!empty($row['is_recurring']) && $baseDate) {
+                $b = strtotime($baseDate);
+                $baseM = (int)date('n', $b);
+                $baseD = (int)date('j', $b);
+                for ($ts = $rangeStartTs; $ts <= $rangeEndTs; $ts = strtotime('+1 day', $ts)) {
+                    $d = date('Y-m-d', $ts);
+                    if ((int)date('n', $ts) === $baseM && (int)date('j', $ts) === $baseD) {
+                        $key = ($row['id'] ?? spl_object_hash((object)$row)) . '|' . $d;
+                        if (!isset($seen[$key])) {
+                            $seen[$key] = true;
+                            $r = $row; $r['effective_date'] = $d; $out[] = $r;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort output by effective_date ascending
+        usort($out, function($a, $b){ return strcmp($a['effective_date'] ?? '', $b['effective_date'] ?? ''); });
         return $out;
     } catch (PDOException $e) {
         error_log('Get holidays in range error: ' . $e->getMessage(), 3, 'error_log.txt');

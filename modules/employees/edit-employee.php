@@ -1,5 +1,6 @@
 <?php
 $page = 'Edit Employee';
+$page = 'employees';
 // Include utilities for role check functions
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
@@ -57,8 +58,14 @@ require_once __DIR__ . '/../../includes/header.php';
             
             <div class="row mb-3">
               <div class="col-md-4">
-                <label for="machId" class="form-label">Machine ID</label>
-                <input type="text" class="form-control" id="machId" name="machId" value="<?php echo htmlspecialchars($employee['mach_id'] ?? ''); ?>">
+                <div class="d-flex justify-content-between align-items-center">
+                  <label for="machId" class="form-label mb-0">Machine ID</label>
+                  <div class="form-check form-check-inline m-0 small">
+                    <input class="form-check-input" type="checkbox" id="machIdNotApplicable" name="mach_id_not_applicable" value="1" <?php echo !empty($employee['mach_id_not_applicable']) ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="machIdNotApplicable">Not Applicable</label>
+                  </div>
+                </div>
+                <input type="text" class="form-control mt-1" id="machId" name="machId" value="<?php echo htmlspecialchars($employee['mach_id'] ?? ''); ?>">
               </div>
               <div class="col-md-8">
                 <label for="empBranchId" class="form-label">Branch <span class="text-danger">*</span></label>
@@ -155,6 +162,17 @@ require_once __DIR__ . '/../../includes/header.php';
                        value="<?php echo htmlspecialchars($employee['join_date']); ?>" 
                        max="<?php echo date('Y-m-d', strtotime('15 days')); ?>"
                        title="Date when employee actually started working">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="work_start_time" class="form-label">Work Start Time</label>
+                <input type="time" class="form-control" id="work_start_time" name="work_start_time" value="<?php echo htmlspecialchars($employee['work_start_time'] ?? '09:30:00'); ?>">
+              </div>
+              <div class="col-md-6">
+                <label for="work_end_time" class="form-label">Work End Time</label>
+                <input type="time" class="form-control" id="work_end_time" name="work_end_time" value="<?php echo htmlspecialchars($employee['work_end_time'] ?? '18:00:00'); ?>">
               </div>
             </div>
             
@@ -262,6 +280,20 @@ require_once __DIR__ . '/../../includes/header.php';
                     }
                   ?>
                 </select>
+              </div>
+            </div>
+
+
+            
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Web Check-In/Checkout</label>
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo !empty($employee['allow_web_attendance']) ? 'checked' : ''; ?>>
+                  <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                </div>
+                <small class="text-muted">Leave disabled for employees who must rely on biometric devices only.</small>
               </div>
             </div>
           </div>
@@ -383,4 +415,44 @@ document.getElementById('cropButton').addEventListener('click', function() {
     });
   }
 });
+</script>
+<script>
+(function(){
+  function initMachIdToggle(){
+    const checkbox = document.getElementById('machIdNotApplicable');
+    if(!checkbox) return;
+    const fields = ['machId','work_start_time','work_end_time']
+      .map(id => document.getElementById(id))
+      .filter(Boolean);
+    const rememberValue = (field) => { field.dataset.prevValue = field.value; };
+    fields.forEach(field => {
+      rememberValue(field);
+      field.addEventListener('input', function(){
+        if(!checkbox.checked){ rememberValue(field); }
+      });
+    });
+    const toggleMachineFields = () => {
+      const disableFields = checkbox.checked;
+      fields.forEach(field => {
+        if(disableFields){
+          rememberValue(field);
+          field.value = '';
+          field.setAttribute('disabled','disabled');
+        } else {
+          field.removeAttribute('disabled');
+          if(typeof field.dataset.prevValue !== 'undefined'){
+            field.value = field.dataset.prevValue;
+          }
+        }
+      });
+    };
+    checkbox.addEventListener('change', toggleMachineFields);
+    toggleMachineFields();
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initMachIdToggle);
+  } else {
+    initMachIdToggle();
+  }
+})();
 </script>

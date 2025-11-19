@@ -94,14 +94,18 @@ CREATE TABLE `employees` (
   `branch_id` int(11) DEFAULT NULL,
   `designation` int(11) DEFAULT NULL,
   `branch` varchar(10) NOT NULL,
+  `work_start_time` time DEFAULT '10:00:00',
+  `work_end_time` time DEFAULT '17:00:00',
   `manager_id` int(11) DEFAULT NULL,
   `supervisor_id` int(11) DEFAULT NULL,
   `role_id` int(11) NOT NULL DEFAULT '2',
   `board_position_id` int(11) DEFAULT NULL,
   `mach_id` varchar(20) DEFAULT NULL,
+  `mach_id_not_applicable` tinyint(1) NOT NULL DEFAULT '0',
   `salary` decimal(10,2) DEFAULT NULL,
   `user_image` varchar(255) DEFAULT NULL,
   `login_access` tinyint(1) DEFAULT '1',
+  `allow_web_attendance` tinyint(1) NOT NULL DEFAULT '0',
   `status` enum('active','inactive','terminated') NOT NULL DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -120,6 +124,34 @@ CREATE TABLE `employees` (
   KEY `mach_id` (`mach_id`),
   KEY `status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Table: employee_branch_transfers
+CREATE TABLE `employee_branch_transfers` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `from_branch_id` int(11) DEFAULT NULL,
+  `to_branch_id` int(11) NOT NULL,
+  `from_supervisor_id` varchar(20) DEFAULT NULL,
+  `to_supervisor_id` varchar(20) DEFAULT NULL,
+  `effective_date` date NOT NULL,
+  `last_day_in_previous_branch` date DEFAULT NULL,
+  `reason` text,
+  `previous_work_start_time` time DEFAULT NULL,
+  `previous_work_end_time` time DEFAULT NULL,
+  `new_work_start_time` time DEFAULT NULL,
+  `new_work_end_time` time DEFAULT NULL,
+  `notify_stakeholders` tinyint(1) NOT NULL DEFAULT '0',
+  `processed_by` varchar(20) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_employee_id` (`employee_id`),
+  KEY `idx_to_branch_id` (`to_branch_id`),
+  KEY `idx_effective_date` (`effective_date`),
+  CONSTRAINT `fk_transfer_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`emp_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_transfer_branch_to` FOREIGN KEY (`to_branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_transfer_branch_from` FOREIGN KEY (`from_branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 -- Attendance System
@@ -241,22 +273,26 @@ CREATE TABLE `leaves` (
   KEY `employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Table: holidays
 CREATE TABLE `holidays` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(255) NOT NULL,
-  `date` date NOT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
   `type` enum('national','religious','company') NOT NULL DEFAULT 'national',
   `description` text,
   `recurring_type` enum('none','weekly','monthly','quarterly','annually') NOT NULL DEFAULT 'none',
   `recurring_day_of_week` tinyint DEFAULT NULL COMMENT '1=Mon..7=Sun',
-  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `branch_id` int(11) DEFAULT NULL,
+  `is_recurring` tinyint(1) NOT NULL DEFAULT '0',
+  `status` enum('active','inactive') NOT NULL DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `date` (`date`),
+  KEY `idx_holidays_start_date` (`start_date`),
+  KEY `idx_holidays_end_date` (`end_date`),
   KEY `type` (`type`),
-  KEY `recurring_type` (`recurring_type`)
+  KEY `recurring_type` (`recurring_type`),
+  KEY `idx_holidays_branch` (`branch_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =====================================================
@@ -677,7 +713,7 @@ INSERT INTO `contact_groups` (`name`, `description`) VALUES
 -- Default system settings
 INSERT INTO `system_settings` (`setting_key`, `setting_value`, `setting_type`, `description`) VALUES
 ('company_name', 'Your Company Name', 'text', 'Company name for the system'),
-('work_start_time', '09:00', 'time', 'Standard work start time'),
+('work_start_time', '09:30', 'time', 'Standard work start time'),
 ('work_end_time', '18:00', 'time', 'Standard work end time'),
 ('timezone', 'UTC', 'text', 'System timezone'),
 ('notification_enabled', '1', 'boolean', 'Enable system notifications');
