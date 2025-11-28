@@ -322,9 +322,13 @@ function country_flag_from_iso2($iso2) {
     $first = 0x1F1E6 + $a;
     $second = 0x1F1E6 + $b;
 
-    // Convert codepoints to UTF-8 characters using HTML entities
-    $flag = html_entity_decode('&#' . $first . ';', ENT_NOQUOTES, 'UTF-8') . html_entity_decode('&#' . $second . ';', ENT_NOQUOTES, 'UTF-8');
-    return $flag;
+    // Prefer mb_chr for codepoint -> UTF-8 conversion when available
+    if (function_exists('mb_chr')) {
+        return mb_chr($first, 'UTF-8') . mb_chr($second, 'UTF-8');
+    }
+
+    // Fallback to numeric entity decoding
+    return html_entity_decode('&#' . $first . ';' . '&#' . $second . ';', ENT_NOQUOTES, 'UTF-8');
 }
 
 /**
@@ -374,43 +378,55 @@ function country_flag_from_name_fallback($name) {
  * @param mixed $country Array or string
  * @return string Emoji flag or empty
  */
-function hrms_resolve_country_flag($country) {
-    if (is_array($country)) {
-        // Try iso2-ish fields
-        $iso = $country['iso2'] ?? $country['iso'] ?? $country['alpha2'] ?? $country['code'] ?? $country['iso_code'] ?? null;
-        // Some country rows store a prefixed ISO like "MA Morocco" in the name field — detect that too
-        if (!$iso) {
-            $maybeName = $country['name'] ?? $country['country_name'] ?? $country['country'] ?? '';
-            if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($maybeName), $m)) {
-                $iso = strtoupper($m[1]);
-                // update $country name so later code receives cleaned name if needed
-                $country['name'] = $m[2];
-            }
-        }
-        if ($iso) {
-            $flag = country_flag_from_iso2($iso);
-            if ($flag) return $flag;
-        }
+// country flag resolution helper removed — flags are no longer rendered via helpers here
 
-        // Fallback to name
-        $name = $country['name'] ?? $country['country'] ?? $country['country_name'] ?? '';
-        if ($name) {
-            $flag = country_flag_from_name_fallback($name);
-            if ($flag) return $flag;
+// flash messages helper: provide set/get helpers so calling code (redirect_with_message etc.) works
+if (!function_exists('set_flash_message')) {
+    /**
+     * Add a flash message to the user's session
+     * @param string $type message type (success|error|warning|info)
+     * @param string $message message text
+     * @return void
+     */
+    function set_flash_message($type, $message) {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            @session_start();
         }
-        return '';
+        if (!isset($_SESSION['flash_messages']) || !is_array($_SESSION['flash_messages'])) {
+            $_SESSION['flash_messages'] = [];
+        }
+        $_SESSION['flash_messages'][] = [
+            'type' => (string)$type,
+            'message' => (string)$message,
+            'ts' => time(),
+        ];
     }
-
-    if (is_string($country)) {
-        // If looks like 2-letter ISO
-        if (strlen($country) === 2 && ctype_alpha($country)) {
-            return country_flag_from_iso2($country);
-        }
-        return country_flag_from_name_fallback($country);
-    }
-
-    return '';
 }
+
+if (!function_exists('get_flash_messages')) {
+    /**
+     * Fetch and clear flash messages from session
+     * @return array Array of messages
+     */
+    function get_flash_messages() {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            @session_start();
+        }
+        $result = $_SESSION['flash_messages'] ?? [];
+        unset($_SESSION['flash_messages']);
+        return $result;
+    }
+}
+
+/**
+ * Resolve a flag-icon CSS class for a country record or name.
+ * Returns the class suffix appropriate for the flag-icon plugin (e.g. 'flag-icon-np')
+ * or an empty string if not resolvable.
+ *
+ * @param mixed $country Array row or string
+ * @return string CSS class name (empty when not available)
+ */
+// flag class helper removed — flags are no longer rendered via CSS classes here
 
 /**
  * Check if a given date is a holiday

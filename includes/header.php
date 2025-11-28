@@ -321,6 +321,8 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       background-color: var(--primary-color);
       border-color: var(--primary-color);
     }
+
+    /* legacy: removed inline flag styling - flags are no longer shown here */
     
     .text-muted {
       color: #6c757d !important;

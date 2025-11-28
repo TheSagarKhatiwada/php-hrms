@@ -326,15 +326,16 @@ require_once __DIR__ . '/../../includes/header.php';
                             <?php $permanentCountryVal = $employee['permanent_country'] ?? 'Nepal';
                               foreach ($countryRecords as $c):
                                 $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
-                                if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
+                                // handle variants like "NP Nepal" or "NP\u00A0Nepal"
+                                if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
                                   $displayName = $m[2];
                                 } else {
                                   $displayName = $cName;
                                 }
                                 $selected = ($permanentCountryVal === $cName) || (empty($permanentCountryVal) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                                $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
+                                // flags removed — only show country names
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php else: ?>
@@ -404,15 +405,15 @@ require_once __DIR__ . '/../../includes/header.php';
                             <?php $currentCountryVal = $employee['current_country'] ?? 'Nepal';
                               foreach ($countryRecords as $c):
                                 $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
-                                if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
+                                if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
                                   $displayName = $m[2];
                                 } else {
                                   $displayName = $cName;
                                 }
                                 $selected = ($currentCountryVal === $cName) || (empty($currentCountryVal) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                                $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
+                                // flags removed — only show country names
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php else: ?>
@@ -1079,6 +1080,8 @@ document.getElementById('cropButton').addEventListener('click', function() {
             input.placeholder = 'District';
             input.value = '';
             if (optionsHtml) input.dataset.options = optionsHtml;
+            // preserve selected value so we can restore it when country is switched back to Nepal
+            if (districtEl.value) input.dataset.selected = districtEl.value;
             wrapper.replaceChild(input, districtEl);
             districtEl = document.getElementById(config.selectId);
           } else {
@@ -1092,8 +1095,12 @@ document.getElementById('cropButton').addEventListener('click', function() {
             select.id = districtEl.id;
             select.name = districtEl.name;
             const optionsHtml = districtEl.dataset.options || '';
+            const savedSelected = districtEl.dataset.selected || '';
             if (optionsHtml) {
               select.innerHTML = optionsHtml;
+              if (savedSelected) {
+                try { select.value = savedSelected; } catch(e) { /* ignore */ }
+              }
             } else {
               select.innerHTML = '<option value="">Select District</option>';
             }
@@ -1101,8 +1108,9 @@ document.getElementById('cropButton').addEventListener('click', function() {
             districtEl = document.getElementById(config.selectId);
             districtEl.addEventListener('change', () => sync(config, true));
           }
-          districtEl.removeAttribute('disabled');
-          sync(config, false);
+            districtEl.removeAttribute('disabled');
+          // ensure restored selection updates province/postal immediately
+          sync(config, true);
         }
       };
 

@@ -568,21 +568,16 @@ require_once __DIR__ . '/../../includes/header.php';
                           <select class="form-select" id="permanent_country" name="permanent_country">
                             <?php foreach ($countryRecords as $c):
                               $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
-                              if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
-                                $displayName = $m[2];
-                              } else {
-                                $displayName = $cName;
-                              }
-                              // if name starts with an ISO2 prefix like 'MA Morocco', strip the prefix for display
-                              if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
+                              // handle variants like 'NP Nepal' or 'NP\u00A0Nepal' or 'NP:Nepal'
+                              if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
                                 $displayName = $m[2];
                               } else {
                                 $displayName = $cName;
                               }
                               $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
+                              // flags removed — only show country names
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php else:
@@ -592,9 +587,10 @@ require_once __DIR__ . '/../../includes/header.php';
                           <select class="form-select" id="permanent_country" name="permanent_country">
                             <?php foreach ($fallbackCountries as $cName):
                               $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($cName) : '';
+                              // flags removed — only show country names
+                              $displayName = $cName;
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php endif; ?>
@@ -660,10 +656,15 @@ require_once __DIR__ . '/../../includes/header.php';
                           <select class="form-select" id="current_country" name="current_country">
                             <?php foreach ($countryRecords as $c):
                               $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
+                                $displayName = $m[2];
+                              } else {
+                                $displayName = $cName;
+                              }
                               $selected = ($currentCountry === $cName) || (empty($currentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
+                              // flags removed — only show country names
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php else:
@@ -672,9 +673,9 @@ require_once __DIR__ . '/../../includes/header.php';
                           <select class="form-select" id="current_country" name="current_country">
                             <?php foreach ($fallbackCountries as $cName):
                               $selected = ($currentCountry === $cName) || (empty($currentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($cName) : '';
+                              // flags removed — only show country names
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($cName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php endif; ?>
@@ -1334,6 +1335,8 @@ document.getElementById('cropButton').addEventListener('click', function() {
             input.placeholder = 'District';
             input.value = '';
             if (optionsHtml) input.dataset.options = optionsHtml;
+            // save currently selected value so it can be restored when switching back to Nepal
+            if (districtEl.value) input.dataset.selected = districtEl.value;
             wrapper.replaceChild(input, districtEl);
             districtEl = document.getElementById(config.selectId);
           } else {
@@ -1350,8 +1353,12 @@ document.getElementById('cropButton').addEventListener('click', function() {
             select.name = districtEl.name;
             // If previous options were saved on the input, restore them
             const optionsHtml = districtEl.dataset.options || '';
+            const savedSelected = districtEl.dataset.selected || '';
             if (optionsHtml) {
               select.innerHTML = optionsHtml;
+              if (savedSelected) {
+                try { select.value = savedSelected; } catch(e) { /* ignore if value not found */ }
+              }
             } else {
               // fallback: add a blank placeholder
               select.innerHTML = '<option value="">Select District</option>';
@@ -1361,8 +1368,9 @@ document.getElementById('cropButton').addEventListener('click', function() {
             // attach the change listener (same as initial initialization)
             districtEl.addEventListener('change', () => sync(config, true));
           }
-          districtEl.removeAttribute('disabled');
-          sync(config, false);
+            districtEl.removeAttribute('disabled');
+            // ensure the restored selection updates province/postal fields immediately
+            sync(config, true);
         }
       };
 
