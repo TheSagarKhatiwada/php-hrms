@@ -53,13 +53,13 @@ $currentCity = $_GET['current_city'] ?? '';
 $currentDistrict = $_GET['current_district'] ?? '';
 $currentState = $_GET['current_state'] ?? '';
 $currentPostalCode = $_GET['current_postal_code'] ?? '';
-$currentCountry = $_GET['current_country'] ?? '';
+$currentCountry = $_GET['current_country'] ?? 'Nepal';
 $permanentAddress = $_GET['permanent_address'] ?? '';
 $permanentCity = $_GET['permanent_city'] ?? '';
 $permanentDistrict = $_GET['permanent_district'] ?? '';
 $permanentState = $_GET['permanent_state'] ?? '';
 $permanentPostalCode = $_GET['permanent_postal_code'] ?? '';
-$permanentCountry = $_GET['permanent_country'] ?? '';
+$permanentCountry = $_GET['permanent_country'] ?? 'Nepal';
 
 $maritalStatusOptions = [
   'single' => 'Single',

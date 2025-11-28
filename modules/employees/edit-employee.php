@@ -314,8 +314,8 @@ require_once __DIR__ . '/../../includes/header.php';
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
-                          <input type="hidden" id="permanent_country" name="permanent_country" value="<?php echo htmlspecialchars($employee['permanent_country'] ?? ''); ?>">
-                          <div id="permanent_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['permanent_country'] ?? ''); ?></div>
+                          <input type="hidden" id="permanent_country" name="permanent_country" value="<?php echo htmlspecialchars($employee['permanent_country'] ?? 'Nepal'); ?>">
+                          <div id="permanent_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['permanent_country'] ?? 'Nepal'); ?></div>
                         </div>
                       </div>
                     </div>
@@ -377,8 +377,8 @@ require_once __DIR__ . '/../../includes/header.php';
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
-                          <input type="hidden" id="current_country" name="current_country" value="<?php echo htmlspecialchars($employee['current_country'] ?? ''); ?>">
-                          <div id="current_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['current_country'] ?? ''); ?></div>
+                          <input type="hidden" id="current_country" name="current_country" value="<?php echo htmlspecialchars($employee['current_country'] ?? 'Nepal'); ?>">
+                          <div id="current_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['current_country'] ?? 'Nepal'); ?></div>
                         </div>
                       </div>
                     </div>
