@@ -4,6 +4,7 @@ require_once '../../includes/session_config.php';
 require_once '../../includes/db_connection.php';
 require_once '../../includes/utilities.php';
 require_once '../../includes/hierarchy_helpers.php';
+require_once '../../includes/employee_profile_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // Collect and sanitize input
@@ -31,6 +32,32 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $work_start_time = trim($_POST['work_start_time'] ?? '');
     $work_end_time = trim($_POST['work_end_time'] ?? '');
     $allowWebAttendance = isset($_POST['allow_web_attendance']) ? 1 : 0;
+    $fatherName = trim($_POST['father_name'] ?? '');
+    $motherName = trim($_POST['mother_name'] ?? '');
+    $spouseName = trim($_POST['spouse_name'] ?? '');
+    $maritalStatus = trim($_POST['marital_status'] ?? '');
+    $emergencyContactName = trim($_POST['emergency_contact_name'] ?? '');
+    $emergencyContactRelationship = trim($_POST['emergency_contact_relationship'] ?? '');
+    $emergencyContactPhone = trim($_POST['emergency_contact_phone'] ?? '');
+    $emergencyContactEmail = trim($_POST['emergency_contact_email'] ?? '');
+    $bloodGroup = trim($_POST['blood_group'] ?? '');
+    $allergies = trim($_POST['allergies'] ?? '');
+    $medicalConditions = trim($_POST['medical_conditions'] ?? '');
+    $medicalNotes = trim($_POST['medical_notes'] ?? '');
+    $currentAddress = trim($_POST['current_address'] ?? '');
+    $currentCity = trim($_POST['current_city'] ?? '');
+    $currentDistrict = trim($_POST['current_district'] ?? '');
+    $currentState = trim($_POST['current_state'] ?? '');
+    $currentPostalCode = trim($_POST['current_postal_code'] ?? '');
+    $currentCountry = trim($_POST['current_country'] ?? '');
+    $permanentAddress = trim($_POST['permanent_address'] ?? '');
+    $permanentCity = trim($_POST['permanent_city'] ?? '');
+    $permanentDistrict = trim($_POST['permanent_district'] ?? '');
+    $permanentState = trim($_POST['permanent_state'] ?? '');
+    $permanentPostalCode = trim($_POST['permanent_postal_code'] ?? '');
+    $permanentCountry = trim($_POST['permanent_country'] ?? '');
+    $academicRecords = collect_academic_records_from_request($_POST);
+    $experienceRecords = collect_experience_records_from_request($_POST);
     if ($machIdNotApplicable) {
         $machId = '';
         $work_start_time = '';
@@ -126,11 +153,37 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         work_end_time = :work_end_time,
         supervisor_id = :supervisor_id,
         department_id = :department_id,
-        allow_web_attendance = :allow_web_attendance
+        allow_web_attendance = :allow_web_attendance,
+        father_name = :father_name,
+        mother_name = :mother_name,
+        spouse_name = :spouse_name,
+        marital_status = :marital_status,
+        emergency_contact_name = :emergency_contact_name,
+        emergency_contact_relationship = :emergency_contact_relationship,
+        emergency_contact_phone = :emergency_contact_phone,
+        emergency_contact_email = :emergency_contact_email,
+        blood_group = :blood_group,
+        allergies = :allergies,
+        medical_conditions = :medical_conditions,
+        medical_notes = :medical_notes,
+        current_address = :current_address,
+        current_city = :current_city,
+        current_district = :current_district,
+        current_state = :current_state,
+        current_postal_code = :current_postal_code,
+        current_country = :current_country,
+        permanent_address = :permanent_address,
+        permanent_city = :permanent_city,
+        permanent_district = :permanent_district,
+        permanent_state = :permanent_state,
+        permanent_postal_code = :permanent_postal_code,
+        permanent_country = :permanent_country
         WHERE emp_id = :emp_id";
     try {
+        $pdo->beginTransaction();
+
         $stmt = $pdo->prepare($sql);
-        $result = $stmt->execute([
+        $stmt->execute([
             ':emp_id' => $emp_id,
             ':machId' => ($machId !== '' ? (int)$machId : null),
             ':empBranchId' => $empBranchId,
@@ -156,13 +209,41 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             ,':work_end_time' => ($machIdNotApplicable ? null : ($work_end_time !== '' ? $work_end_time : '18:00:00'))
             ,':mach_id_not_applicable' => $machIdNotApplicable
             ,':allow_web_attendance' => $allowWebAttendance
+            ,':father_name' => $fatherName ?: null
+            ,':mother_name' => $motherName ?: null
+            ,':spouse_name' => $spouseName ?: null
+            ,':marital_status' => $maritalStatus ?: null
+            ,':emergency_contact_name' => $emergencyContactName ?: null
+            ,':emergency_contact_relationship' => $emergencyContactRelationship ?: null
+            ,':emergency_contact_phone' => $emergencyContactPhone ?: null
+            ,':emergency_contact_email' => $emergencyContactEmail ?: null
+            ,':blood_group' => $bloodGroup ?: null
+            ,':allergies' => $allergies ?: null
+            ,':medical_conditions' => $medicalConditions ?: null
+            ,':medical_notes' => $medicalNotes ?: null
+            ,':current_address' => $currentAddress ?: null
+            ,':current_city' => $currentCity ?: null
+            ,':current_district' => $currentDistrict ?: null
+            ,':current_state' => $currentState ?: null
+            ,':current_postal_code' => $currentPostalCode ?: null
+            ,':current_country' => $currentCountry ?: null
+            ,':permanent_address' => $permanentAddress ?: null
+            ,':permanent_city' => $permanentCity ?: null
+            ,':permanent_district' => $permanentDistrict ?: null
+            ,':permanent_state' => $permanentState ?: null
+            ,':permanent_postal_code' => $permanentPostalCode ?: null
+            ,':permanent_country' => $permanentCountry ?: null
         ]);
-        if ($result) {
-            $_SESSION['success'] = "Employee record updated successfully.";
-        } else {
-            $_SESSION['error'] = "No changes were made to the employee record.";
-        }
+
+        sync_employee_academic_records($pdo, $emp_id, $academicRecords);
+        sync_employee_experience_records($pdo, $emp_id, $experienceRecords);
+
+        $pdo->commit();
+        $_SESSION['success'] = "Employee record updated successfully.";
     } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $_SESSION['error'] = "Error updating employee: " . $e->getMessage();
     }
     header("Location: employees.php?_nocache=" . time());
