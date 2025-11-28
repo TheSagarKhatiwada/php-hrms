@@ -556,8 +556,9 @@ require_once __DIR__ . '/../../includes/header.php';
                           <div id="permanent_postal_code_display" class="form-control-plaintext"><?php echo htmlspecialchars($permanentPostalCode); ?></div>
                         </div>
                         <div class="col-sm-6">
-                          <label for="permanent_country" class="form-label">Country</label>
-                          <input type="text" class="form-control" id="permanent_country" name="permanent_country" value="<?php echo htmlspecialchars($permanentCountry); ?>">
+                          <label class="form-label">Country</label>
+                          <input type="hidden" id="permanent_country" name="permanent_country" value="<?php echo htmlspecialchars($permanentCountry); ?>">
+                          <div id="permanent_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($permanentCountry); ?></div>
                         </div>
                       </div>
                     </div>
@@ -617,8 +618,9 @@ require_once __DIR__ . '/../../includes/header.php';
                           <div id="current_postal_code_display" class="form-control-plaintext"><?php echo htmlspecialchars($currentPostalCode); ?></div>
                         </div>
                         <div class="col-sm-6">
-                          <label for="current_country" class="form-label">Country</label>
-                          <input type="text" class="form-control" id="current_country" name="current_country" value="<?php echo htmlspecialchars($currentCountry); ?>">
+                          <label class="form-label">Country</label>
+                          <input type="hidden" id="current_country" name="current_country" value="<?php echo htmlspecialchars($currentCountry); ?>">
+                          <div id="current_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($currentCountry); ?></div>
                         </div>
                       </div>
                     </div>
