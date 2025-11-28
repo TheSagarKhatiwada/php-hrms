@@ -1071,6 +1071,11 @@ document.getElementById('cropButton').addEventListener('click', function() {
           }
           if (districtEl.tagName && districtEl.tagName.toLowerCase() === 'select') {
             const optionsHtml = districtEl.innerHTML || '';
+            // capture currently-selected value and data attributes so we can restore them later
+            const selectedValue = districtEl.value || '';
+            const selectedOption = districtEl.options[districtEl.selectedIndex] || null;
+            const selectedProvince = selectedOption ? (selectedOption.getAttribute('data-province') || '') : '';
+            const selectedPostal = selectedOption ? (selectedOption.getAttribute('data-postal') || '') : '';
             const wrapper = districtEl.parentNode;
             const input = document.createElement('input');
             input.type = 'text';
@@ -1080,8 +1085,10 @@ document.getElementById('cropButton').addEventListener('click', function() {
             input.placeholder = 'District';
             input.value = '';
             if (optionsHtml) input.dataset.options = optionsHtml;
-            // preserve selected value so we can restore it when country is switched back to Nepal
-            if (districtEl.value) input.dataset.selected = districtEl.value;
+            // preserve selected value and its metadata so we can restore when switching back to Nepal
+            if (selectedValue) input.dataset.selected = selectedValue;
+            if (selectedProvince) input.dataset.selectedProvince = selectedProvince;
+            if (selectedPostal) input.dataset.selectedPostal = selectedPostal;
             wrapper.replaceChild(input, districtEl);
             districtEl = document.getElementById(config.selectId);
           } else {
@@ -1096,10 +1103,21 @@ document.getElementById('cropButton').addEventListener('click', function() {
             select.name = districtEl.name;
             const optionsHtml = districtEl.dataset.options || '';
             const savedSelected = districtEl.dataset.selected || '';
+            const savedProvince = districtEl.dataset.selectedProvince || '';
+            const savedPostal = districtEl.dataset.selectedPostal || '';
             if (optionsHtml) {
               select.innerHTML = optionsHtml;
               if (savedSelected) {
                 try { select.value = savedSelected; } catch(e) { /* ignore */ }
+                if (select.selectedIndex === -1) {
+                  const missing = document.createElement('option');
+                  missing.value = savedSelected;
+                  missing.textContent = savedSelected;
+                  if (savedProvince) missing.setAttribute('data-province', savedProvince);
+                  if (savedPostal) missing.setAttribute('data-postal', savedPostal);
+                  missing.selected = true;
+                  select.appendChild(missing);
+                }
               }
             } else {
               select.innerHTML = '<option value="">Select District</option>';

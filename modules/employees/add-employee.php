@@ -1324,8 +1324,12 @@ document.getElementById('cropButton').addEventListener('click', function() {
           // clear district selection as it's not applicable
           // If district is a select, replace it with a text input (user will type the district)
           if (districtEl.tagName && districtEl.tagName.toLowerCase() === 'select') {
-            // Save options in a data attribute so we can restore later
+            // Save options and the selected option's value/province/postal so we can restore later
             const optionsHtml = districtEl.innerHTML || '';
+            const selectedValue = districtEl.value || '';
+            const selectedOption = districtEl.options[districtEl.selectedIndex] || null;
+            const selectedProvince = selectedOption ? (selectedOption.getAttribute('data-province') || '') : '';
+            const selectedPostal = selectedOption ? (selectedOption.getAttribute('data-postal') || '') : '';
             const wrapper = districtEl.parentNode;
             const input = document.createElement('input');
             input.type = 'text';
@@ -1335,6 +1339,9 @@ document.getElementById('cropButton').addEventListener('click', function() {
             input.placeholder = 'District';
             input.value = '';
             if (optionsHtml) input.dataset.options = optionsHtml;
+            if (selectedValue) input.dataset.selected = selectedValue;
+            if (selectedProvince) input.dataset.selectedProvince = selectedProvince;
+            if (selectedPostal) input.dataset.selectedPostal = selectedPostal;
             // save currently selected value so it can be restored when switching back to Nepal
             if (districtEl.value) input.dataset.selected = districtEl.value;
             wrapper.replaceChild(input, districtEl);
@@ -1354,10 +1361,22 @@ document.getElementById('cropButton').addEventListener('click', function() {
             // If previous options were saved on the input, restore them
             const optionsHtml = districtEl.dataset.options || '';
             const savedSelected = districtEl.dataset.selected || '';
+            const savedProvince = districtEl.dataset.selectedProvince || '';
+            const savedPostal = districtEl.dataset.selectedPostal || '';
             if (optionsHtml) {
               select.innerHTML = optionsHtml;
               if (savedSelected) {
                 try { select.value = savedSelected; } catch(e) { /* ignore if value not found */ }
+                // If setting value didn't match any option, insert it so it remains selected
+                if (select.selectedIndex === -1) {
+                  const missingOpt = document.createElement('option');
+                  missingOpt.value = savedSelected;
+                  missingOpt.textContent = savedSelected;
+                  if (savedProvince) missingOpt.setAttribute('data-province', savedProvince);
+                  if (savedPostal) missingOpt.setAttribute('data-postal', savedPostal);
+                  missingOpt.selected = true;
+                  select.appendChild(missingOpt);
+                }
               }
             } else {
               // fallback: add a blank placeholder
