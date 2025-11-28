@@ -326,10 +326,15 @@ require_once __DIR__ . '/../../includes/header.php';
                             <?php $permanentCountryVal = $employee['permanent_country'] ?? 'Nepal';
                               foreach ($countryRecords as $c):
                                 $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                                if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
+                                  $displayName = $m[2];
+                                } else {
+                                  $displayName = $cName;
+                                }
                                 $selected = ($permanentCountryVal === $cName) || (empty($permanentCountryVal) && strtolower($cName) === 'nepal') ? 'selected' : '';
                                 $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php else: ?>
@@ -399,10 +404,15 @@ require_once __DIR__ . '/../../includes/header.php';
                             <?php $currentCountryVal = $employee['current_country'] ?? 'Nepal';
                               foreach ($countryRecords as $c):
                                 $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                                if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
+                                  $displayName = $m[2];
+                                } else {
+                                  $displayName = $cName;
+                                }
                                 $selected = ($currentCountryVal === $cName) || (empty($currentCountryVal) && strtolower($cName) === 'nepal') ? 'selected' : '';
                                 $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php else: ?>
@@ -1058,8 +1068,39 @@ document.getElementById('cropButton').addEventListener('click', function() {
             postalEl.value = '';
             if(postalEl.placeholder === 'Postal Code') postalEl.placeholder = '';
           }
-          districtEl.value = '';
+          if (districtEl.tagName && districtEl.tagName.toLowerCase() === 'select') {
+            const optionsHtml = districtEl.innerHTML || '';
+            const wrapper = districtEl.parentNode;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control';
+            input.id = districtEl.id;
+            input.name = districtEl.name;
+            input.placeholder = 'District';
+            input.value = '';
+            if (optionsHtml) input.dataset.options = optionsHtml;
+            wrapper.replaceChild(input, districtEl);
+            districtEl = document.getElementById(config.selectId);
+          } else {
+            districtEl.value = '';
+          }
         } else {
+          if (districtEl.tagName && districtEl.tagName.toLowerCase() !== 'select') {
+            const wrapper = districtEl.parentNode;
+            const select = document.createElement('select');
+            select.className = 'form-select';
+            select.id = districtEl.id;
+            select.name = districtEl.name;
+            const optionsHtml = districtEl.dataset.options || '';
+            if (optionsHtml) {
+              select.innerHTML = optionsHtml;
+            } else {
+              select.innerHTML = '<option value="">Select District</option>';
+            }
+            wrapper.replaceChild(select, districtEl);
+            districtEl = document.getElementById(config.selectId);
+            districtEl.addEventListener('change', () => sync(config, true));
+          }
           districtEl.removeAttribute('disabled');
           sync(config, false);
         }

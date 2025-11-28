@@ -378,6 +378,15 @@ function hrms_resolve_country_flag($country) {
     if (is_array($country)) {
         // Try iso2-ish fields
         $iso = $country['iso2'] ?? $country['iso'] ?? $country['alpha2'] ?? $country['code'] ?? $country['iso_code'] ?? null;
+        // Some country rows store a prefixed ISO like "MA Morocco" in the name field — detect that too
+        if (!$iso) {
+            $maybeName = $country['name'] ?? $country['country_name'] ?? $country['country'] ?? '';
+            if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($maybeName), $m)) {
+                $iso = strtoupper($m[1]);
+                // update $country name so later code receives cleaned name if needed
+                $country['name'] = $m[2];
+            }
+        }
         if ($iso) {
             $flag = country_flag_from_iso2($iso);
             if ($flag) return $flag;

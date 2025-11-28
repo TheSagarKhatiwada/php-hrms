@@ -568,10 +568,21 @@ require_once __DIR__ . '/../../includes/header.php';
                           <select class="form-select" id="permanent_country" name="permanent_country">
                             <?php foreach ($countryRecords as $c):
                               $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
+                                $displayName = $m[2];
+                              } else {
+                                $displayName = $cName;
+                              }
+                              // if name starts with an ISO2 prefix like 'MA Morocco', strip the prefix for display
+                              if (preg_match('/^([A-Za-z]{2})\s+(.+)$/', trim($cName), $m)) {
+                                $displayName = $m[2];
+                              } else {
+                                $displayName = $cName;
+                              }
                               $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
                               $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php else:
@@ -583,7 +594,7 @@ require_once __DIR__ . '/../../includes/header.php';
                               $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
                               $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($cName) : '';
                             ?>
-                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
                           <?php endif; ?>
@@ -1310,9 +1321,46 @@ document.getElementById('cropButton').addEventListener('click', function() {
             if(postalEl.placeholder === 'Postal Code'){ postalEl.placeholder = ''; }
           }
           // clear district selection as it's not applicable
-          districtEl.value = '';
+          // If district is a select, replace it with a text input (user will type the district)
+          if (districtEl.tagName && districtEl.tagName.toLowerCase() === 'select') {
+            // Save options in a data attribute so we can restore later
+            const optionsHtml = districtEl.innerHTML || '';
+            const wrapper = districtEl.parentNode;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control';
+            input.id = districtEl.id;
+            input.name = districtEl.name;
+            input.placeholder = 'District';
+            input.value = '';
+            if (optionsHtml) input.dataset.options = optionsHtml;
+            wrapper.replaceChild(input, districtEl);
+            districtEl = document.getElementById(config.selectId);
+          } else {
+            districtEl.value = '';
+          }
         } else {
           // enable district and re-sync from district option
+          // If district field is a plain input (manual), restore original select using saved options if present
+          if (districtEl.tagName && districtEl.tagName.toLowerCase() !== 'select') {
+            const wrapper = districtEl.parentNode;
+            const select = document.createElement('select');
+            select.className = 'form-select';
+            select.id = districtEl.id;
+            select.name = districtEl.name;
+            // If previous options were saved on the input, restore them
+            const optionsHtml = districtEl.dataset.options || '';
+            if (optionsHtml) {
+              select.innerHTML = optionsHtml;
+            } else {
+              // fallback: add a blank placeholder
+              select.innerHTML = '<option value="">Select District</option>';
+            }
+            wrapper.replaceChild(select, districtEl);
+            districtEl = document.getElementById(config.selectId);
+            // attach the change listener (same as initial initialization)
+            districtEl.addEventListener('change', () => sync(config, true));
+          }
           districtEl.removeAttribute('disabled');
           sync(config, false);
         }
