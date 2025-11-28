@@ -306,6 +306,104 @@ function get_user_permissions() {
 }
 
 /**
+ * Convert ISO 3166-1 alpha-2 code to a flag emoji
+ * @param string $iso2 Two-letter country code
+ * @return string Emoji flag or empty string
+ */
+function country_flag_from_iso2($iso2) {
+    if (empty($iso2) || !is_string($iso2)) return '';
+    $iso = strtoupper(trim($iso2));
+    if (strlen($iso) !== 2 || !ctype_alpha($iso)) return '';
+
+    $a = ord($iso[0]) - ord('A');
+    $b = ord($iso[1]) - ord('A');
+    if ($a < 0 || $a > 25 || $b < 0 || $b > 25) return '';
+
+    $first = 0x1F1E6 + $a;
+    $second = 0x1F1E6 + $b;
+
+    // Convert codepoints to UTF-8 characters using HTML entities
+    $flag = html_entity_decode('&#' . $first . ';', ENT_NOQUOTES, 'UTF-8') . html_entity_decode('&#' . $second . ';', ENT_NOQUOTES, 'UTF-8');
+    return $flag;
+}
+
+/**
+ * Best-effort flag by country name fallback mapping
+ * @param string $name Country display name
+ * @return string Emoji or empty string
+ */
+function country_flag_from_name_fallback($name) {
+    if (empty($name) || !is_string($name)) return '';
+    $n = strtolower(trim($name));
+    $map = [
+        'nepal' => '🇳🇵',
+        'india' => '🇮🇳',
+        'united states' => '🇺🇸',
+        'united states of america' => '🇺🇸',
+        'united kingdom' => '🇬🇧',
+        'uk' => '🇬🇧',
+        'canada' => '🇨🇦',
+        'australia' => '🇦🇺',
+        'china' => '🇨🇳',
+        'germany' => '🇩🇪',
+        'france' => '🇫🇷',
+        'pakistan' => '🇵🇰',
+        'bangladesh' => '🇧🇩',
+        'japan' => '🇯🇵',
+        'united arab emirates' => '🇦🇪'
+    ];
+
+    // Exact match
+    if (isset($map[$n])) {
+        return $map[$n];
+    }
+
+    // Try contains
+    foreach ($map as $key => $emoji) {
+        if (strpos($n, $key) !== false) {
+            return $emoji;
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Resolve an emoji flag for a country row or name.
+ * Accepts array item (from DB) or raw string name/iso2.
+ * @param mixed $country Array or string
+ * @return string Emoji flag or empty
+ */
+function hrms_resolve_country_flag($country) {
+    if (is_array($country)) {
+        // Try iso2-ish fields
+        $iso = $country['iso2'] ?? $country['iso'] ?? $country['alpha2'] ?? $country['code'] ?? $country['iso_code'] ?? null;
+        if ($iso) {
+            $flag = country_flag_from_iso2($iso);
+            if ($flag) return $flag;
+        }
+
+        // Fallback to name
+        $name = $country['name'] ?? $country['country'] ?? $country['country_name'] ?? '';
+        if ($name) {
+            $flag = country_flag_from_name_fallback($name);
+            if ($flag) return $flag;
+        }
+        return '';
+    }
+
+    if (is_string($country)) {
+        // If looks like 2-letter ISO
+        if (strlen($country) === 2 && ctype_alpha($country)) {
+            return country_flag_from_iso2($country);
+        }
+        return country_flag_from_name_fallback($country);
+    }
+
+    return '';
+}
+
+/**
  * Check if a given date is a holiday
  * 
  * @param string $date Date in Y-m-d format

@@ -96,6 +96,7 @@ $relationshipOptions = [
 $districtRecords = [];
 $provinceRecords = [];
 $provinceIndex = [];
+$countryRecords = [];
 try {
   $provinceStmt = $pdo->query("SELECT province_id, province_name FROM provinces ORDER BY province_name");
   $provinceRecords = $provinceStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -105,6 +106,14 @@ try {
 
   $districtStmt = $pdo->query("SELECT district_id, district_name, province_id, postal_code FROM districts ORDER BY district_name");
   $districtRecords = $districtStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  // Try to load countries list if available in the DB
+  try {
+    // Read whatever columns exist in the countries table so helper can use iso/code if available
+    $countryStmt = $pdo->query("SELECT * FROM countries ORDER BY name");
+    $countryRecords = $countryStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  } catch (Throwable $e) {
+    $countryRecords = [];
+  }
 } catch (Throwable $e) {
   $districtRecords = [];
   $provinceRecords = [];
@@ -547,18 +556,27 @@ require_once __DIR__ . '/../../includes/header.php';
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
-                          <input type="hidden" id="permanent_state" name="permanent_state" value="<?php echo htmlspecialchars($permanentState); ?>">
-                          <div id="permanent_state_display" class="py-1"><?php echo htmlspecialchars($permanentState); ?></div>
+                          <input type="text" class="form-control" id="permanent_state" name="permanent_state" placeholder="Select District" value="<?php echo htmlspecialchars($permanentState); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
-                          <input type="hidden" id="permanent_postal_code" name="permanent_postal_code" value="<?php echo htmlspecialchars($permanentPostalCode); ?>">
-                          <div id="permanent_postal_code_display" class="py-1"><?php echo htmlspecialchars($permanentPostalCode); ?></div>
+                          <input type="text" class="form-control" id="permanent_postal_code" name="permanent_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($permanentPostalCode); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
-                          <input type="hidden" id="permanent_country" name="permanent_country" value="<?php echo htmlspecialchars($permanentCountry); ?>">
-                          <div id="permanent_country_display" class="py-1"><?php echo htmlspecialchars($permanentCountry); ?></div>
+                          <?php if (!empty($countryRecords)): ?>
+                          <select class="form-select" id="permanent_country" name="permanent_country">
+                            <?php foreach ($countryRecords as $c):
+                              $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                          <?php else: ?>
+                            <input type="text" class="form-control" id="permanent_country" name="permanent_country" placeholder="Country" value="<?php echo htmlspecialchars($permanentCountry); ?>">
+                          <?php endif; ?>
                         </div>
                       </div>
                     </div>
@@ -609,18 +627,27 @@ require_once __DIR__ . '/../../includes/header.php';
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
-                          <input type="hidden" id="current_state" name="current_state" value="<?php echo htmlspecialchars($currentState); ?>">
-                          <div id="current_state_display" class="py-1"><?php echo htmlspecialchars($currentState); ?></div>
+                          <input type="text" class="form-control" id="current_state" name="current_state" placeholder="Select District" value="<?php echo htmlspecialchars($currentState); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
-                          <input type="hidden" id="current_postal_code" name="current_postal_code" value="<?php echo htmlspecialchars($currentPostalCode); ?>">
-                          <div id="current_postal_code_display" class="py-1"><?php echo htmlspecialchars($currentPostalCode); ?></div>
+                          <input type="text" class="form-control" id="current_postal_code" name="current_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($currentPostalCode); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
-                          <input type="hidden" id="current_country" name="current_country" value="<?php echo htmlspecialchars($currentCountry); ?>">
-                          <div id="current_country_display" class="py-1"><?php echo htmlspecialchars($currentCountry); ?></div>
+                          <?php if (!empty($countryRecords)): ?>
+                          <select class="form-select" id="current_country" name="current_country">
+                            <?php foreach ($countryRecords as $c):
+                              $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              $selected = ($currentCountry === $cName) || (empty($currentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($c) : '';
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                          <?php else: ?>
+                            <input type="text" class="form-control" id="current_country" name="current_country" placeholder="Country" value="<?php echo htmlspecialchars($currentCountry); ?>">
+                          <?php endif; ?>
                         </div>
                       </div>
                     </div>
@@ -1187,8 +1214,8 @@ document.getElementById('cropButton').addEventListener('click', function() {
 (function(){
   function initDistrictProvinceAutoFill(){
     const configs = [
-      { selectId: 'permanent_district', hiddenId: 'permanent_state', displayId: 'permanent_state_display', postalHiddenId: 'permanent_postal_code', postalDisplayId: 'permanent_postal_code_display' },
-      { selectId: 'current_district', hiddenId: 'current_state', displayId: 'current_state_display', postalHiddenId: 'current_postal_code', postalDisplayId: 'current_postal_code_display' }
+      { selectId: 'permanent_district', hiddenId: 'permanent_state', displayId: 'permanent_state', postalHiddenId: 'permanent_postal_code', postalDisplayId: 'permanent_postal_code' },
+      { selectId: 'current_district', hiddenId: 'current_state', displayId: 'current_state', postalHiddenId: 'current_postal_code', postalDisplayId: 'current_postal_code' }
     ];
 
     const setDisplay = (el, val) => {
@@ -1237,6 +1264,37 @@ document.getElementById('cropButton').addEventListener('click', function() {
       select.addEventListener('change', () => sync(config, true));
       sync(config, false);
     });
+
+    // When country is other than Nepal we want to disable district auto-fill
+    const watchCountry = (countryId, config) => {
+      const countryEl = document.getElementById(countryId);
+      const districtEl = document.getElementById(config.selectId);
+      const stateEl = document.getElementById(config.displayId);
+      const postalEl = document.getElementById(config.postalDisplayId);
+      if(!countryEl || !districtEl) return;
+
+      const apply = () => {
+        const val = (countryEl.value || '').toString().toLowerCase();
+        const isNepal = val === 'nepal' || val === '';
+        if(!isNepal){
+          // disable district selection and allow entering state/postal manually
+          districtEl.setAttribute('disabled','disabled');
+          // don't overwrite manual values
+          if(stateEl){ stateEl.removeAttribute('readonly'); }
+          if(postalEl){ postalEl.removeAttribute('readonly'); }
+        } else {
+          // enable district and re-sync from district option
+          districtEl.removeAttribute('disabled');
+          sync(config, false);
+        }
+      };
+
+      countryEl.addEventListener('change', apply);
+      apply();
+    };
+
+    watchCountry('permanent_country', configs[0]);
+    watchCountry('current_country', configs[1]);
   }
 
   if(document.readyState === 'loading'){
