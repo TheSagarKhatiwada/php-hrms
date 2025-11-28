@@ -548,17 +548,17 @@ require_once __DIR__ . '/../../includes/header.php';
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
                           <input type="hidden" id="permanent_state" name="permanent_state" value="<?php echo htmlspecialchars($permanentState); ?>">
-                          <div id="permanent_state_display" class="form-control-plaintext"><?php echo htmlspecialchars($permanentState); ?></div>
+                          <div id="permanent_state_display" class="py-1"><?php echo htmlspecialchars($permanentState); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
                           <input type="hidden" id="permanent_postal_code" name="permanent_postal_code" value="<?php echo htmlspecialchars($permanentPostalCode); ?>">
-                          <div id="permanent_postal_code_display" class="form-control-plaintext"><?php echo htmlspecialchars($permanentPostalCode); ?></div>
+                          <div id="permanent_postal_code_display" class="py-1"><?php echo htmlspecialchars($permanentPostalCode); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
                           <input type="hidden" id="permanent_country" name="permanent_country" value="<?php echo htmlspecialchars($permanentCountry); ?>">
-                          <div id="permanent_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($permanentCountry); ?></div>
+                          <div id="permanent_country_display" class="py-1"><?php echo htmlspecialchars($permanentCountry); ?></div>
                         </div>
                       </div>
                     </div>
@@ -610,17 +610,17 @@ require_once __DIR__ . '/../../includes/header.php';
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
                           <input type="hidden" id="current_state" name="current_state" value="<?php echo htmlspecialchars($currentState); ?>">
-                          <div id="current_state_display" class="form-control-plaintext"><?php echo htmlspecialchars($currentState); ?></div>
+                          <div id="current_state_display" class="py-1"><?php echo htmlspecialchars($currentState); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
                           <input type="hidden" id="current_postal_code" name="current_postal_code" value="<?php echo htmlspecialchars($currentPostalCode); ?>">
-                          <div id="current_postal_code_display" class="form-control-plaintext"><?php echo htmlspecialchars($currentPostalCode); ?></div>
+                          <div id="current_postal_code_display" class="py-1"><?php echo htmlspecialchars($currentPostalCode); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
                           <input type="hidden" id="current_country" name="current_country" value="<?php echo htmlspecialchars($currentCountry); ?>">
-                          <div id="current_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($currentCountry); ?></div>
+                          <div id="current_country_display" class="py-1"><?php echo htmlspecialchars($currentCountry); ?></div>
                         </div>
                       </div>
                     </div>

@@ -305,17 +305,17 @@ require_once __DIR__ . '/../../includes/header.php';
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
                           <input type="hidden" id="permanent_state" name="permanent_state" value="<?php echo htmlspecialchars($employee['permanent_state'] ?? ''); ?>">
-                          <div id="permanent_state_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['permanent_state'] ?? ''); ?></div>
+                          <div id="permanent_state_display" class="py-1"><?php echo htmlspecialchars($employee['permanent_state'] ?? ''); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
                           <input type="hidden" id="permanent_postal_code" name="permanent_postal_code" value="<?php echo htmlspecialchars($employee['permanent_postal_code'] ?? ''); ?>">
-                          <div id="permanent_postal_code_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['permanent_postal_code'] ?? ''); ?></div>
+                          <div id="permanent_postal_code_display" class="py-1"><?php echo htmlspecialchars($employee['permanent_postal_code'] ?? ''); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
                           <input type="hidden" id="permanent_country" name="permanent_country" value="<?php echo htmlspecialchars($employee['permanent_country'] ?? 'Nepal'); ?>">
-                          <div id="permanent_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['permanent_country'] ?? 'Nepal'); ?></div>
+                          <div id="permanent_country_display" class="py-1"><?php echo htmlspecialchars($employee['permanent_country'] ?? 'Nepal'); ?></div>
                         </div>
                       </div>
                     </div>
@@ -368,17 +368,17 @@ require_once __DIR__ . '/../../includes/header.php';
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
                           <input type="hidden" id="current_state" name="current_state" value="<?php echo htmlspecialchars($employee['current_state'] ?? ''); ?>">
-                          <div id="current_state_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['current_state'] ?? ''); ?></div>
+                          <div id="current_state_display" class="py-1"><?php echo htmlspecialchars($employee['current_state'] ?? ''); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
                           <input type="hidden" id="current_postal_code" name="current_postal_code" value="<?php echo htmlspecialchars($employee['current_postal_code'] ?? ''); ?>">
-                          <div id="current_postal_code_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['current_postal_code'] ?? ''); ?></div>
+                          <div id="current_postal_code_display" class="py-1"><?php echo htmlspecialchars($employee['current_postal_code'] ?? ''); ?></div>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
                           <input type="hidden" id="current_country" name="current_country" value="<?php echo htmlspecialchars($employee['current_country'] ?? 'Nepal'); ?>">
-                          <div id="current_country_display" class="form-control-plaintext"><?php echo htmlspecialchars($employee['current_country'] ?? 'Nepal'); ?></div>
+                          <div id="current_country_display" class="py-1"><?php echo htmlspecialchars($employee['current_country'] ?? 'Nepal'); ?></div>
                         </div>
                       </div>
                     </div>
