@@ -574,8 +574,18 @@ require_once __DIR__ . '/../../includes/header.php';
                               <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
                             <?php endforeach; ?>
                           </select>
-                          <?php else: ?>
-                            <input type="text" class="form-control" id="permanent_country" name="permanent_country" placeholder="Country" value="<?php echo htmlspecialchars($permanentCountry); ?>">
+                          <?php else:
+                            // Fallback small country list so flags still display even when a countries table isn't present
+                            $fallbackCountries = ['Nepal','India','United States','United Kingdom','Pakistan','Bangladesh','China','Japan','Australia','Canada'];
+                          ?>
+                          <select class="form-select" id="permanent_country" name="permanent_country">
+                            <?php foreach ($fallbackCountries as $cName):
+                              $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($cName) : '';
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
                           <?php endif; ?>
                         </div>
                       </div>
@@ -645,8 +655,17 @@ require_once __DIR__ . '/../../includes/header.php';
                               <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
                             <?php endforeach; ?>
                           </select>
-                          <?php else: ?>
-                            <input type="text" class="form-control" id="current_country" name="current_country" placeholder="Country" value="<?php echo htmlspecialchars($currentCountry); ?>">
+                          <?php else:
+                            $fallbackCountries = ['Nepal','India','United States','United Kingdom','Pakistan','Bangladesh','China','Japan','Australia','Canada'];
+                          ?>
+                          <select class="form-select" id="current_country" name="current_country">
+                            <?php foreach ($fallbackCountries as $cName):
+                              $selected = ($currentCountry === $cName) || (empty($currentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              $flag = function_exists('hrms_resolve_country_flag') ? hrms_resolve_country_flag($cName) : '';
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo ($flag ? $flag . ' ' : '') . htmlspecialchars($cName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
                           <?php endif; ?>
                         </div>
                       </div>
@@ -1274,14 +1293,24 @@ document.getElementById('cropButton').addEventListener('click', function() {
       if(!countryEl || !districtEl) return;
 
       const apply = () => {
-        const val = (countryEl.value || '').toString().toLowerCase();
+        const val = (countryEl.value || '').toString().trim().toLowerCase();
         const isNepal = val === 'nepal' || val === '';
         if(!isNepal){
           // disable district selection and allow entering state/postal manually
           districtEl.setAttribute('disabled','disabled');
-          // don't overwrite manual values
-          if(stateEl){ stateEl.removeAttribute('readonly'); }
-          if(postalEl){ postalEl.removeAttribute('readonly'); }
+          // clear any placeholder text like 'Select District' that may have been set earlier
+          if(stateEl){
+            stateEl.removeAttribute('readonly');
+            stateEl.value = '';
+            if(stateEl.placeholder === 'Select District'){ stateEl.placeholder = ''; }
+          }
+          if(postalEl){
+            postalEl.removeAttribute('readonly');
+            postalEl.value = '';
+            if(postalEl.placeholder === 'Postal Code'){ postalEl.placeholder = ''; }
+          }
+          // clear district selection as it's not applicable
+          districtEl.value = '';
         } else {
           // enable district and re-sync from district option
           districtEl.removeAttribute('disabled');

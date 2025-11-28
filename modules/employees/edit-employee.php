@@ -1044,12 +1044,21 @@ document.getElementById('cropButton').addEventListener('click', function() {
       if(!countryEl || !districtEl) return;
 
       const apply = () => {
-        const val = (countryEl.value || '').toString().toLowerCase();
+        const val = (countryEl.value || '').toString().trim().toLowerCase();
         const isNepal = val === 'nepal' || val === '';
         if(!isNepal){
           districtEl.setAttribute('disabled','disabled');
-          if(stateEl){ stateEl.removeAttribute('readonly'); }
-          if(postalEl){ postalEl.removeAttribute('readonly'); }
+          if(stateEl){
+            stateEl.removeAttribute('readonly');
+            stateEl.value = '';
+            if(stateEl.placeholder === 'Select District') stateEl.placeholder = '';
+          }
+          if(postalEl){
+            postalEl.removeAttribute('readonly');
+            postalEl.value = '';
+            if(postalEl.placeholder === 'Postal Code') postalEl.placeholder = '';
+          }
+          districtEl.value = '';
         } else {
           districtEl.removeAttribute('disabled');
           sync(config, false);
