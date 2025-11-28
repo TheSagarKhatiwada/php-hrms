@@ -1049,7 +1049,7 @@ document.getElementById('cropButton').addEventListener('click', function() {
     // Disable district auto-fill if the selected country is not Nepal
     const watchCountry = (countryId, config) => {
       const countryEl = document.getElementById(countryId);
-      const districtEl = document.getElementById(config.selectId);
+      let districtEl = document.getElementById(config.selectId);
       const stateEl = document.getElementById(config.displayId);
       const postalEl = document.getElementById(config.postalDisplayId);
       if(!countryEl || !districtEl) return;
@@ -1127,6 +1127,9 @@ document.getElementById('cropButton').addEventListener('click', function() {
             districtEl.addEventListener('change', () => sync(config, true));
           }
             districtEl.removeAttribute('disabled');
+            // when returning to Nepal, make state/postal readonly again and ensure they sync
+            if (stateEl) stateEl.setAttribute('readonly', 'readonly');
+            if (postalEl) postalEl.setAttribute('readonly', 'readonly');
           // ensure restored selection updates province/postal immediately
           sync(config, true);
         }
