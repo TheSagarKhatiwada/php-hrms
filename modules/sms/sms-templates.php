@@ -20,13 +20,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ");
                     
                     $variables = array_filter(explode(',', $_POST['variables']));
+                    $createdBy = null;
+                    if (!empty($_SESSION['user_id'])) {
+                        try {
+                            $userCheck = $pdo->prepare('SELECT id FROM users WHERE id = ? LIMIT 1');
+                            $userCheck->execute([$_SESSION['user_id']]);
+                            $createdBy = $userCheck->fetchColumn() ?: null;
+                        } catch (PDOException $e) {
+                            $createdBy = null;
+                        }
+                    }
                     $stmt->execute([
                         $_POST['name'],
                         $_POST['subject'],
                         $_POST['message'],
                         json_encode($variables),
                         $_POST['category'],
-                        $_SESSION['user_id']
+                        $createdBy
                     ]);
                     
                     $_SESSION['success'] = "SMS template created successfully!";

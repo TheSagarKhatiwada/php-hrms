@@ -31,6 +31,59 @@ $employees = $data['employees'] ?? '*';
 // Authentication: standard session key is user_id (userName not set elsewhere)
 if(!isset($_SESSION['user_id'])){ echo json_encode(['status'=>'error','message'=>'Not authenticated']); exit; }
 
+$isAdmin = function_exists('is_admin') ? is_admin() : false;
+$canGenerateReports = $isAdmin || has_permission('generate_attendance_reports');
+$canViewDailyReports = $isAdmin || has_permission('view_attendance_reports_daily');
+$canViewPeriodicReports = $isAdmin || has_permission('view_attendance_reports_periodic');
+$canViewTimesheetReports = $isAdmin || has_permission('view_attendance_reports_timesheet');
+$canViewSensitiveAttendance = $isAdmin || has_permission('view_sensitive_attendance_metrics');
+$allowedReportTypes = [];
+if($canViewDailyReports){ $allowedReportTypes[] = 'daily'; }
+if($canViewPeriodicReports){ $allowedReportTypes[] = 'periodic'; }
+if($canViewTimesheetReports){ $allowedReportTypes[] = 'timesheet'; }
+
+if(!$canGenerateReports || empty($allowedReportTypes)){
+  http_response_code(403);
+  echo json_encode(['status'=>'error','message'=>'You are not allowed to generate attendance reports.']);
+  exit;
+}
+
+if(!in_array($reportType, $allowedReportTypes, true)){
+  http_response_code(403);
+  echo json_encode(['status'=>'error','message'=>'You are not allowed to use this report type.']);
+  exit;
+}
+
+if($branch === '*' || strtolower($branch) === 'all'){ $branch = ''; }
+if($branch !== '' && !ctype_digit($branch)){
+  http_response_code(400);
+  echo json_encode(['status'=>'error','message'=>'Invalid branch identifier.']);
+  exit;
+}
+
+$canViewAllBranchAttendance = $isAdmin || has_permission('view_all_branch_attendance');
+if(!$canViewAllBranchAttendance){
+  $viewerBranch = hrms_get_user_branch_context($pdo, $_SESSION['user_id']);
+  $assignedBranch = null;
+  if($viewerBranch['legacy'] !== null){
+    $assignedBranch = (string)$viewerBranch['legacy'];
+  } elseif($viewerBranch['numeric'] !== null){
+    $assignedBranch = (string)$viewerBranch['numeric'];
+  }
+  if($assignedBranch === null){
+    http_response_code(403);
+    echo json_encode(['status'=>'error','message'=>'Branch access is not configured for your account.']);
+    exit;
+  }
+  if($branch === ''){
+    $branch = $assignedBranch;
+  } elseif((string)$branch !== (string)$assignedBranch){
+    http_response_code(403);
+    echo json_encode(['status'=>'error','message'=>'You are not allowed to access this branch.']);
+    exit;
+  }
+}
+
 // Normalize employees list
 $employeeIds = [];
 if($employees !== '*' && $employees !== '') {
@@ -261,6 +314,11 @@ if($reportType === 'daily') {
     $pdf->SetFont('helvetica','',9); $sn=1;
     foreach($dataRows as $r){
       $line=[ $sn++, $r['emp_id'].' - '.$r['employee_name'], $r['scheduled_in'],$r['scheduled_out'],$r['working_hour'],$r['in_time'],$r['out_time'],$r['worked_duration'],$r['over_time'],$r['late_in'],$r['early_out'],$r['early_in'],$r['late_out'],$r['marked_as'], strip_tags($r['methods']), strip_tags($r['remarks']) ];
+      if(!$canViewSensitiveAttendance){
+        $line[7]=$line[8]=$line[9]=$line[10]=$line[11]=$line[12]='--';
+        $line[14] = trim((string)$line[14]) !== '' ? 'Restricted' : '--';
+        $line[15] = trim((string)$line[15]) !== '' ? 'Restricted' : '--';
+      }
       $prepared=[];$heights=[]; foreach($line as $i=>$val){ $text=(string)$val; if($i==1){ $text=wordwrap($text,50,"\n",true);} $prepared[$i]=$text; $heights[$i]=$pdf->getStringHeight($widths[$i],$text); }
       $rowHeight=max($heights); if($rowHeight<5.2)$rowHeight=5.2; $y=$pdf->GetY(); $x=$pdf->GetX();
       foreach($prepared as $i=>$text){ $align=($i==1)?'L':'C'; $pdf->MultiCell($widths[$i],$rowHeight,$text,1,$align,false,0); $x+=$widths[$i]; $pdf->SetXY($x,$y);} $pdf->SetY($y+$rowHeight);
@@ -625,7 +683,12 @@ if($reportType === 'daily') {
   // Combine in/out methods into single Methods column as 'A | M' when both present
   $methodsCombined = trim((string)($r['in_method'] ?? ''));
   if(!empty($r['out_method'])){ $methodsCombined = ($methodsCombined !== '' ? $methodsCombined.' | ' : '').trim((string)$r['out_method']); }
-  $line=[ $sn++, date('Y-m-d, l', strtotime($r['date'])), $r['scheduled_in'],$r['scheduled_out'],$r['working_hour'],$r['in_time'],$r['out_time'],$r['worked_duration'],$r['over_time'],$r['late_in'],$r['early_out'],$r['early_in'],$r['late_out'],$r['marked_as'], strip_tags($methodsCombined), strip_tags($r['remarks']) ];
+      $line=[ $sn++, date('Y-m-d, l', strtotime($r['date'])), $r['scheduled_in'],$r['scheduled_out'],$r['working_hour'],$r['in_time'],$r['out_time'],$r['worked_duration'],$r['over_time'],$r['late_in'],$r['early_out'],$r['early_in'],$r['late_out'],$r['marked_as'], strip_tags($methodsCombined), strip_tags($r['remarks']) ];
+      if(!$canViewSensitiveAttendance){
+        $line[7]=$line[8]=$line[9]=$line[10]=$line[11]=$line[12]='--';
+        $line[14] = trim((string)$line[14]) !== '' ? 'Restricted' : '--';
+        $line[15] = trim((string)$line[15]) !== '' ? 'Restricted' : '--';
+      }
         $prepared=[]; $heights=[];
         foreach($line as $i=>$val){ $text=(string)$val; if($i==15){ $text=wordwrap($text,60,"\n",true);} $prepared[$i]=$text; $heights[$i]=$pdf->getStringHeight($widths[$i],$text); }
         $rowHeight=max($heights); if($rowHeight<5)$rowHeight=5; $y=$pdf->GetY(); $x=$pdf->GetX();
@@ -720,6 +783,8 @@ if($reportType === 'daily') {
   $workStart='09:30';
   try { $st=$pdo->query("SELECT value FROM settings WHERE setting_key='work_start_time' LIMIT 1"); if($st && ($r=$st->fetch(PDO::FETCH_ASSOC))){ $workStart=$r['value']; } } catch(Exception $e){}
     $scheduled_in = new DateTime($workStart);
+    // Grace time: 5 minutes for all employees
+    $graceMinutes = 5;
     // Employees limited to branch (timesheet UI requires branch); if none given treat as all
     $empParams=[]; $where=[];
     if($branch!==''){ $where[]='e.branch = ?'; $empParams[]=$branch; }
@@ -779,7 +844,12 @@ if($reportType === 'daily') {
             $workStartNorm = date('H:i', strtotime($resolved['start']));
             $inDT = DateTime::createFromFormat('H:i', $inTime);
             $scheduled_in_norm = DateTime::createFromFormat('H:i', $workStartNorm);
-            if($inDT <= $scheduled_in_norm){ $status='P'; $empData['summary']['present']++; }
+            // Apply grace time: add grace minutes to scheduled time
+            $scheduledWithGrace = clone $scheduled_in_norm;
+            if($graceMinutes > 0) {
+              $scheduledWithGrace->modify('+' . $graceMinutes . ' minutes');
+            }
+            if($inDT <= $scheduledWithGrace){ $status='P'; $empData['summary']['present']++; }
             else { $status='L'; $empData['summary']['late']++; }
           } else {
             // No attendance -> Absent
@@ -828,20 +898,37 @@ if($reportType === 'daily') {
     $canAlpha=(extension_loaded('gd')||extension_loaded('imagick')); if($resolvedLogo && !$canAlpha && strtolower(pathinfo($resolvedLogo,PATHINFO_EXTENSION))==='png'){ $resolvedLogo=null; }
     $watermarkLogo=$resolvedLogo; $applyWM=function($pdfInstance,$logo){ if(!$logo) return; try{ if(method_exists($pdfInstance,'SetAlpha'))$pdfInstance->SetAlpha(0.06); $w=160; $pdfInstance->Image($logo,($pdfInstance->getPageWidth()-$w)/2,($pdfInstance->getPageHeight()-$w*0.4)/2,$w,0); if(method_exists($pdfInstance,'SetAlpha'))$pdfInstance->SetAlpha(1);}catch(Exception $e){} };
     // Dynamic column widths: SN + Employee + N dates + 5 summary columns (Present, Absent, Leave, Amount, Status)
-    $dateCount=count($dates); $baseWidth=$pdf->getPageWidth()-$pdf->getMargins()['left']-$pdf->getMargins()['right'];
-  // Column width tuning with dynamic sizing for Amount & Status
-  $snW=6; $empW=38; // baseline widths
-  $pdf->SetFont('helvetica','B',8);
-  $amountLabel='Amount'; $statusLabel='Status';
-  $maxAmountStr=$amountLabel; foreach($amountStrings as $s){ if(strlen($s) > strlen($maxAmountStr)) $maxAmountStr=$s; }
-  $maxStatusStr = $hasNotSelected ? 'Not Selected' : 'Selected'; if(strlen($statusLabel) > strlen($maxStatusStr)) $maxStatusStr=$statusLabel;
-  // Measure string widths (add small padding)
-  $amountWidth = ceil($pdf->GetStringWidth($maxAmountStr) + 4); if($amountWidth < 12) $amountWidth=12; if($amountWidth>28) $amountWidth=28; // clamp
-  $statusWidth = ceil($pdf->GetStringWidth($maxStatusStr) + 4); if($statusWidth < 16) $statusWidth=16; if($statusWidth>34) $statusWidth=34;
-  // Present, Absent, Late Entry keep fixed minimal widths
-  // Slightly widen 'Late Entry' column (14 -> 16) to give text breathing room
-  $summaryW=[12,12,16,$amountWidth,$statusWidth];
-  $summaryTotal=array_sum($summaryW); $remaining=$baseWidth-($snW+$empW+$summaryTotal); $perDate=$dateCount?($remaining/$dateCount):0;
+    $dateCount = count($dates);
+    $baseWidth = $pdf->getPageWidth() - $pdf->getMargins()['left'] - $pdf->getMargins()['right'];
+    // Fixed widths for non-date columns
+    $snW = 6;
+    $empW = 38;
+    $schInW = 10;
+    $pdf->SetFont('helvetica','B',8);
+    $amountLabel = 'Amount';
+    $statusLabel = 'Status';
+    $maxAmountStr = $amountLabel;
+    foreach ($amountStrings as $s) { if (strlen($s) > strlen($maxAmountStr)) $maxAmountStr = $s; }
+    $maxStatusStr = $hasNotSelected ? 'Not Selected' : 'Selected';
+    if (strlen($statusLabel) > strlen($maxStatusStr)) $maxStatusStr = $statusLabel;
+    // Measure string widths (add small padding)
+    $amountWidth = ceil($pdf->GetStringWidth($maxAmountStr) + 4); if ($amountWidth < 12) $amountWidth = 12; if ($amountWidth > 28) $amountWidth = 28;
+    $statusWidth = ceil($pdf->GetStringWidth($maxStatusStr) + 4); if ($statusWidth < 16) $statusWidth = 16; if ($statusWidth > 34) $statusWidth = 34;
+    // Present, Absent, Late Entry keep fixed minimal widths
+    $summaryW = [12, 12, 16, $amountWidth, $statusWidth];
+    $summaryTotal = array_sum($summaryW);
+    // Calculate remaining width for date columns
+    $fixedTotal = $snW + $empW + $schInW + $summaryTotal;
+    $remaining = $baseWidth - $fixedTotal;
+    // Remove minimum width: force per-date column to fit exactly
+    $perDate = $dateCount ? ($remaining / $dateCount) : 0;
+    // If still over (should not happen), shrink empW as last resort
+    $totalWidth = $fixedTotal + ($perDate * $dateCount);
+    if ($totalWidth > $baseWidth) {
+      $empW = max(10, $empW - ($totalWidth - $baseWidth));
+      $remaining = $baseWidth - ($snW + $empW + $schInW + $summaryTotal);
+      $perDate = $dateCount ? ($remaining / $dateCount) : 0;
+    }
     // Header rows
   $pdf->SetFont('helvetica','B',12); $pdf->SetFillColor(240,240,240);
   $headerTitle='Periodic Entry Time Report: '.$dateLabel; if(isset($truncated) && $truncated){ $headerTitle.=' (Truncated to 32 days)'; }
@@ -864,44 +951,63 @@ if($reportType === 'daily') {
   // Reduced row height (previously 6mm) per request
   $pdf->SetFont('helvetica','',7.4); // slight font reduction for tighter rows
   $rowH = 5; // unified body row height
-  $sn=1; $rowIdx=0; foreach($employeesOut as $emp){ $rowStartY=$pdf->GetY(); $alt=($rowIdx % 2)==1; if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); } $pdf->Cell($snW,$rowH,$sn++,1,0,'C',true); if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+  $sn=1; $rowIdx=0; foreach($employeesOut as $emp) {
+    $rowStartY = $pdf->GetY();
+    $alt = ($rowIdx % 2) == 1;
+    if ($alt) { $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+    $pdf->Cell($snW, $rowH, $sn++, 1, 0, 'C', true);
+    if ($alt) { $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
     // Employee cell bold
-  $pdf->SetFont('helvetica','B',7.4);
-  $pdf->Cell($empW,$rowH,$emp['meta']['emp_id'].' - '.$emp['meta']['employee_name'],1,0,'L',true);
-    // Scheduled In time
-  $pdf->Cell(10, $rowH, date("g:i", strtotime($emp['meta']['work_start_time'])), 1, 0, 'C', true);
-    // Revert font for remaining cells
-  $pdf->SetFont('helvetica','',7.4);
-    foreach($dates as $d){ $status=$emp['dates'][$d]['status']; $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; $fill=false; // coloring per status (do not apply zebra striping to date cells)
-      if($status==='H'){ // Holiday / Weekend (keep yellow)
-        $pdf->SetFillColor(255,235,150); $fill=true;
-      } elseif($status==='P'){ // Present -> green
-        $pdf->SetFillColor(200,230,200); $fill=true;
-      } elseif($status==='L'){ // Late -> red background
-        $pdf->SetFillColor(255,170,170); $fill=true;
-      } elseif($status==='A'){ // Absent -> grey
-        $pdf->SetFillColor(224,224,224); $fill=true;
-      } else {
-        $pdf->SetFillColor(245,245,245);
-      }
-  $display=$status; $pdf->Cell($perDate,$rowH,$display,1,0,'C',$fill); }
-      // compute amount & selection
-  $present=$emp['summary']['present']; $absent=$emp['summary']['absent']; $late=$emp['summary']['late'];
-  $amount = $emp['calc_amount']; $isSelected = $emp['calc_selected'];
-  if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[0],$rowH,$present,1,0,'C',true);
-  if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[1],$rowH,$absent,1,0,'C',true);
-  if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[2],$rowH,$late,1,0,'C',true);
-  if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[3],$rowH,number_format($amount,0),1,0,'C',true);
-  if($alt){ $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
-  $pdf->Cell($summaryW[4],$rowH,($isSelected?'Selected':'Not Selected'),1,1,'C',true);
-      $track($pdf,$pageBottoms); if($pdf->GetY()>$pdf->getPageHeight()-20){ $pdf->AddPage(); // reprint headers on new page
-  $pdf->SetFont('helvetica','B',8); $pdf->SetFillColor(245,245,245); $pdf->Cell($snW,7,'SN',1,0,'C',true); $pdf->Cell($empW,7,'Employee',1,0,'L',true); foreach($dates as $d){ $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; if($isSat){ $pdf->SetFillColor(255,235,150);} else { $pdf->SetFillColor(245,245,245);} $pdf->Cell($perDate,7,date('d',strtotime($d)),1,0,'C',true);} $pdf->SetFillColor(245,245,245); foreach($summaryLabels as $i=>$lab){ $pdf->Cell($summaryW[$i],7,$lab,1,0,'C',true);} $pdf->Ln(); $pdf->SetFont('helvetica','',7.4); }
-    $rowIdx++;
+    $pdf->SetFont('helvetica','B',7.4);
+    $pdf->Cell($empW, $rowH, $emp['meta']['emp_id'].' - '.$emp['meta']['employee_name'], 1, 0, 'L', true);
+    // Scheduled In time (always present)
+    $pdf->SetFont('helvetica','',7.4);
+    $pdf->Cell(10, $rowH, date("g:i", strtotime($emp['meta']['work_start_time'])), 1, 0, 'C', true);
+    // Date columns
+    foreach ($dates as $d) {
+      $status = $emp['dates'][$d]['status'];
+      $dow = (int)date('N', strtotime($d));
+      $isSat = $dow == 6;
+      $fill = false;
+      if ($status === 'H') { $pdf->SetFillColor(255,235,150); $fill = true; }
+      elseif ($status === 'P') { $pdf->SetFillColor(200,230,200); $fill = true; }
+      elseif ($status === 'L') { $pdf->SetFillColor(255,170,170); $fill = true; }
+      elseif ($status === 'A') { $pdf->SetFillColor(224,224,224); $fill = true; }
+      else { $pdf->SetFillColor(245,245,245); }
+      $display = $status;
+      $pdf->Cell($perDate, $rowH, $display, 1, 0, 'C', $fill);
     }
+    // Summary columns (Present, Absent, Late, Amount, Status)
+    $present = $emp['summary']['present'];
+    $absent = $emp['summary']['absent'];
+    $late = $emp['summary']['late'];
+    $amount = $emp['calc_amount'];
+    $isSelected = $emp['calc_selected'];
+    if ($alt) { $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+    $pdf->Cell($summaryW[0], $rowH, $present, 1, 0, 'C', true);
+    if ($alt) { $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+    $pdf->Cell($summaryW[1], $rowH, $absent, 1, 0, 'C', true);
+    if ($alt) { $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+    $pdf->Cell($summaryW[2], $rowH, $late, 1, 0, 'C', true);
+    if ($alt) { $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+    $pdf->Cell($summaryW[3], $rowH, number_format($amount,0), 1, 0, 'C', true);
+    if ($alt) { $pdf->SetFillColor(250,250,250); } else { $pdf->SetFillColor(255,255,255); }
+    $pdf->Cell($summaryW[4], $rowH, ($isSelected ? 'Selected' : 'Not Selected'), 1, 1, 'C', true);
+    $track($pdf, $pageBottoms);
+    if ($pdf->GetY() > $pdf->getPageHeight() - 20) {
+      $pdf->AddPage();
+      // reprint headers on new page (including Sch. In)
+      $pdf->SetFont('helvetica','B',8); $pdf->SetFillColor(245,245,245);
+      $pdf->Cell($snW,7,'SN',1,0,'C',true);
+      $pdf->Cell($empW,7,'Employee',1,0,'L',true);
+      $pdf->Cell(10,7,'Sch. In',1,0,'C',true);
+      foreach($dates as $d){ $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; if($isSat){ $pdf->SetFillColor(255,235,150);} else { $pdf->SetFillColor(245,245,245);} $pdf->Cell($perDate,7,date('d',strtotime($d)),1,0,'C',true); }
+      $pdf->SetFillColor(245,245,245);
+      foreach($summaryLabels as $i=>$lab){ $pdf->Cell($summaryW[$i],7,$lab,1,0,'C',true); }
+      $pdf->Ln(); $pdf->SetFont('helvetica','',7.4);
+    }
+    $rowIdx++;
+  }
   // Footer summary row per date (may need page break)
   if($pdf->GetY()>$pdf->getPageHeight()-24){ $pdf->AddPage(); $pdf->SetFont('helvetica','B',8); $pdf->SetFillColor(245,245,245); $pdf->Cell($snW,7,'SN',1,0,'C',true); $pdf->Cell($empW,7,'Employee',1,0,'L',true); foreach($dates as $d){ $dow=(int)date('N',strtotime($d)); $isSat=$dow==6; if($isSat){ $pdf->SetFillColor(255,235,150);} else { $pdf->SetFillColor(245,245,245);} $pdf->Cell($perDate,7,date('d',strtotime($d)),1,0,'C',true);} $pdf->SetFillColor(245,245,245); foreach($summaryLabels as $i=>$lab){ $pdf->Cell($summaryW[$i],7,$lab,1,0,'C',true);} $pdf->Ln(); }
   // Summary row (match body row height & avoid double border by removing top border)
@@ -915,23 +1021,25 @@ if($reportType === 'daily') {
     $pdf->SetXY($x,$offsetY); $pdf->Cell($w,$textHeight,$txt,0,0,$align,false);
     $pdf->SetXY($x+$w,$y); // move cursor to original baseline right edge
   };
-  // Summary row content
-  $centerCell($snW+$empW,$sumH,'Summary');
-    foreach($dates as $d){
-      $presentOnly = $dateTotals[$d]['P'] ?? 0;
-      $centerCell($perDate,$sumH,(string)$presentOnly);
-    }
-    // Empty / aggregate summary columns
-  $centerCell($summaryW[0],$sumH,'');
-  $centerCell($summaryW[1],$sumH,'');
-  $centerCell($summaryW[2],$sumH,'');
+  // Summary row content (match header: SN, Employee, Sch. In, [dates], Present, Absent, Late, Amount, Status)
+  $centerCell($snW, $sumH, '');
+  $centerCell($empW, $sumH, 'Summary');
+  $centerCell(10, $sumH, ''); // Sch. In column
+  foreach($dates as $d){
+    $presentOnly = $dateTotals[$d]['P'] ?? 0;
+    $centerCell($perDate, $sumH, (string)$presentOnly);
+  }
+  // Empty / aggregate summary columns
+  $centerCell($summaryW[0], $sumH, '');
+  $centerCell($summaryW[1], $sumH, '');
+  $centerCell($summaryW[2], $sumH, '');
   // Calculate total sum of all employees' amounts for summary row
   $totalAmountAll = 0;
   foreach($employeesOut as $empObj){
     $totalAmountAll += $empObj['calc_amount'] ?? 0;
   }
-  $centerCell($summaryW[3],$sumH,number_format($totalAmountAll,0));
-  $centerCell($summaryW[4],$sumH,(string)$selectedCount);
+  $centerCell($summaryW[3], $sumH, number_format($totalAmountAll,0));
+  $centerCell($summaryW[4], $sumH, (string)$selectedCount);
   $pdf->Ln(); $track($pdf,$pageBottoms);
   // Add breathing space before total amount summary and legend & rules
   if($pdf->GetY() < ($pdf->getPageHeight()-65)) { $pdf->Ln(2); }
@@ -1031,6 +1139,7 @@ if($reportType === 'daily') {
       'end_date'=>$endDate,
       'date_label'=>$dateLabel,
       'truncated'=>$truncated,
+      'sensitive_masked'=>!$canViewSensitiveAttendance,
       'message'=>$truncated?('Range truncated to 32 days ending '.$endDate):'Timesheet generated successfully'
     ]);
     exit;
@@ -1081,4 +1190,8 @@ try {
   }
 } catch(Throwable $e) { /* optional: log error */ }
 
-echo json_encode(['status'=>'ok','file_url'=>$fileUrl]);
+echo json_encode([
+  'status'=>'ok',
+  'file_url'=>$fileUrl,
+  'sensitive_masked'=>!$canViewSensitiveAttendance
+]);

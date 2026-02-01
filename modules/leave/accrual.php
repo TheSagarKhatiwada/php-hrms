@@ -31,7 +31,7 @@ function calculateMonthlyAccrual($employee_id, $leave_type_id, $total_annual_day
     $month = $month ?: date('n'); // Current month if not specified
     $year = $year ?: date('Y');   // Current year if not specified
       // Get employee start date to determine pro-rata calculation
-    $stmt = $pdo->prepare("SELECT join_date FROM employees WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT join_date FROM employees WHERE emp_id = ?");
     $stmt->execute([$employee_id]);
     $employee = $stmt->fetch();
     
@@ -80,7 +80,7 @@ function processMonthlyAccrual($month = null, $year = null) {
         $pdo->beginTransaction();
           // Get all active employees
         $stmt = $pdo->query("
-            SELECT id, first_name, last_name, join_date, exit_date 
+            SELECT emp_id, first_name, last_name, join_date, exit_date 
             FROM employees 
             WHERE exit_date IS NULL OR exit_date > CURDATE()
         ");
@@ -102,7 +102,7 @@ function processMonthlyAccrual($month = null, $year = null) {
                     WHERE employee_id = ? AND leave_type_id = ? 
                     AND accrual_month = ? AND accrual_year = ?
                 ");
-                $stmt->execute([$employee['id'], $leave_type['id'], $month, $year]);
+                $stmt->execute([$employee['emp_id'], $leave_type['id'], $month, $year]);
                 
                 if ($stmt->fetch()) {
                     continue; // Already processed
@@ -110,7 +110,7 @@ function processMonthlyAccrual($month = null, $year = null) {
                 
                 // Calculate monthly accrual
                 $accrual_amount = calculateMonthlyAccrual(
-                    $employee['id'], 
+                    $employee['emp_id'], 
                     $leave_type['id'], 
                     $leave_type['days_allowed'],
                     $month,
@@ -126,7 +126,7 @@ function processMonthlyAccrual($month = null, $year = null) {
                         VALUES (?, ?, ?, ?, ?, NOW(), NOW())
                     ");
                     $stmt->execute([
-                        $employee['id'], 
+                        $employee['emp_id'], 
                         $leave_type['id'], 
                         $month, 
                         $year, 
@@ -134,7 +134,7 @@ function processMonthlyAccrual($month = null, $year = null) {
                     ]);
                     
                     // Update leave balance
-                    updateLeaveBalance($employee['id'], $leave_type['id'], $year);
+                    updateLeaveBalance($employee['emp_id'], $leave_type['id'], $year);
                     
                     $processed_count++;
                 }
@@ -312,7 +312,7 @@ if ($__LEAVE_ACCRUAL_IS_DIRECT && $_SERVER['REQUEST_METHOD'] === 'POST' && isset
             
             try {
                 // Get all employees and leave types
-                $stmt = $pdo->query("SELECT id FROM employees WHERE exit_date IS NULL");
+                $stmt = $pdo->query("SELECT emp_id FROM employees WHERE exit_date IS NULL");
                 $employees = $stmt->fetchAll();
                 
                 $stmt = $pdo->query("SELECT id FROM leave_types WHERE is_active = 1");
@@ -322,7 +322,7 @@ if ($__LEAVE_ACCRUAL_IS_DIRECT && $_SERVER['REQUEST_METHOD'] === 'POST' && isset
                 
                 foreach ($employees as $employee) {
                     foreach ($leave_types as $leave_type) {
-                        updateLeaveBalance($employee['id'], $leave_type['id'], $year);
+                        updateLeaveBalance($employee['emp_id'], $leave_type['id'], $year);
                         $updated_count++;
                     }
                 }
@@ -394,21 +394,18 @@ $recent_accruals = $stmt->fetchAll();
 
 <div class="container-fluid p-4">
     <!-- Page Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
         <div>
             <h1 class="fs-2 fw-bold mb-1">
                 <i class="fas fa-calculator me-2"></i>Leave Accrual Management
             </h1>
             <p class="text-muted mb-0">Manage monthly leave earning and balance calculations</p>
         </div>
-        <div class="d-flex gap-2">
-            <a href="index.php" class="btn btn-outline-success">
-                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-            </a>
-            <a href="balance.php" class="btn btn-outline-info">
-                <i class="fas fa-chart-pie me-1"></i>View Balances
-            </a>
-        </div>
+        <?php
+            $leaveToolbarIsAdmin = true;
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
     </div>
 
     <?php if (isset($_SESSION['accrual_message'])): ?>

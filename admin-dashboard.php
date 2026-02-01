@@ -2,8 +2,21 @@
 // Page meta
 require_once 'includes' . DIRECTORY_SEPARATOR . 'settings.php';
 require_once 'includes' . DIRECTORY_SEPARATOR . 'utilities.php';
+require_once 'includes' . DIRECTORY_SEPARATOR . 'reason_helpers.php';
+require_once 'includes' . DIRECTORY_SEPARATOR . 'schedule_helpers.php';
 
 $page = 'Admin Dashboard';
+
+// Shared manual attendance reasons
+$manualAttendanceReasons = function_exists('hrms_reason_label_map')
+    ? hrms_reason_label_map()
+    : [
+        '1' => 'Card Forgot',
+        '2' => 'Card Lost',
+        '3' => 'Forgot to Punch',
+        '4' => 'Office Work Delay',
+        '5' => 'Field Visit'
+    ];
 
 // Get current date and time values based on the set timezone
 $today = date('Y-m-d');
@@ -14,6 +27,8 @@ $currentTime = date('H:i:s');
 
 // Include the main header (loads CSS/JS and opens layout wrappers)
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'header.php';
+
+echo '<style>body.dark-mode .badge.bg-warning{color:#000 !important;}</style>';
 
 // Open page container
 echo '<div class="container-fluid">';
@@ -65,70 +80,114 @@ if ($hourNow < 12) {
 }
 $greetingText = $greetingWord . ', ' . $userDisplayName;
 
+$canManageContacts = false;
+if(function_exists('is_admin') && is_admin()) {
+    $canManageContacts = true;
+} elseif(function_exists('has_permission')) {
+    $canManageContacts = has_permission('manage_contacts');
+}
+
 // Get attendance statistics
+$totalEmployees = $totalBranches = $totalDepartments = $totalDesignations = $presentToday = $absentToday = $newHiresThisMonth = $birthdaysThisMonth = 0;
+$recentAttendance = [];
+$scheduleOverrides = [];
+$upcomingCelebrations = [];
+$attendanceDateFilter = isset($_GET['attendance_date']) && $_GET['attendance_date'] !== ''
+    ? $_GET['attendance_date']
+    : $today;
+
 try {
     // Total employees
-    $stmt = $pdo->query("SELECT COUNT(*) FROM employees WHERE exit_date IS NULL");
-    $totalEmployees = $stmt->fetchColumn();
-    
+    $result = $pdo->query("SELECT COUNT(*) as cnt FROM employees WHERE exit_date IS NULL");
+    if ($result) {
+        $row = $result->fetch(PDO::FETCH_ASSOC);
+        $totalEmployees = $row['cnt'] ?? 0;
+    }
+} catch (Throwable $e) {
+    error_log("Dashboard error (total employees): " . $e->getMessage());
+}
+
+try {
     // Total branches
-    $stmt = $pdo->query("SELECT COUNT(*) FROM branches");
-    $totalBranches = $stmt->fetchColumn();
-    
+    $result = $pdo->query("SELECT COUNT(*) as cnt FROM branches");
+    if ($result) {
+        $row = $result->fetch(PDO::FETCH_ASSOC);
+        $totalBranches = $row['cnt'] ?? 0;
+    }
+} catch (Throwable $e) {
+    error_log("Dashboard error (total branches): " . $e->getMessage());
+}
+
+try {
     // Total departments
-    $stmt = $pdo->query("SELECT COUNT(*) FROM departments");
-    $totalDepartments = $stmt->fetchColumn();
-    
+    $result = $pdo->query("SELECT COUNT(*) as cnt FROM departments");
+    if ($result) {
+        $row = $result->fetch(PDO::FETCH_ASSOC);
+        $totalDepartments = $row['cnt'] ?? 0;
+    }
+} catch (Throwable $e) {
+    error_log("Dashboard error (total departments): " . $e->getMessage());
+}
+
+try {
     // Total designations
-    $stmt = $pdo->query("SELECT COUNT(*) FROM designations");
-    $totalDesignations = $stmt->fetchColumn();
-    
-    // Present today
-    $stmt = $pdo->prepare("SELECT COUNT(DISTINCT emp_Id) FROM attendance_logs WHERE date = ?");
-    $stmt->execute([$today]);
-    $presentToday = $stmt->fetchColumn();
-    
+    $result = $pdo->query("SELECT COUNT(*) as cnt FROM designations");
     // Absent today (total employees - present)
     $absentToday = $totalEmployees - $presentToday;
-    // If no employees and absent is negative, set to 0
     if ($absentToday < 0) {
         $absentToday = 0;
     }
-    
-    // New hires this month
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE exit_date IS NULL AND join_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')");
-    $stmt->execute();
-    $newHiresThisMonth = $stmt->fetchColumn();
-    
-    // Birthdays this month
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE exit_date IS NULL AND date_of_birth IS NOT NULL AND MONTH(date_of_birth) = ?");
-    $stmt->execute([ (int)$currentMonth ]);
-    $birthdaysThisMonth = $stmt->fetchColumn();
-    
-    // Get upcoming celebrations (birthdays and anniversaries combined)
-    try {
-        $upcomingCelebrations = [];
-        
-        // Get birthdays in the next 30 days
-    // Upcoming celebrations via shared utility (30-day window, max 8)
-    try {
-        $upcomingCelebrations = get_upcoming_celebrations(30, 8, null);
-    } catch (Throwable $e) {
-        $upcomingCelebrations = [];
-    }
-    } catch (Throwable $e) {
-        $upcomingCelebrations = [];
-    }
+} catch (Throwable $e) {
+    error_log("Dashboard error (attendance today): " . $e->getMessage());
+}
 
-    // Get recent attendance records
-    $stmt = $pdo->query("\n        SELECT a.*, e.first_name, e.last_name, e.middle_name, e.user_image, \n               d.title as designation_name, b.name as branch_name \n        FROM attendance_logs a\n        JOIN employees e ON a.emp_Id = e.emp_id\n        LEFT JOIN branches b ON e.branch = b.id\n        LEFT JOIN designations d ON e.designation = d.id\n        ORDER BY a.date DESC, a.time DESC\n        LIMIT 20\n    ");
+try {
+    // New hires this month
+    $monthStart = date('Y-m') . '-01';
+    $stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM employees WHERE exit_date IS NULL AND join_date >= :monthStart");
+    if ($stmt && $stmt->execute([':monthStart' => $monthStart])) {
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $newHiresThisMonth = $row['cnt'] ?? 0;
+    }
+} catch (Throwable $e) {
+    error_log("Dashboard error (new hires): " . $e->getMessage());
+}
+
+try {
+    // Birthdays this month
+    $stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM employees WHERE exit_date IS NULL AND date_of_birth IS NOT NULL AND MONTH(date_of_birth) = :currentMonth");
+    if ($stmt && $stmt->execute([':currentMonth' => (int)$currentMonth])) {
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $birthdaysThisMonth = $row['cnt'] ?? 0;
+    }
+} catch (Throwable $e) {
+    error_log("Dashboard error (birthdays): " . $e->getMessage());
+}
+
+try {
+    // Get upcoming celebrations (birthdays and anniversaries combined)
+    $upcomingCelebrations = get_upcoming_celebrations(30, 8, null);
+} catch (Throwable $e) {
+    error_log("Dashboard error (upcoming celebrations): " . $e->getMessage());
+    $upcomingCelebrations = [];
+}
+
+try {
+    // Attendance by selected date for all employees
+    $stmt = $pdo->prepare("\n        SELECT e.emp_id, e.first_name, e.last_name, e.middle_name, e.user_image,\n               e.work_start_time, e.work_end_time,\n               d.title as designation_name, b.name as branch_name,\n               ag.date, ag.in_time, ag.out_time, ag.cnt,\n               (SELECT manual_reason FROM attendance_logs l WHERE l.emp_id = e.emp_id AND l.date = :att_date AND l.time = ag.in_time LIMIT 1) AS in_reason,\n               (SELECT method FROM attendance_logs l WHERE l.emp_id = e.emp_id AND l.date = :att_date AND l.time = ag.in_time LIMIT 1) AS in_method,\n               (SELECT manual_reason FROM attendance_logs l WHERE l.emp_id = e.emp_id AND l.date = :att_date AND l.time = ag.out_time LIMIT 1) AS out_reason,\n               (SELECT method FROM attendance_logs l WHERE l.emp_id = e.emp_id AND l.date = :att_date AND l.time = ag.out_time LIMIT 1) AS out_method\n        FROM employees e\n        LEFT JOIN (\n            SELECT a.emp_id, a.date,\n                   MIN(a.time) AS in_time,\n                   CASE WHEN COUNT(*)>1 THEN MAX(a.time) ELSE NULL END AS out_time,\n                   COUNT(*) AS cnt\n            FROM attendance_logs a\n            WHERE a.date = :att_date\n            GROUP BY a.emp_id, a.date\n        ) ag ON e.emp_id = ag.emp_id\n        LEFT JOIN branches b ON e.branch = b.id\n        LEFT JOIN designations d ON e.designation_id = d.id\n        WHERE e.exit_date IS NULL\n          AND (e.join_date IS NULL OR e.join_date <= :att_date)\n          AND (e.mach_id_not_applicable IS NULL OR e.mach_id_not_applicable = 0)\n        ORDER BY e.first_name, e.last_name\n    ");
+    $stmt->execute([':att_date' => $attendanceDateFilter]);
     $recentAttendance = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-} catch (PDOException $e) {
-    $_SESSION['error'] = "Error fetching dashboard data: " . $e->getMessage();
-    $totalEmployees = $totalBranches = $totalDepartments = $totalDesignations = $presentToday = $absentToday = $newHiresThisMonth = $birthdaysThisMonth = 0;
-    $recentAttendance = [];
-    $upcomingCelebrations = [];
+    $attendanceEmpIds = array_values(array_unique(array_filter(array_map(function($row) {
+        return $row['emp_id'] ?? null;
+    }, $recentAttendance))));
+    $attendanceStart = $attendanceDateFilter;
+    $attendanceEnd = $attendanceDateFilter;
+    $scheduleOverrides = !empty($attendanceEmpIds)
+        ? prefetch_schedule_overrides($pdo, $attendanceEmpIds, $attendanceStart, $attendanceEnd)
+        : [];
+} catch (Throwable $e) {
+    error_log("Dashboard error (recent attendance): " . $e->getMessage());
 }
 
 ?>
@@ -145,18 +204,18 @@ try {
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow">
                             <!-- Manage -->
+                            <?php if ($canManageContacts): ?>
                             <li>
                                 <a class="dropdown-item" href="contacts.php">
                                     <i class="fas fa-users me-2"></i>Employees
                                 </a>
                             </li>
-                            <li>
-                                <a class="dropdown-item" href="roles.php">
-                                    <i class="fas fa-user-shield me-2"></i>Roles
-                                </a>
-                            </li>
+                            <?php endif; ?>
                             <li>
                                 <a class="dropdown-item" href="permissions.php">
+                                const serverTimezoneOffset = "<?php echo $timezoneOffset; ?>"; // Format: +HH:MM or -HH:MM
+                                const initialBsMode = <?php echo hrms_should_use_bs_dates() ? 'true' : 'false'; ?>;
+                                const nepaliDigitMap = { '0': '०', '1': '१', '2': '२', '3': '३', '4': '४', '5': '५', '6': '६', '7': '७', '8': '८', '9': '९' };
                                     <i class="fas fa-key me-2"></i>Permissions
                                 </a>
                             </li>
@@ -226,7 +285,7 @@ try {
         <div class="card-body py-4">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <h2 class="fs-3 mb-0"><?php echo date('l, F j, Y'); ?></h2>
+                    <h2 class="fs-3 mb-0"><?php echo hrms_format_preferred_date(date('Y-m-d'), 'l, F j, Y'); ?></h2>
                     <h4 class="opacity-85" id="live-time">Loading time...</h4>
                 </div>
                 <div class="col-md-6">
@@ -256,8 +315,8 @@ try {
             <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
-                            <i class="fas fa-users text-success fs-4"></i>
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-3 stat-icon">
+                            <i class="fas fa-users text-light fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Total Employees</h6>
@@ -273,7 +332,7 @@ try {
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
                         <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
-                            <i class="fas fa-user-check text-success fs-4"></i>
+                            <i class="fas fa-user-check text-light fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Present Today</h6>
@@ -289,7 +348,7 @@ try {
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
                         <div class="bg-danger bg-opacity-10 p-3 rounded-3 stat-icon">
-                            <i class="fas fa-user-xmark text-danger fs-4"></i>
+                            <i class="fas fa-user-xmark text-light fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">Absent Today</h6>
@@ -304,8 +363,8 @@ try {
             <div class="card h-100 border-0 shadow-sm rounded-3 dashboard-stat-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <div class="bg-success bg-opacity-10 p-3 rounded-3 stat-icon">
-                            <i class="fas fa-user-plus text-success fs-4"></i>
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-3 stat-icon">
+                            <i class="fas fa-user-plus text-light fs-4"></i>
                         </div>
                         <div class="ms-3">
                             <h6 class="mb-1 text-muted">New Hires (<?php echo date('M'); ?>)</h6>
@@ -321,51 +380,158 @@ try {
         <!-- Recent Attendance Table -->
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm rounded-3 mb-4">
-                <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
-                    <h5 class="card-title mb-0">Recent Attendance</h5>
-                    <a href="modules/attendance/attendance.php" class="btn btn-sm btn-primary">
-                        <i class="fas fa-list me-1"></i> View All
-                    </a>
+                <div class="card-header bg-transparent border-0 d-flex align-items-center py-3 flex-wrap gap-2">
+                    <h5 class="card-title mb-0">Attendance <span class="text-muted" id="attendanceDateLabel"></span></h5>
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        <form method="get" class="d-flex align-items-center">
+                            <button type="button" class="btn btn-sm btn-outline-primary" title="Previous day" aria-label="Previous day" onclick="shiftAttendanceDate(-1)">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <input type="date" class="form-control form-control-sm visually-hidden" name="attendance_date" value="<?php echo htmlspecialchars($attendanceDateFilter); ?>" max="<?php echo htmlspecialchars($today); ?>" onchange="handleAttendanceDateChange(this.value)">
+                            <button type="button" class="btn btn-sm btn-outline-primary" title="Select date" aria-label="Select date" onclick="const input=this.previousElementSibling; if(input){ if(input.showPicker){ input.showPicker(); } else { input.focus(); input.click(); } }">
+                                <i class="far fa-calendar-alt"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" title="Next day" aria-label="Next day" onclick="shiftAttendanceDate(1)" id="attendanceNextBtn">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </form>
+                        <a href="modules/attendance/attendance.php" class="btn btn-sm btn-primary">
+                            <i class="fas fa-list me-1"></i> View All
+                        </a>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle" id="attendanceTable">
+                        <table class="table table-sm table-hover align-middle" id="attendanceTable">
                             <thead>
                                 <tr>
                                     <th>Employee</th>
                                     <th>Branch</th>
-                                    <th>Date</th>
-                                    <th>Time</th>
-                                    <th>Method</th>
+                                    <th>In</th>
+                                    <th>Out</th>
+                                    <th>Remarks</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="attendanceTableBody">
                                 <?php
                                 if (empty($recentAttendance)) {
                                     echo "<tr><td colspan='5' class='text-center'>No attendance records found</td></tr>";
                                 } else {
                                     foreach ($recentAttendance as $record) {
                                         // Format date and time
-                                        $date = date('M d, Y', strtotime($record['date']));
-                                        $time = date('h:i A', strtotime($record['time']));
+                                        $displayDate = $record['date'] ?? $attendanceDateFilter;
+                                        $inTime = !empty($record['in_time']) ? date('h:i A', strtotime($record['in_time'])) : '-';
+                                        $outTime = !empty($record['out_time']) ? date('h:i A', strtotime($record['out_time'])) : '-';
                                         
                                         // Get employee image or default
                                         $employeeImage = $record['user_image'] ?: 'resources/images/default-user.png';
-                                        
-                                        // Determine method badge color and text based on method value
-                                        $methodText = '<span class="badge bg-secondary">Unknown</span>'; // Default
-                                        if (isset($record['method'])) {
-                                            switch ($record['method']) {
-                                                case 0:
-                                                    $methodText = '<span class="badge bg-primary">Auto</span>';
-                                                    break;
-                                                case 1:
-                                                    $methodText = '<span class="badge bg-warning" style="color: #000;">Manual</span>';
-                                                    break;
-                                                case 2:
-                                                    $methodText = '<span class="badge bg-info">Web</span>';
-                                                    break;
+
+                                        $renderMeta = function($method, $reason) use ($manualAttendanceReasons) {
+                                            $parts = [];
+                                            if ($method !== null) {
+                                                switch ((int)$method) {
+                                                    case 0: $parts[] = 'Auto'; break;
+                                                    case 1: $parts[] = 'Manual'; break;
+                                                    case 2: $parts[] = 'Web'; break;
+                                                }
                                             }
+                                            if (!empty($reason)) {
+                                                if (strpos($reason, '||') !== false) {
+                                                    [$rId, $rRem] = array_map('trim', explode('||', $reason, 2));
+                                                } elseif (strpos($reason, '|') !== false) {
+                                                    [$rId, $rRem] = array_map('trim', explode('|', $reason, 2));
+                                                } else {
+                                                    $rId = trim($reason);
+                                                    $rRem = '';
+                                                }
+                                                $reasonLabel = (is_numeric($rId) && isset($manualAttendanceReasons[$rId])) ? $manualAttendanceReasons[$rId] : $rId;
+                                                if ($reasonLabel !== '') {
+                                                    $parts[] = $reasonLabel;
+                                                }
+                                                if (!empty($rRem)) {
+                                                    $parts[] = $rRem;
+                                                }
+                                            }
+                                            return implode(' | ', array_filter($parts));
+                                        };
+
+                                        $inMeta = $renderMeta($record['in_method'] ?? null, $record['in_reason'] ?? '');
+                                        $outMeta = $renderMeta($record['out_method'] ?? null, $record['out_reason'] ?? '');
+                                        $inMetaHtml = $inMeta !== '' ? "<small class='text-muted'>" . htmlspecialchars($inMeta) . "</small>" : '';
+                                        $outMetaHtml = $outMeta !== '' ? "<small class='text-muted'>" . htmlspecialchars($outMeta) . "</small>" : '';
+
+                                        $timeToSeconds = function($time) {
+                                            if (empty($time) || strpos($time, ':') === false) {
+                                                return null;
+                                            }
+                                            $parts = array_pad(explode(':', $time), 3, 0);
+                                            return ((int)$parts[0] * 3600) + ((int)$parts[1] * 60) + (int)$parts[2];
+                                        };
+
+                                        $empId = $record['emp_id'] ?? null;
+                                        $empRow = [
+                                            'emp_id' => $empId,
+                                            'work_start_time' => $record['work_start_time'] ?? null,
+                                            'work_end_time' => $record['work_end_time'] ?? null
+                                        ];
+                                        $overridesForEmp = (!empty($empId) && isset($scheduleOverrides[$empId])) ? $scheduleOverrides[$empId] : [];
+                                        $schedule = resolve_schedule_for_emp_date($empRow, $record['date'], $overridesForEmp, '09:00', '18:00');
+                                        $startSec = $timeToSeconds($schedule['start'] ?? null);
+                                        $endSec = $timeToSeconds($schedule['end'] ?? null);
+                                        $inSec = $timeToSeconds($record['in_time'] ?? null);
+                                        $outSec = $timeToSeconds($record['out_time'] ?? null);
+
+                                        $formatDuration = function($seconds) {
+                                            $seconds = max(0, (int)$seconds);
+                                            $hours = intdiv($seconds, 3600);
+                                            $minutes = intdiv($seconds % 3600, 60);
+                                            if ($hours > 0) {
+                                                return $hours . 'h ' . $minutes . 'm';
+                                            }
+                                            return $minutes . 'm';
+                                        };
+
+                                        $remarkParts = [];
+                                        if ($inSec !== null && $startSec !== null && $inSec !== $startSec) {
+                                            $diff = $inSec - $startSec;
+                                            if ($diff > 0) {
+                                                $remarkParts[] = 'Late In (' . $formatDuration($diff) . ')';
+                                            } else {
+                                                $remarkParts[] = 'Early In (' . $formatDuration(abs($diff)) . ')';
+                                            }
+                                        }
+                                        if ($outSec !== null && $endSec !== null && $outSec !== $endSec) {
+                                            $diff = $outSec - $endSec;
+                                            if ($diff > 0) {
+                                                $remarkParts[] = 'Late Out (' . $formatDuration($diff) . ')';
+                                            } else {
+                                                $remarkParts[] = 'Early Out (' . $formatDuration(abs($diff)) . ')';
+                                            }
+                                        }
+                                        $remarkHtml = '';
+                                        if (!empty($remarkParts)) {
+                                            $remarkLines = array_map(function($item) {
+                                                $label = $item;
+                                                $class = '';
+                                                $isLateIn = stripos($item, 'Late In') === 0;
+                                                $isEarlyOut = stripos($item, 'Early Out') === 0;
+                                                $isEarlyIn = stripos($item, 'Early In') === 0;
+                                                $isLateOut = stripos($item, 'Late Out') === 0;
+                                                if ($isLateIn || $isEarlyOut) {
+                                                    $class = 'bg-warning text-dark';
+                                                    if (preg_match('/\((\d+)h\s*(\d+)m\)/', $item, $m)) {
+                                                        $hours = (int)$m[1];
+                                                        if ($hours >= 1) {
+                                                            $class = 'bg-danger';
+                                                        }
+                                                    }
+                                                } elseif (stripos($item, 'Early In') === 0 || stripos($item, 'Late Out') === 0) {
+                                                    $class = 'bg-success';
+                                                }
+                                                $safe = htmlspecialchars($label);
+                                                return $class ? "<span class=\"badge {$class}\">{$safe}</span>" : $safe;
+                                            }, $remarkParts);
+                                            $remarkHtml = implode('<br>', $remarkLines);
                                         }
                                         
                                         echo "<tr>
@@ -379,9 +545,17 @@ try {
                                                     </div>
                                                 </td>
                                                 <td>{$record['branch_name']}</td>
-                                                <td>{$date}</td>
-                                                <td>{$time}</td>
-                                                <td>{$methodText}</td>
+                                                <td>
+                                                    <div class='fw-medium'>{$inTime}</div>
+                                                    {$inMetaHtml}
+                                                </td>
+                                                <td>
+                                                    <div class='fw-medium'>{$outTime}</div>
+                                                    {$outMetaHtml}
+                                                </td>
+                                                <td>
+                                                    <div class='small text-muted'>{$remarkHtml}</div>
+                                                </td>
                                             </tr>";
                                     }
                                 }
@@ -505,36 +679,282 @@ try {
 <!-- Include SMS Modal -->
 <?php include 'includes' . DIRECTORY_SEPARATOR . 'sms-modal.php'; ?>
 
-<!-- Page Scripts (defer init until after libraries load) -->
+<!-- Page Scripts -->
 <script>
-// Defer page initialization until all assets (from footer) are loaded
+(function() {
+  // Clock runs immediately - no wait for load
+  const serverTimezoneOffset = "<?php echo $timezoneOffset; ?>";
+  const initialBsMode = <?php echo hrms_should_use_bs_dates() ? 'true' : 'false'; ?>;
+  const nepaliDigitMap = { '0': '०', '1': '१', '2': '२', '3': '३', '4': '४', '5': '५', '6': '६', '7': '७', '8': '८', '9': '९' };
+
+  function getCookieValue(name) {
+    var cookies = document.cookie.split('; ');
+    for (var i = 0; i < cookies.length; i++) {
+      var parts = cookies[i].split('=');
+      if (parts[0] === name) {
+        return decodeURIComponent(parts[1] || '');
+      }
+    }
+    return null;
+  }
+
+  function isBsModeEnabled() {
+    const cookieMode = getCookieValue('date_display_mode');
+    return cookieMode === 'bs' || initialBsMode;
+  }
+
+  function toNepaliDigits(value) {
+    return String(value).replace(/[0-9]/g, function(digit) { return nepaliDigitMap[digit] || digit; });
+  }
+
+  function updateClock() {
+    const now = new Date();
+    let timeString = '';
+    if (serverTimezoneOffset) {
+      const offsetMatch = serverTimezoneOffset.match(/([+-])(\d{2}):(\d{2})/);
+      if (offsetMatch) {
+        const offsetSign = offsetMatch[1] === '+' ? 1 : -1;
+        const offsetHours = parseInt(offsetMatch[2], 10);
+        const offsetMinutes = parseInt(offsetMatch[3], 10);
+        const totalOffsetMinutes = offsetSign * (offsetHours * 60 + offsetMinutes);
+        const utcTime = now.getTime();
+        const serverTime = new Date(utcTime + (totalOffsetMinutes * 60 * 1000));
+        var hours = serverTime.getUTCHours();
+        var ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        var minutes = serverTime.getUTCMinutes().toString().padStart(2, '0');
+        var seconds = serverTime.getUTCSeconds().toString().padStart(2, '0');
+        timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
+      } else {
+        timeString = formatLocalTimeString(now);
+      }
+    } else {
+      timeString = formatLocalTimeString(now);
+    }
+    var displayTime = isBsModeEnabled() ? toNepaliDigits(timeString) : timeString;
+    var el = document.getElementById('live-time');
+    if (el) el.textContent = displayTime;
+  }
+
+  function formatLocalTimeString(dateObj) {
+    var hours = dateObj.getHours();
+    var ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    var minutes = dateObj.getMinutes().toString().padStart(2, '0');
+    var seconds = dateObj.getSeconds().toString().padStart(2, '0');
+    return hours + ':' + minutes + ':' + seconds + ' ' + ampm;
+  }
+
+    function escapeHtml(str){
+        return (str||'').toString().replace(/[&<>"']/g, function(m){
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];
+        });
+    }
+
+    const attendanceToday = <?php echo json_encode($today); ?>;
+
+    function formatLocalDate(d){
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function updateAttendanceNavState(dateVal){
+        const nextBtn = document.getElementById('attendanceNextBtn');
+        if(!nextBtn) return;
+        const todayStr = attendanceToday || formatLocalDate(new Date());
+        nextBtn.disabled = !dateVal || dateVal >= todayStr;
+    }
+
+    window.shiftAttendanceDate = function(offsetDays){
+        const dateInput = document.querySelector('input[name="attendance_date"]');
+        if(!dateInput) return;
+        const base = dateInput.value || attendanceToday || formatLocalDate(new Date());
+        const d = new Date(base + 'T00:00:00');
+        if(Number.isNaN(d.getTime())) return;
+        d.setDate(d.getDate() + offsetDays);
+        const maxDate = attendanceToday || formatLocalDate(new Date());
+        const newVal = formatLocalDate(d);
+        if (newVal > maxDate) return;
+        dateInput.value = newVal;
+        handleAttendanceDateChange(newVal);
+    };
+
+    function updateAttendanceDateLabel(dateVal){
+        const label = document.getElementById('attendanceDateLabel');
+        if(!label) return;
+        const todayStr = attendanceToday || formatLocalDate(new Date());
+        if(!dateVal){
+            label.textContent = '';
+            return;
+        }
+        const disp = new Date(dateVal + 'T00:00:00');
+        const formatted = disp.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+        label.textContent = '— ' + formatted;
+    }
+
+    function formatDisplayDate(value){
+        if(!value) return '';
+        const d = new Date(value + 'T00:00:00');
+        if(Number.isNaN(d.getTime())) return value;
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+    }
+
+    function formatDisplayTime(value){
+        if(!value) return '-';
+        const d = new Date('1970-01-01T' + value);
+        if(Number.isNaN(d.getTime())) return value;
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function buildAttendanceRow(row, dateFallback){
+        const fullName = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ');
+        const img = row.user_image ? row.user_image : 'resources/images/default-user.png';
+        const inTime = formatDisplayTime(row.in_time);
+        const outTime = formatDisplayTime(row.out_time);
+        const inMeta = row.in_meta ? `<small class='text-muted'>${escapeHtml(row.in_meta)}</small>` : '';
+        const outMeta = row.out_meta ? `<small class='text-muted'>${escapeHtml(row.out_meta)}</small>` : '';
+        const remarks = (row.remarks || []).map(r => {
+            const text = escapeHtml(r);
+            const isLateIn = r.startsWith('Late In');
+            const isEarlyOut = r.startsWith('Early Out');
+            const isEarlyIn = r.startsWith('Early In');
+            const isLateOut = r.startsWith('Late Out');
+            if (isLateIn || isEarlyOut) {
+                let cls = 'bg-warning text-dark';
+                const match = r.match(/\((\d+)h\s*(\d+)m\)/);
+                if (match && parseInt(match[1], 10) >= 1) {
+                    cls = 'bg-danger';
+                }
+                return `<span class='badge ${cls}'>${text}</span>`;
+            }
+            if (isEarlyIn || isLateOut) {
+                return `<span class='badge bg-success'>${text}</span>`;
+            }
+            return text;
+        }).join('<br>');
+
+        return [
+            `<div class='d-flex align-items-center'>
+                <img src='${escapeHtml(img)}' class='rounded-circle me-2' style='width: 32px; height: 32px; object-fit: cover;'>
+                <div>
+                    <div class='fw-medium'>${escapeHtml(fullName)}</div>
+                    <small class='text-muted'>${escapeHtml(row.designation_name || '')}</small>
+                </div>
+            </div>`,
+            escapeHtml(row.branch_name || ''),
+            `<div class='fw-medium'>${escapeHtml(inTime)}</div>${inMeta}`,
+            `<div class='fw-medium'>${escapeHtml(outTime)}</div>${outMeta}`,
+            `<div class='small text-muted'>${remarks}</div>`
+        ];
+    }
+
+    let attendanceAdjustTimer = null;
+    function adjustAttendanceTable(){
+        if (!window.jQuery || !$.fn || !$.fn.DataTable || !$.fn.DataTable.isDataTable('#attendanceTable')) return;
+        if (attendanceAdjustTimer) {
+            clearTimeout(attendanceAdjustTimer);
+        }
+        attendanceAdjustTimer = setTimeout(() => {
+            const tableEl = document.getElementById('attendanceTable');
+            if (tableEl) {
+                tableEl.style.width = '100%';
+            }
+            const table = $('#attendanceTable').DataTable();
+            table.columns.adjust().responsive?.recalc?.();
+        }, 0);
+    }
+
+    window.handleAttendanceDateChange = function(dateVal){
+        if(!dateVal) return;
+        updateAttendanceDateLabel(dateVal);
+        updateAttendanceNavState(dateVal);
+        const tbody = document.getElementById('attendanceTableBody');
+        if(!tbody) return;
+        const hasDataTable = window.jQuery && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#attendanceTable');
+        if(!hasDataTable){
+            tbody.innerHTML = "<tr><td colspan='6' class='text-center text-muted'>Loading...</td></tr>";
+        }
+        fetch('api/attendance-daily.php?date=' + encodeURIComponent(dateVal), { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(res => {
+                if(!res || res.status !== 'ok'){
+                    if(hasDataTable){
+                        const table = $('#attendanceTable').DataTable();
+                        table.clear().draw();
+                    } else {
+                        tbody.innerHTML = "<tr><td colspan='6' class='text-center text-danger'>Failed to load attendance</td></tr>";
+                    }
+                    return;
+                }
+                const rows = res.data || [];
+                if(hasDataTable){
+                    const table = $('#attendanceTable').DataTable();
+                    table.clear();
+                    if(rows.length){
+                        const dataRows = rows.map(row => buildAttendanceRow(row, dateVal));
+                        table.rows.add(dataRows);
+                    }
+                      table.draw(false);
+                      adjustAttendanceTable();
+                } else {
+                    if(!rows.length){
+                        tbody.innerHTML = "<tr><td colspan='5' class='text-center'>No attendance records found</td></tr>";
+                        return;
+                    }
+                    tbody.innerHTML = rows.map(row => `<tr>${buildAttendanceRow(row, dateVal).map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('');
+                }
+            })
+            .catch(() => {
+                if(hasDataTable){
+                    const table = $('#attendanceTable').DataTable();
+                    table.clear().draw();
+                } else {
+                    tbody.innerHTML = "<tr><td colspan='6' class='text-center text-danger'>Failed to load attendance</td></tr>";
+                }
+            });
+    };
+
+    document.addEventListener('DOMContentLoaded', function(){
+        const dateInput = document.querySelector('input[name="attendance_date"]');
+        if(dateInput && dateInput.value){
+            updateAttendanceDateLabel(dateInput.value);
+            updateAttendanceNavState(dateInput.value);
+        } else {
+            updateAttendanceNavState(attendanceToday || formatLocalDate(new Date()));
+        }
+    });
+
+  // Run clock immediately and every second
+  updateClock();
+  setInterval(updateClock, 1000);
+})();
+
+// Defer DataTable/Chart init until all assets load
 window.addEventListener('load', function() {
-  // Show loading overlay when page starts loading
-  const loadingOverlay = document.getElementById('loadingOverlay');
+  var loadingOverlay = document.getElementById('loadingOverlay');
   if (loadingOverlay) {
     loadingOverlay.style.display = 'flex';
   }
-  
-  // Pass PHP timezone information to JavaScript
-  const serverTimezoneOffset = "<?php echo $timezoneOffset; ?>"; // Format: +HH:MM or -HH:MM
-  
-    // Initialize DataTable with Bootstrap 5 styling if available
-    if (window.jQuery && $.fn && $.fn.DataTable && $('#attendanceTable').length) {
-        // Prevent reinitialization
-        if (!$.fn.DataTable.isDataTable('#attendanceTable') && !$('#attendanceTable tbody tr td[colspan="5"]').length) {
-            $('#attendanceTable').DataTable({
+
+  // Initialize DataTable
+  if (window.jQuery && $.fn && $.fn.DataTable && $('#attendanceTable').length) {
+                if (!$.fn.DataTable.isDataTable('#attendanceTable') && !$('#attendanceTable tbody tr td[colspan="5"]').length) {
+      $('#attendanceTable').DataTable({
         responsive: true,
         lengthChange: true,
         pageLength: 7,
-                lengthMenu: [[7, 15, 20], [7, 15, 20]],
-        order: [[2, 'desc'], [3, 'desc']],
+        lengthMenu: [[7, 15, 20], [7, 15, 20]],
+                order: [[2, 'desc'], [3, 'desc']],
         columnDefs: [
-          { orderable: false, targets: [0, 1, 4] } // Disable sorting on specific columns
+                                        { orderable: false, targets: [0, 1, 4] }
         ],
         searching: true,
         info: true,
         pagingType: 'full_numbers',
-
         language: {
           paginate: {
             previous: '<i class="fas fa-chevron-left"></i>',
@@ -542,78 +962,16 @@ window.addEventListener('load', function() {
             first: false,
             last: false
           },
-          search : '',
+          search: '',
           searchPlaceholder: "Search...",
           emptyTable: "No attendance records found"
         }
       });
-        } else {
-            console.log('DataTable already initialized or no data to initialize');
-        }
-  }
-  
-  // Live clock update with timezone support
-  function updateClock() {
-    // Get current UTC time
-    const now = new Date();
-    
-    // Apply server timezone offset
-    if (serverTimezoneOffset) {
-      // Extract hours and minutes from the offset string (format: +HH:MM or -HH:MM)
-      const offsetMatch = serverTimezoneOffset.match(/([+-])(\d{2}):(\d{2})/);
-      if (offsetMatch) {
-        const offsetSign = offsetMatch[1] === '+' ? 1 : -1;
-        const offsetHours = parseInt(offsetMatch[2], 10);
-        const offsetMinutes = parseInt(offsetMatch[3], 10);
-        
-        // Calculate total offset in minutes
-        const totalOffsetMinutes = offsetSign * (offsetHours * 60 + offsetMinutes);
-        
-        // Get current UTC time in minutes
-        const utcTime = now.getTime();
-        
-        // Apply the offset
-        const serverTime = new Date(utcTime + (totalOffsetMinutes * 60 * 1000));
-        
-        // Format the server time
-        let hours = serverTime.getUTCHours();
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12;
-        hours = hours ? hours : 12; // the hour '0' should be '12'
-        const minutes = serverTime.getUTCMinutes().toString().padStart(2, '0');
-        const seconds = serverTime.getUTCSeconds().toString().padStart(2, '0');
-        const timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
-        
-        document.getElementById('live-time').textContent = timeString;
-      } else {
-        // Fallback to local time if offset format is invalid
-        formatLocalTime(now);
-      }
-    } else {
-      // Fallback to local time if no offset provided
-      formatLocalTime(now);
     }
   }
-  
-  // Helper function to format local time
-  function formatLocalTime(dateObj) {
-    let hours = dateObj.getHours();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
-    const minutes = dateObj.getMinutes().toString().padStart(2, '0');
-    const seconds = dateObj.getSeconds().toString().padStart(2, '0');
-    const timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
-    
-    document.getElementById('live-time').textContent = timeString;
-  }
-  
-  // Update clock every second
-  updateClock();
-  setInterval(updateClock, 1000);
-  
-  // Make sure we have a valid canvas element before initializing the chart
-  const chartCanvas = document.getElementById('attendanceChart');
+
+  // Initialize Chart
+  var chartCanvas = document.getElementById('attendanceChart');
     if (chartCanvas && window.Chart) {
     try {
       // Initialize Charts with Bootstrap 5 colors and animations

@@ -20,6 +20,19 @@ $requestContext = [
     'user_id' => $_SESSION['user_id'] ?? null,
     'ip' => $_SERVER['REMOTE_ADDR'] ?? null,
 ];
+$allowedConditions = ['Excellent', 'Good', 'Fair', 'Poor'];
+
+$normalizeCondition = static function (?string $value, array $allowed, ?string $fallback = null): ?string {
+    if ($value === null) {
+        return $fallback;
+    }
+    $normalized = trim($value);
+    if ($normalized === '') {
+        return $fallback;
+    }
+    $normalized = ucfirst(strtolower($normalized));
+    return in_array($normalized, $allowed, true) ? $normalized : $fallback;
+};
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -34,13 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     try {
         if ($action === 'add') {
+            $condition = $normalizeCondition($_POST['assetCondition'] ?? null, $allowedConditions, 'Good');
             $assetService->createAsset([
                 'assetName' => $_POST['assetName'] ?? '',
                 'categoryId' => $_POST['categoryId'] ?? null,
                 'purchaseDate' => $_POST['purchaseDate'] ?? null,
                 'purchaseCost' => $_POST['purchaseCost'] ?? null,
                 'warrantyEndDate' => $_POST['warrantyEndDate'] ?? null,
-                'assetCondition' => $_POST['assetCondition'] ?? 'New',
+                'assetCondition' => $condition,
                 'assetLocation' => $_POST['assetLocation'] ?? '',
                 'description' => $_POST['description'] ?? '',
                 'status' => 'Available',
@@ -49,13 +63,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $_SESSION['success'] = 'Asset added successfully.';
         } elseif ($action === 'edit') {
             $assetId = (int)($_POST['assetId'] ?? 0);
+            $condition = $normalizeCondition($_POST['assetCondition'] ?? null, $allowedConditions, null);
             $updated = $assetService->updateAsset($assetId, [
                 'assetName' => $_POST['assetName'] ?? null,
                 'categoryId' => $_POST['categoryId'] ?? null,
                 'purchaseDate' => $_POST['purchaseDate'] ?? null,
                 'purchaseCost' => $_POST['purchaseCost'] ?? null,
                 'warrantyEndDate' => $_POST['warrantyEndDate'] ?? null,
-                'assetCondition' => $_POST['assetCondition'] ?? null,
+                'assetCondition' => $condition,
                 'assetLocation' => $_POST['assetLocation'] ?? null,
                 'description' => $_POST['description'] ?? null,
                 'status' => $_POST['status'] ?? null,
@@ -74,6 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $_SESSION['success'] = 'Asset restored successfully.';
         }
     } catch (Throwable $e) {
+        $logMessage = sprintf('[%s] Asset %s failed: %s%s', date('c'), $action, $e->getMessage(), PHP_EOL);
+        error_log($logMessage, 3, __DIR__ . '/error_log.txt');
         $_SESSION['error'] = 'Asset operation failed: ' . $e->getMessage();
     }
 

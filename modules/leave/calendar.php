@@ -142,24 +142,18 @@ include '../../includes/header.php';
 <!-- Main content -->
 <div class="container-fluid p-4">
     <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
         <div>
             <h1 class="fs-2 fw-bold mb-1"><i class="fas fa-calendar me-2"></i>Leave Calendar</h1>
         </div>
-        <div class="d-flex gap-2">
-            <a href="index.php" class="btn btn-outline-success">
-                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-            </a>
-            <a href="requests.php" class="btn btn-outline-info">
-                <i class="fas fa-list me-1"></i>All Requests
-            </a>
-            <?php if (!$is_admin_user): ?>
-                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
-                    <i class="fas fa-plus me-1"></i>Apply for Leave
-                </button>
-            <?php endif; ?>
-        </div>
-    </div>    <!-- Calendar Stats -->
+        <?php
+            $isAdmin = $is_admin_user ?? (function_exists('is_admin') ? is_admin() : false);
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
+    </div>
+
+    <!-- Calendar Stats -->
     <div class="row g-4 mb-4">
         <!-- Employees on Leave -->
         <div class="col-md-6 col-lg-4">
@@ -374,8 +368,7 @@ include '../../includes/header.php';
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
+</div>
 
 <style>
 .calendar-container {

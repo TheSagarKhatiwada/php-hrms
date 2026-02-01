@@ -30,12 +30,26 @@
                     $emp_ids = [$_POST['emp_id']];
                 }
             }
-            $start_date = $_POST['start_date'];
-            $end_date = $_POST['end_date'];
-            $work_start_time = $_POST['work_start_time'];
-            $work_end_time = $_POST['work_end_time'];
+            $start_date = trim($_POST['start_date'] ?? '');
+            $end_date_raw = trim($_POST['end_date'] ?? '');
+            // Accept blank end_date as open-ended (NULL)
+            $end_date = ($end_date_raw === '') ? null : $end_date_raw;
+            $work_start_time = trim($_POST['work_start_time'] ?? '');
+            $work_end_time = trim($_POST['work_end_time'] ?? '');
             $reason = $_POST['reason'];
             $override_id = $_POST['override_id'] ?? null;
+
+            // Validation: require start_date; at least one of start/end time; if end_date provided must be >= start_date.
+            $errors = [];
+            if($start_date === '') $errors[] = 'Start date is required.';
+            if($work_start_time === '' && $work_end_time === '') $errors[] = 'Provide at least one time (In or Out).';
+            if($end_date !== null && $start_date !== '' && $end_date < $start_date) $errors[] = 'End date cannot be before start date.';
+            if(!empty($errors)){
+                // Store errors in session and redirect (PRG) so UI can show toast
+                $_SESSION['override_errors'] = $errors;
+                $redirectTo = $_SERVER['REQUEST_URI'] ?? 'schedule-overrides.php';
+                header('Location: '.$redirectTo); exit;
+            }
 
             if ($override_id) {
                 // Updating a single override (override_id identifies the row)
@@ -43,14 +57,14 @@
                 if ($emp_id_single) {
                     $sql = "UPDATE employee_schedule_overrides SET emp_id = ?, start_date = ?, end_date = ?, work_start_time = ?, work_end_time = ?, reason = ? WHERE id = ?";
                     $stmt = $pdo->prepare($sql);
-                    $stmt->execute([$emp_id_single, $start_date, $end_date, $work_start_time, $work_end_time, $reason, $override_id]);
+                    $stmt->execute([$emp_id_single, $start_date, $end_date, ($work_start_time!==''?$work_start_time:null), ($work_end_time!==''?$work_end_time:null), $reason, $override_id]);
                 }
             } else {
                 // Insert new overrides - allow multiple employee selection
                 $sql = "INSERT INTO employee_schedule_overrides (emp_id, start_date, end_date, work_start_time, work_end_time, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $pdo->prepare($sql);
                 foreach ($emp_ids as $eid) {
-                    $stmt->execute([$eid, $start_date, $end_date, $work_start_time, $work_end_time, $reason, $_SESSION['user_id'] ?? 'admin']);
+                    $stmt->execute([$eid, $start_date, $end_date, ($work_start_time!==''?$work_start_time:null), ($work_end_time!==''?$work_end_time:null), $reason, $_SESSION['user_id'] ?? 'admin']);
                 }
             }
         } elseif (isset($_POST['delete_override'])) {
@@ -177,8 +191,21 @@ try {
                                     <div class="text-muted small"><?php echo htmlspecialchars($override['branch_name'] ?? $override['emp_branch'] ?? ''); ?></div>
                                 </td>
                                 <td>
-                                    <div><?php echo htmlspecialchars($override['start_date'] . ' to ' . $override['end_date']); ?></div>
-                                    <div class="text-muted small"><?php echo htmlspecialchars(date('h:i A', strtotime($override['work_start_time'])) . ' - ' . date('h:i A', strtotime($override['work_end_time']))); ?></div>
+                                                                        <div>
+                                                                            <?php 
+                                                                                $odStart = $override['start_date'];
+                                                                                $odEndRaw = $override['end_date'];
+                                                                                $odEnd = ($odEndRaw === null || $odEndRaw === '' ? 'Onward' : $odEndRaw);
+                                                                                echo htmlspecialchars($odStart.' to '.$odEnd);
+                                                                            ?>
+                                                                        </div>
+                                                                        <div class="text-muted small">
+                                                                            <?php 
+                                                                                $tStart = ($override['work_start_time'] !== null && $override['work_start_time'] !== '') ? date('h:i A', strtotime($override['work_start_time'])) : '—';
+                                                                                $tEnd = ($override['work_end_time'] !== null && $override['work_end_time'] !== '') ? date('h:i A', strtotime($override['work_end_time'])) : '—';
+                                                                                echo htmlspecialchars($tStart.' - '.$tEnd);
+                                                                            ?>
+                                                                        </div>
                                 </td>
                                 <td><?php echo htmlspecialchars($override['reason']); ?></td>
                                 <td>
@@ -535,10 +562,15 @@ function validateForm() {
         valid = false;
     }
     if (!sd) { if (sdEl) sdEl.classList.add('is-invalid'); valid = false; }
-    if (!ed) { if (edEl) edEl.classList.add('is-invalid'); valid = false; }
+    // End date is optional (blank = ongoing)
     if (sd && ed && sd > ed) { if (sdEl) sdEl.classList.add('is-invalid'); if (edEl) edEl.classList.add('is-invalid'); showToast('Start date must be before or equal to End date', 'error'); valid = false; }
-    if (!ws) { if (wsEl) wsEl.classList.add('is-invalid'); valid = false; }
-    if (!we) { if (weEl) weEl.classList.add('is-invalid'); valid = false; }
+    // At least one time required
+    if (!ws && !we) { 
+        if (wsEl) wsEl.classList.add('is-invalid'); 
+        if (weEl) weEl.classList.add('is-invalid'); 
+        showToast('Please provide at least one time (Start or End)', 'error');
+        valid = false; 
+    }
     return valid;
 }
 if (overrideFormElem) {
@@ -603,6 +635,10 @@ document.querySelectorAll('form[action="schedule-overrides.php"]').forEach(f => 
 
 // load overrides dynamically and render table
 window.overridesCache = {};
+const applyDigitsIfBs = (value) => (window.hrmsUseBsDates && typeof window.hrmsToNepaliDigits === 'function')
+    ? window.hrmsToNepaliDigits(value)
+    : value;
+
 function renderOverridesTable(items) {
     const tbody = document.querySelector('#dataTable tbody');
     if (!tbody) return;
@@ -612,8 +648,8 @@ function renderOverridesTable(items) {
         window.overridesCache[o.id] = o;
         const fullName = ((o.first_name||'') + ' ' + (o.middle_name||'') + ' ' + (o.last_name||'')).trim();
         const branchName = o.branch_name || o.emp_branch || '';
-        const dateRange = (o.start_date||'') + ' to ' + (o.end_date||'');
-        const timeRange = (o.work_start_time ? (new Date('1970-01-01T' + o.work_start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})) : '') + (o.work_end_time ? (' - ' + new Date('1970-01-01T' + o.work_end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})) : '');
+        const dateRange = applyDigitsIfBs((o.start_date||'') + ' to ' + (o.end_date||''));
+        const timeRange = (o.work_start_time ? applyDigitsIfBs(new Date('1970-01-01T' + o.work_start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})) : '') + (o.work_end_time ? (' - ' + applyDigitsIfBs(new Date('1970-01-01T' + o.work_end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})) ) : '');
         const reason = o.reason || '';
         const creatorName = ((o.creator_first||'') + ' ' + (o.creator_middle||'') + ' ' + (o.creator_last||'')).trim() || (o.created_by||'');
         const createdAt = o.override_created_at || o.created_at || '';
@@ -715,16 +751,16 @@ document.addEventListener('DOMContentLoaded', function(){
                                 <input type="date" name="start_date" id="modal_start_date" class="form-control" required>
                             </div>
                             <div class="mb-3">
-                                <label for="modal_end_date" class="form-label">End Date</label>
-                                <input type="date" name="end_date" id="modal_end_date" class="form-control" required>
+                                <label for="modal_end_date" class="form-label">End Date <small class="text-muted">(optional - leave blank for ongoing)</small></label>
+                                <input type="date" name="end_date" id="modal_end_date" class="form-control">
                             </div>
                             <div class="mb-3">
-                                <label for="modal_work_start_time" class="form-label">Work Start Time</label>
-                                <input type="time" name="work_start_time" id="modal_work_start_time" class="form-control" required>
+                                <label for="modal_work_start_time" class="form-label">Work Start Time <small class="text-muted">(at least one time required)</small></label>
+                                <input type="time" name="work_start_time" id="modal_work_start_time" class="form-control">
                             </div>
                             <div class="mb-3">
-                                <label for="modal_work_end_time" class="form-label">Work End Time</label>
-                                <input type="time" name="work_end_time" id="modal_work_end_time" class="form-control" required>
+                                <label for="modal_work_end_time" class="form-label">Work End Time <small class="text-muted">(at least one time required)</small></label>
+                                <input type="time" name="work_end_time" id="modal_work_end_time" class="form-control">
                             </div>
                             <!-- Current schedule preview moved to the right column as the last element -->
                             <div id="modal_current_schedule" class="mt-3 border p-2 rounded">

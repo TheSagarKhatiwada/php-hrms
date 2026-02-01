@@ -468,6 +468,10 @@ function loadSenderIdentities() {
 }
 
 function displaySenderIdentities(identities) {
+    const applyDigitsIfBs = (value) => (window.hrmsUseBsDates && typeof window.hrmsToNepaliDigits === 'function')
+        ? window.hrmsToNepaliDigits(value)
+        : value;
+
     if (identities.length === 0) {
         document.getElementById('identitiesTable').innerHTML = `
             <div class="text-center py-4">
@@ -503,7 +507,7 @@ function displaySenderIdentities(identities) {
             : '<span class="text-muted">-</span>';
         
         const validatedAt = identity.validated_at 
-            ? new Date(identity.validated_at).toLocaleDateString()
+            ? applyDigitsIfBs(new Date(identity.validated_at).toLocaleDateString())
             : 'Unknown';
         
         html += `

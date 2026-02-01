@@ -49,23 +49,15 @@ include '../../includes/header.php';
 <!-- Main content -->
 <div class="container-fluid p-4">
     <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
         <div>
             <h1 class="fs-2 fw-bold mb-1"><i class="fas fa-list-alt me-2"></i>My Leave Requests</h1>
         </div>
-        <div class="d-flex gap-2">
-            <a href="index.php" class="btn btn-outline-success">
-                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-            </a>
-            <a href="calendar.php" class="btn btn-outline-info">
-                <i class="fas fa-calendar me-1"></i>Calendar
-            </a>
-            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
-                <i class="fas fa-plus me-1"></i>Apply for Leave
-            </button>
-        </div>
+        <?php
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
     </div>
-
     <?php if (isset($_SESSION['success_message'])): ?>
         <div class="alert alert-success alert-dismissible fade show">
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>

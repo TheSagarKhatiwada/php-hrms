@@ -2,6 +2,7 @@
 // Ensure session configuration (custom session name & path) is loaded before any session usage
 require_once '../../includes/session_config.php';
 require_once '../../includes/db_connection.php';
+require_once '../../includes/utilities.php';
 // Temporary debug helper - visit holidays.php?_debug=1 to log request/session info
 if (isset($_GET['_debug']) && $_GET['_debug'] == '1') {
     $debug = [];
@@ -106,6 +107,90 @@ $selectedView = isset($_GET['view']) ? $_GET['view'] : 'all';
 $branchStmt = $pdo->query("SELECT id, name FROM branches ORDER BY name");
 $branches = $branchStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Build filtered holidays and month buckets based on selected year/view
+$months = [];
+$filteredHolidays = [];
+$today = date('Y-m-d');
+$nowYear = (int)date('Y');
+foreach ($holidays as $holiday) {
+    $isRecurring = (int)($holiday['is_recurring'] ?? 0) === 1;
+    $rtype = $holiday['recurring_type'] ?? ($isRecurring ? 'annually' : 'none');
+    $baseDate = $holiday['start_date'] ?? null;
+    $displayDateYmd = $baseDate;
+
+    if (!$isRecurring) {
+        if (empty($baseDate)) {
+            continue;
+        }
+        $startYear = (int)date('Y', strtotime($baseDate));
+        $endRaw = $holiday['end_date'] ?? null;
+        $endYear = $endRaw ? (int)date('Y', strtotime($endRaw)) : $startYear;
+        if ($currentYear < $startYear || $currentYear > $endYear) {
+            continue;
+        }
+    } else if (!empty($baseDate)) {
+        $baseTs = strtotime($baseDate);
+        $baseM = (int)date('n', $baseTs);
+        $baseD = (int)date('j', $baseTs);
+        if ($rtype === 'annually') {
+            $displayDateYmd = sprintf('%04d-%02d-%02d', (int)$currentYear, (int)date('n', $baseTs), $baseD);
+        } elseif ($rtype === 'monthly') {
+            $disp = null;
+            $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
+            for ($m = $startMonth; $m <= 12; $m++) {
+                if (checkdate($m, $baseD, (int)$currentYear)) {
+                    $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
+                    if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
+                }
+            }
+            $displayDateYmd = $disp ?: null;
+        } elseif ($rtype === 'quarterly') {
+            $disp = null;
+            $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
+            for ($m = $startMonth; $m <= 12; $m++) {
+                if ((($m - $baseM) % 3) === 0 && checkdate($m, $baseD, (int)$currentYear)) {
+                    $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
+                    if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
+                }
+            }
+            $displayDateYmd = $disp ?: null;
+        } elseif ($rtype === 'weekly') {
+            $dowWanted = (int)($holiday['recurring_day_of_week'] ?? date('N', $baseTs));
+            $startDate = ($currentYear == $nowYear) ? $today : sprintf('%04d-01-01', (int)$currentYear);
+            $startTs = strtotime($startDate);
+            $startDow = (int)date('N', $startTs);
+            $delta = ($dowWanted - $startDow + 7) % 7;
+            $candTs = strtotime("+$delta day", $startTs);
+            $cand = date('Y-m-d', $candTs);
+            if ((int)date('Y', $candTs) === (int)$currentYear) {
+                $displayDateYmd = ($currentYear > $nowYear || $cand >= $today) ? $cand : null;
+            } else {
+                $displayDateYmd = null;
+            }
+        }
+    }
+
+    if ($displayDateYmd === null) {
+        continue;
+    }
+
+    if ($selectedView === 'upcoming') {
+        $boundary = ($currentYear < $nowYear)
+            ? '9999-12-31'
+            : (($currentYear > $nowYear)
+                ? sprintf('%04d-01-01', (int)$currentYear)
+                : $today);
+        if ($displayDateYmd < $boundary) {
+            continue;
+        }
+    }
+
+    $holidayWithDisplay = array_merge($holiday, ['display_date' => $displayDateYmd]);
+    $filteredHolidays[] = $holidayWithDisplay;
+    $monthNum = (int)date('n', strtotime($displayDateYmd));
+    $months[$monthNum][] = $holidayWithDisplay;
+}
+
 // Include the header
 require_once '../../includes/header.php';
 ?>
@@ -127,14 +212,27 @@ require_once '../../includes/header.php';
 <!-- Main content -->
 <div class="container-fluid p-4">
     <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
             <h1 class="fs-2 fw-bold mb-1">Holiday Management</h1>
             <p class="text-muted mb-0">Manage company holidays and special days</p>
         </div>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addHolidayModal">
-            <i class="fas fa-plus me-2"></i> Add Holiday
-        </button>
+        <?php
+            $leaveToolbarIsAdmin = is_admin();
+            $leaveToolbarAddButton = [
+                'type' => 'button',
+                'label' => 'Add Holiday',
+                'icon' => 'fas fa-plus',
+                'classes' => 'btn btn-primary',
+                'attributes' => [
+                    'data-bs-toggle' => 'modal',
+                    'data-bs-target' => '#addHolidayModal',
+                ],
+                'page' => 'holidays.php',
+            ];
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
     </div>
 
     <!-- Year Filter and Stats -->
@@ -145,25 +243,25 @@ require_once '../../includes/header.php';
                     <div class="row text-center">
                         <div class="col-md-3">
                             <div class="stat-item">
-                                <h3 class="text-primary mb-1"><?php echo count($holidays); ?></h3>
+                                <h3 class="text-primary mb-1"><?php echo count($filteredHolidays); ?></h3>
                                 <small class="text-muted">Total Holidays</small>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="stat-item">
-                                <h3 class="text-success mb-1"><?php echo count(array_filter($holidays, function($h) { return $h['type'] === 'national'; })); ?></h3>
+                                <h3 class="text-success mb-1"><?php echo count(array_filter($filteredHolidays, function($h) { return $h['type'] === 'national'; })); ?></h3>
                                 <small class="text-muted">National Holidays</small>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="stat-item">
-                                <h3 class="text-info mb-1"><?php echo count(array_filter($holidays, function($h) { return $h['type'] === 'company'; })); ?></h3>
+                                <h3 class="text-info mb-1"><?php echo count(array_filter($filteredHolidays, function($h) { return $h['type'] === 'company'; })); ?></h3>
                                 <small class="text-muted">Company Holidays</small>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="stat-item">
-                                <h3 class="text-warning mb-1"><?php echo count(array_filter($holidays, function($h) { return $h['type'] === 'optional'; })); ?></h3>
+                                <h3 class="text-warning mb-1"><?php echo count(array_filter($filteredHolidays, function($h) { return $h['type'] === 'optional'; })); ?></h3>
                                 <small class="text-muted">Optional Holidays</small>
                             </div>
                         </div>
@@ -197,72 +295,6 @@ require_once '../../includes/header.php';
     <!-- Monthly-wise Holidays Accordion -->
     <div class="accordion" id="holidaysAccordion">
         <?php
-        // Group holidays by month
-        $months = [];
-        foreach ($holidays as $holiday) {
-            // Compute display date for recurring holidays in the selected year
-            $today = date('Y-m-d');
-            $nowYear = (int)date('Y');
-            $isRecurring = (int)($holiday['is_recurring'] ?? 0) === 1;
-            $rtype = $holiday['recurring_type'] ?? ($isRecurring ? 'annually' : 'none');
-    // Prefer start_date when present (range support).
-    $baseDate = $holiday['start_date'] ?? null;
-            $displayDateYmd = $baseDate;
-            if ($isRecurring && !empty($baseDate)) {
-                $baseTs = strtotime($baseDate);
-                $baseM = (int)date('n', $baseTs);
-                $baseD = (int)date('j', $baseTs);
-                if ($rtype === 'annually') {
-                    $displayDateYmd = sprintf('%04d-%02d-%02d', (int)$currentYear, (int)date('n', $baseTs), $baseD);
-                } elseif ($rtype === 'monthly') {
-                    $disp = null;
-                    $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
-                    for ($m = $startMonth; $m <= 12; $m++) {
-                        if (checkdate($m, $baseD, (int)$currentYear)) {
-                            $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
-                            if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
-                        }
-                    }
-                    $displayDateYmd = $disp ?: null;
-                } elseif ($rtype === 'quarterly') {
-                    $disp = null;
-                    $startMonth = ($currentYear == $nowYear) ? (int)date('n') : 1;
-                    for ($m = $startMonth; $m <= 12; $m++) {
-                        if ( (($m - $baseM) % 3) === 0 && checkdate($m, $baseD, (int)$currentYear) ) {
-                            $cand = sprintf('%04d-%02d-%02d', (int)$currentYear, $m, $baseD);
-                            if ($currentYear > $nowYear || $cand >= $today) { $disp = $cand; break; }
-                        }
-                    }
-                    $displayDateYmd = $disp ?: null;
-                } elseif ($rtype === 'weekly') {
-                    $dowWanted = (int)($holiday['recurring_day_of_week'] ?? date('N', $baseTs));
-                    $startDate = ($currentYear == $nowYear) ? $today : sprintf('%04d-01-01', (int)$currentYear);
-                    $startTs = strtotime($startDate);
-                    $startDow = (int)date('N', $startTs);
-                    $delta = ($dowWanted - $startDow + 7) % 7;
-                    $candTs = strtotime("+$delta day", $startTs);
-                    $cand = date('Y-m-d', $candTs);
-                    if ((int)date('Y', $candTs) === (int)$currentYear) {
-                        $displayDateYmd = ($currentYear > $nowYear || $cand >= $today) ? $cand : null;
-                    } else {
-                        $displayDateYmd = null;
-                    }
-                }
-            }
-            // Apply view filter: upcoming vs all
-            if ($selectedView === 'upcoming') {
-                if ($displayDateYmd === null) { continue; }
-                $boundary = ($currentYear < $nowYear)
-                    ? '9999-12-31'
-                    : (($currentYear > $nowYear)
-                        ? sprintf('%04d-01-01', (int)$currentYear)
-                        : $today);
-                if ($displayDateYmd < $boundary) { continue; }
-            }
-            if ($displayDateYmd === null) continue;
-            $monthNum = (int)date('n', strtotime($displayDateYmd));
-            $months[$monthNum][] = array_merge($holiday, ['display_date' => $displayDateYmd]);
-        }
         $monthNames = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
         $currentMonth = (int)date('n');
         foreach ($monthNames as $mNum => $mName):

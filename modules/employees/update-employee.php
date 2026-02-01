@@ -107,12 +107,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         exit();
     }
 
-    // Handle image upload
+    // Handle image upload - validate data URL mime & size and save with correct extension
     if ($croppedImage) {
+        if (!preg_match('#^data:(image/[a-zA-Z0-9.+-]+);base64,#', $croppedImage, $m)) {
+            redirect_with_message("edit-employee.php?id={$emp_id}", 'error', 'Invalid image data.');
+        }
+
+        $mime = strtolower($m[1]);
+        $allowed = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp'
+        ];
+
+        if (!isset($allowed[$mime])) {
+            redirect_with_message("edit-employee.php?id={$emp_id}", 'error', 'Unsupported image format. Allowed: JPG, PNG, WEBP.');
+        }
+
+        $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
+        if ($imageData === false) {
+            redirect_with_message("edit-employee.php?id={$emp_id}", 'error', 'Unable to decode uploaded image.');
+        }
+
+        $maxBytes = 5 * 1024 * 1024; // 5MB
+        if (strlen($imageData) > $maxBytes) {
+            redirect_with_message("edit-employee.php?id={$emp_id}", 'error', 'Cropped image exceeds 5MB maximum. Please upload a smaller image.');
+        }
+
         $targetDir = "../../resources/userimg/uploads/";
         if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
-        $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
-        $imageName = uniqid() . '.png';
+
+        $ext = $allowed[$mime];
+        $imageName = uniqid() . '.' . $ext;
         $targetFile = $targetDir . $imageName;
         file_put_contents($targetFile, $imageData);
         $dbPath = "resources/userimg/uploads/" . $imageName;
@@ -237,6 +263,72 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         sync_employee_academic_records($pdo, $emp_id, $academicRecords);
         sync_employee_experience_records($pdo, $emp_id, $experienceRecords);
+
+            // Process per-user permission overrides (only for admins or users with override permissions)
+            if ((is_admin() || has_permission('manage_permission_overrides') || has_permission('manage_user_permissions')) && isset($_POST['save_user_permissions'])) {
+                $permOverrides = $_POST['perm_override'] ?? [];
+                if (!is_array($permOverrides)) $permOverrides = [];
+
+                $permissionIdLookup = [];
+                try {
+                    $permStmt = $pdo->query('SELECT id, name FROM permissions');
+                    foreach ($permStmt->fetchAll(PDO::FETCH_ASSOC) as $permRow) {
+                        $code = $permRow['name'] ?? null;
+                        if ($code) {
+                            $permissionIdLookup[$code] = (int)$permRow['id'];
+                        }
+                    }
+                } catch (PDOException $e) {
+                    $permissionIdLookup = [];
+                }
+
+                foreach ($permOverrides as $permKey => $value) {
+                    $permId = null;
+                    if (ctype_digit((string)$permKey)) {
+                        $permId = (int)$permKey;
+                    } elseif (isset($permissionIdLookup[$permKey])) {
+                        $permId = $permissionIdLookup[$permKey];
+                    }
+
+                    if (!$permId) {
+                        continue;
+                    }
+
+                    $normalized = is_string($value) ? strtolower($value) : $value;
+                    if ($normalized === '' || $normalized === 'inherit') {
+                        $del = $pdo->prepare('DELETE FROM user_permissions WHERE user_id = ? AND permission_id = ?');
+                        $del->execute([$emp_id, $permId]);
+                        continue;
+                    }
+
+                    if ($normalized === 'allow') {
+                        $allowed = 1;
+                    } elseif ($normalized === 'deny') {
+                        $allowed = 0;
+                    } else {
+                        $allowed = ((string)$value === '1') ? 1 : 0;
+                    }
+
+                    $up = $pdo->prepare('INSERT INTO user_permissions (user_id, permission_id, allowed) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)');
+                    $up->execute([$emp_id, $permId, $allowed]);
+                }
+
+                // If we changed permissions for the logged-in user, clear cached permissions
+                if (isset($_SESSION['user_id']) && (int)$_SESSION['user_id'] === (int)$emp_id) {
+                    unset($_SESSION['permission_cache']);
+                    if (isset($_SESSION['user_permission_cache']) && isset($_SESSION['user_permission_cache'][$emp_id])) {
+                        unset($_SESSION['user_permission_cache'][$emp_id]);
+                    }
+                }
+
+                // Touch the employee's permissions_updated_at so other sessions will refresh their cache
+                try {
+                    $touch = $pdo->prepare('UPDATE employees SET permissions_updated_at = NOW() WHERE emp_id = ?');
+                    $touch->execute([$emp_id]);
+                } catch (PDOException $e) {
+                    // ignore; no blocking behavior
+                }
+            }
 
         $pdo->commit();
         $_SESSION['success'] = "Employee record updated successfully.";

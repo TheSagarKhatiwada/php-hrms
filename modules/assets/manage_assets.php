@@ -11,6 +11,18 @@ include '../../includes/header.php';
 
 <!-- Main content -->
 <div class="container-fluid p-4">
+  <?php if (!empty($_SESSION['success'])): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+      <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  <?php endif; ?>
+  <?php if (!empty($_SESSION['error'])): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+      <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  <?php endif; ?>
   <!-- Page header -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -113,6 +125,10 @@ document.addEventListener('DOMContentLoaded', function() {
     ? window.escapeHtml
     : escapeHtmlFallback;
 
+  const applyDigitsIfBs = (value) => (window.hrmsUseBsDates && typeof window.hrmsToNepaliDigits === 'function')
+    ? window.hrmsToNepaliDigits(value)
+    : value;
+
   const formatDate = (value) => {
     if (!value) {
       return '-';
@@ -124,13 +140,13 @@ document.addEventListener('DOMContentLoaded', function() {
       const [year, month, day] = parts.map((part) => parseInt(part, 10));
       if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
         const date = new Date(Date.UTC(year, month - 1, day));
-        return date.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+        return applyDigitsIfBs(date.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }));
       }
     }
 
     const parsedDate = new Date(value);
     if (!Number.isNaN(parsedDate.getTime())) {
-      return parsedDate.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+      return applyDigitsIfBs(parsedDate.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }));
     }
 
     return value;
@@ -152,13 +168,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-    return date.toLocaleString('en-GB', {
+    return applyDigitsIfBs(date.toLocaleString('en-GB', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
-    });
+    }));
   };
   const statusClass = (status) => {
     switch (status) {
@@ -707,7 +723,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   <div class="mb-3">
                     <label for="assetCondition" class="form-label">Condition</label>
                     <select class="form-select" id="assetCondition" name="assetCondition" required>
-                      <option value="New">New</option>
+                      <option value="Excellent">Excellent</option>
                       <option value="Good">Good</option>
                       <option value="Fair">Fair</option>
                       <option value="Poor">Poor</option>
@@ -803,7 +819,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   <div class="mb-3">
                     <label for="editAssetCondition" class="form-label">Condition</label>
                     <select class="form-select" id="editAssetCondition" name="assetCondition" required>
-                      <option value="New">New</option>
+                      <option value="Excellent">Excellent</option>
                       <option value="Good">Good</option>
                       <option value="Fair">Fair</option>
                       <option value="Poor">Poor</option>

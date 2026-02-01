@@ -39,6 +39,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             try {
+              // Prevent assigning an asset that is already checked out
+              $stmt = $pdo->prepare("SELECT Status FROM fixedassets WHERE AssetID = :assetId LIMIT 1");
+              $stmt->execute([':assetId' => $assetId]);
+              $statusRow = $stmt->fetch(PDO::FETCH_ASSOC);
+              if (!$statusRow) {
+                $_SESSION['error'] = "Selected asset does not exist.";
+                header('Location: manage_assignments.php');
+                exit();
+              }
+              if ($statusRow['Status'] !== 'Available') {
+                $_SESSION['error'] = "Asset is currently {$statusRow['Status']} and cannot be assigned.";
+                header('Location: manage_assignments.php');
+                exit();
+              }
+
                 // Prepare the SQL with NULL handling for expected return date
                 if ($expectedReturnDate === null) {                    $stmt = $pdo->prepare("INSERT INTO assetassignments (AssetID, EmployeeID, AssignmentDate, ExpectedReturnDate, Notes) 
                                          VALUES (:assetId, :employeeId, :assignDate, NULL, :notes)");
@@ -356,7 +371,7 @@ try {    $stmt = $pdo->query("SELECT
                 // Fetch available assets (not assigned)
                 $stmt = $pdo->query("SELECT fa.AssetID, fa.AssetName, fa.AssetSerial, ac.CategoryShortCode 
                                    FROM fixedassets fa 
-                                   LEFT JOIN assetcategories ac ON fa.CategoryID = ac.CategoryID                                   LEFT JOIN assetassignments aa ON fa.AssetID = aa.AssetID 
+                                   LEFT JOIN assetcategories ac ON fa.CategoryID = ac.CategoryID
                                    WHERE fa.Status = 'Available' 
                                    ORDER BY fa.AssetName");
                 while ($asset = $stmt->fetch(PDO::FETCH_ASSOC)) {

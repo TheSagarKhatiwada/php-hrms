@@ -13,7 +13,28 @@ if (!is_admin() && get_user_role() === '0') {
     exit();
 }
 
-include '../../includes/db_connection.php'; // Include the database connection file
+// Always load DB connection relative to this file to avoid CWD issues
+require_once __DIR__ . '/../../includes/db_connection.php';
+if (!isset($pdo) || !$pdo instanceof PDO) {
+  // Retry once in case include_path resolution failed
+  include __DIR__ . '/../../includes/db_connection.php';
+}
+
+// Last-resort: attempt to bootstrap PDO directly if still missing (prevents empty dropdowns)
+if (!isset($pdo) || !$pdo instanceof PDO) {
+  require_once __DIR__ . '/../../includes/config.php';
+  $cfg = getDBConfig();
+  try {
+    $dsn = "mysql:host={$cfg['host']};dbname={$cfg['name']};charset={$cfg['charset']}";
+    $pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [
+      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+      PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
+  } catch (Throwable $e) {
+    // Leave $pdo unset; downstream guards will show safe fallbacks
+  }
+}
 
 // Get query parameters for repopulating form after errors
 $machId = $_GET['machId'] ?? '';
@@ -97,27 +118,29 @@ $districtRecords = [];
 $provinceRecords = [];
 $provinceIndex = [];
 $countryRecords = [];
-try {
-  $provinceStmt = $pdo->query("SELECT province_id, province_name FROM provinces ORDER BY province_name");
-  $provinceRecords = $provinceStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-  foreach ($provinceRecords as $provinceRow) {
-    $provinceIndex[$provinceRow['province_id']] = $provinceRow['province_name'];
-  }
-
-  $districtStmt = $pdo->query("SELECT district_id, district_name, province_id, postal_code FROM districts ORDER BY district_name");
-  $districtRecords = $districtStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-  // Try to load countries list if available in the DB
+if ($pdo instanceof PDO) {
   try {
-    // Read whatever columns exist in the countries table so helper can use iso/code if available
-    $countryStmt = $pdo->query("SELECT * FROM countries ORDER BY name");
-    $countryRecords = $countryStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $provinceStmt = $pdo->query("SELECT province_id, province_name FROM provinces ORDER BY province_name");
+    $provinceRecords = $provinceStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($provinceRecords as $provinceRow) {
+      $provinceIndex[$provinceRow['province_id']] = $provinceRow['province_name'];
+    }
+
+    $districtStmt = $pdo->query("SELECT district_id, district_name, province_id, postal_code FROM districts ORDER BY district_name");
+    $districtRecords = $districtStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    // Try to load countries list if available in the DB
+    try {
+      // Read whatever columns exist in the countries table so helper can use iso/code if available
+      $countryStmt = $pdo->query("SELECT * FROM countries ORDER BY name");
+      $countryRecords = $countryStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+      $countryRecords = [];
+    }
   } catch (Throwable $e) {
-    $countryRecords = [];
+    $districtRecords = [];
+    $provinceRecords = [];
+    $provinceIndex = [];
   }
-} catch (Throwable $e) {
-  $districtRecords = [];
-  $provinceRecords = [];
-  $provinceIndex = [];
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -198,14 +221,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
           $genderForDb = 'male';
   }
 
-    // Handle file upload
+    // Handle file upload - validate data URL mime & size and save with correct extension
     if ($croppedImage) {
+      // Ensure it's a valid data URL
+      if (!preg_match('#^data:(image/[a-zA-Z0-9.+-]+);base64,#', $croppedImage, $m)) {
+        redirect_with_message('add-employee.php', 'error', 'Invalid image data.');
+      }
+
+      $mime = strtolower($m[1]);
+      $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp'
+      ];
+
+      if (!isset($allowed[$mime])) {
+        redirect_with_message('add-employee.php', 'error', 'Unsupported image format. Allowed: JPG, PNG, WEBP.');
+      }
+
+      $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
+      if ($imageData === false) {
+        redirect_with_message('add-employee.php', 'error', 'Unable to decode uploaded image.');
+      }
+
+      $maxBytes = 5 * 1024 * 1024; // 5MB
+      if (strlen($imageData) > $maxBytes) {
+        redirect_with_message('add-employee.php', 'error', 'Cropped image exceeds 5MB maximum. Please upload a smaller image.');
+      }
+
       $targetDir = "../../resources/userimg/uploads/";
       if (!is_dir($targetDir)) {
         mkdir($targetDir, 0777, true);
       }
-      $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
-      $imageName = uniqid() . '.png';
+
+      $ext = $allowed[$mime];
+      $imageName = uniqid() . '.' . $ext;
       $targetFile = $targetDir . $imageName;
       // Store relative path for database
       $dbPath = "resources/userimg/uploads/" . $imageName;
@@ -750,11 +800,15 @@ require_once __DIR__ . '/../../includes/header.php';
                     <select class="form-select" id="empBranchId" name="empBranchId" required>
                       <option value="" disabled <?php echo empty($empBranchId) ? 'selected' : ''; ?>>Select a Branch</option>
                       <?php 
-                        $branchQuery = "SELECT DISTINCT id, name FROM branches";
-                        $stmt = $pdo->query($branchQuery);
-                        while ($row = $stmt->fetch()) {
-                          $selected = ($row['id'] == $empBranchId) ? 'selected' : '';
-                          echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
+                        if ($pdo instanceof PDO) {
+                          $branchQuery = "SELECT DISTINCT id, name FROM branches";
+                          $stmt = $pdo->query($branchQuery);
+                          while ($row = $stmt->fetch()) {
+                            $selected = ($row['id'] == $empBranchId) ? 'selected' : '';
+                            echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
                         }
                       ?>
                     </select>
@@ -796,11 +850,15 @@ require_once __DIR__ . '/../../includes/header.php';
                     <select class="form-select" id="designationId" name="designationId" required>
                       <option value="" disabled <?php echo empty($designationId) ? 'selected' : ''; ?>>Select a Designation</option>
                       <?php 
-                        $designationQuery = "SELECT id, title FROM designations ORDER BY title";
-                        $stmt = $pdo->query($designationQuery);
-                        while ($row = $stmt->fetch()) {
-                          $selected = ($row['id'] == $designationId) ? 'selected' : '';
-                          echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
+                        if ($pdo instanceof PDO) {
+                          $designationQuery = "SELECT id, title FROM designations ORDER BY title";
+                          $stmt = $pdo->query($designationQuery);
+                          while ($row = $stmt->fetch()) {
+                            $selected = ($row['id'] == $designationId) ? 'selected' : '';
+                            echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
                         }
                       ?>
                     </select>
@@ -810,11 +868,15 @@ require_once __DIR__ . '/../../includes/header.php';
                     <select class="form-select" id="role" name="role" required>
                       <option value="" disabled <?php echo empty($role) ? 'selected' : ''; ?>>Select a Role</option>
                       <?php 
-                        $roleQuery = "SELECT id, name FROM roles ORDER BY name";
-                        $stmtRole = $pdo->query($roleQuery);
-                        while ($rowRole = $stmtRole->fetch()) {
-                          $selectedRole = ($rowRole['id'] == $role) ? 'selected' : '';
-                          echo "<option value='{$rowRole['id']}' $selectedRole>{$rowRole['name']}</option>";
+                        if ($pdo instanceof PDO) {
+                          $roleQuery = "SELECT id, name FROM roles ORDER BY name";
+                          $stmtRole = $pdo->query($roleQuery);
+                          while ($rowRole = $stmtRole->fetch()) {
+                            $selectedRole = ($rowRole['id'] == $role) ? 'selected' : '';
+                            echo "<option value='{$rowRole['id']}' $selectedRole>{$rowRole['name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
                         }
                       ?>
                     </select>
@@ -824,14 +886,18 @@ require_once __DIR__ . '/../../includes/header.php';
                     <select class="form-select" id="supervisor" name="supervisor_id">
                       <option value="">-- No Supervisor --</option>
                       <?php 
-                        $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
-                                           FROM employees 
-                                           WHERE exit_date IS NULL AND login_access = 1 
-                                           ORDER BY first_name, last_name";
-                        $stmtSupervisor = $pdo->query($supervisorQuery);
-                        while ($rowSupervisor = $stmtSupervisor->fetch()) {
-                          $selectedSupervisor = ($rowSupervisor['emp_id'] == $supervisor_id) ? 'selected' : '';
-                          echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
+                        if ($pdo instanceof PDO) {
+                          $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
+                                             FROM employees 
+                                             WHERE exit_date IS NULL AND login_access = 1 
+                                             ORDER BY first_name, last_name";
+                          $stmtSupervisor = $pdo->query($supervisorQuery);
+                          while ($rowSupervisor = $stmtSupervisor->fetch()) {
+                            $selectedSupervisor = ($rowSupervisor['emp_id'] == $supervisor_id) ? 'selected' : '';
+                            echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
                         }
                       ?>
                     </select>
@@ -841,11 +907,15 @@ require_once __DIR__ . '/../../includes/header.php';
                     <select class="form-select" id="department" name="department_id">
                       <option value="">-- Select Department --</option>
                       <?php 
-                        $departmentQuery = "SELECT id, name FROM departments ORDER BY name";
-                        $stmtDepartment = $pdo->query($departmentQuery);
-                        while ($rowDepartment = $stmtDepartment->fetch()) {
-                          $selectedDepartment = ($rowDepartment['id'] == $department_id) ? 'selected' : '';
-                          echo "<option value='{$rowDepartment['id']}' $selectedDepartment>{$rowDepartment['name']}</option>";
+                        if ($pdo instanceof PDO) {
+                          $departmentQuery = "SELECT id, name FROM departments ORDER BY name";
+                          $stmtDepartment = $pdo->query($departmentQuery);
+                          while ($rowDepartment = $stmtDepartment->fetch()) {
+                            $selectedDepartment = ($rowDepartment['id'] == $department_id) ? 'selected' : '';
+                            echo "<option value='{$rowDepartment['id']}' $selectedDepartment>{$rowDepartment['name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
                         }
                       ?>
                     </select>
@@ -859,12 +929,14 @@ require_once __DIR__ . '/../../includes/header.php';
                     </select>
                   </div>
                   <div class="col-md-6">
-                    <label class="form-label">Web Check-In/Checkout</label>
-                    <div class="form-check form-switch mt-2">
-                      <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo $allowWebAttendancePrefill ? 'checked' : ''; ?>>
-                      <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                    <div class="d-flex align-items-center justify-content-between">
+                      <label class="form-label mb-0">Web Check-In/Checkout</label>
+                      <div class="form-check form-switch m-0">
+                        <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo $allowWebAttendancePrefill ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                      </div>
                     </div>
-                    <small class="text-muted">Leave disabled for employees who must rely on biometric devices only.</small>
+                    <small class="text-muted d-block mt-1">Leave disabled for employees who must rely on biometric devices only.</small>
                   </div>
                 </div>
               </div>
@@ -899,8 +971,290 @@ require_once __DIR__ . '/../../includes/header.php';
 </div>
 
 <!-- Image Crop Modal -->
+<style>
+#cropModal .modal-dialog {
+  max-width: min(1024px, calc(100vw - 2rem));
+}
+#cropModal .modal-content {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: #1b1d25;
+  color: #f2f2f2;
+}
+#cropModal .modal-header,
+#cropModal .modal-footer {
+  border-color: rgba(255,255,255,0.08);
+}
+#cropModal .img-container {
+  width: 100%;
+  min-height: 460px;
+  max-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d0f16;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+#cropModal .img-container img {
+  max-width: 100%;
+  max-height: 100%;
+}
+#cropModal .img-controls {
+  display: flex;
+  flex-direction: column;
+}
+#cropModal .control-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(15,17,25,0.92), rgba(13,15,22,0.85));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+}
+#cropModal .control-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.15rem;
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(15,17,25,0.92), rgba(13,15,22,0.85));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+}
+#cropModal .control-panel .control-row {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}
+#cropModal .control-row.control-row--primary {
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+#cropModal .control-row--primary .control-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 180px;
+}
+#cropModal .control-row--primary .control-cluster .control-pair {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: center;
+}
+#cropModal .control-row--primary .control-cluster--left .control-pair {
+  justify-content: flex-start;
+}
+#cropModal .control-row--primary .control-cluster--right .control-pair {
+  justify-content: flex-end;
+}
+#cropModal .control-row--primary .control-btn.control-btn-primary {
+  min-width: 120px;
+  align-self: center;
+}
+@media (max-width: 768px) {
+  #cropModal .control-row.control-row--primary {
+    flex-direction: column;
+  }
+  #cropModal .control-row--primary .control-cluster,
+  #cropModal .control-row--primary .control-pair {
+    align-items: center;
+    justify-content: center !important;
+  }
+  #cropModal .control-row--primary .control-btn.control-btn-primary {
+    width: 100%;
+    margin: 0;
+  }
+}
+#cropModal .control-row.control-row--secondary {
+  background: linear-gradient(135deg, rgba(15,17,25,0.75), rgba(13,15,22,0.65));
+  border-style: dashed;
+  border-color: rgba(255,255,255,0.12);
+}
+#cropModal .control-row.control-row--slider {
+  border-radius: 22px;
+  padding: 0.5rem;
+}
+#cropModal .control-row--slider .control-btn {
+  min-width: 72px;
+  height: 46px;
+}
+#cropModal .control-btn {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #f7f7f7;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+#cropModal .control-btn.control-btn-icon {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+#cropModal .control-btn:hover {
+  border-color: rgba(138,92,246,0.65);
+  background: rgba(138,92,246,0.08);
+}
+#cropModal .control-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.6);
+  margin-right: 0.35rem;
+}
+#cropModal .rotation-scale {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  --rotation-shift: 0px;
+  --tick-unit: 14px;
+  --sequence-width: calc(var(--tick-unit) * 10);
+  --half-sequence: calc(var(--tick-unit) * 5);
+  --long-height: 24px;
+  --mid-height: 18px;
+  --short-height: 11px;
+  /* backdrop-filter: blur(12px); */
+  /* overflow: hidden; */
+}
+#cropModal .rotation-scale .rotation-ruler {
+  position: relative;
+  width: 100%;
+  height: 34px;
+  overflow: hidden;
+}
+#cropModal .rotation-scale .rotation-ruler::before {
+  content: '';
+  position: absolute;
+  inset: 6px 4%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0) 100%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+#cropModal .rotation-scale .tick-track {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 50%;
+  height: var(--long-height);
+  transform: translateY(-50%);
+  pointer-events: none;
+  background-repeat: repeat-x, repeat-x, repeat-x;
+  background-image:
+    linear-gradient(90deg, rgba(255,255,255,0.85) 0 2px, transparent 2px),
+    linear-gradient(90deg, rgba(255,255,255,0.65) 0 2px, transparent 2px),
+    linear-gradient(90deg, rgba(255,255,255,0.45) 0 2px, transparent 2px);
+  background-size:
+    var(--sequence-width) var(--long-height),
+    var(--sequence-width) var(--mid-height),
+    var(--tick-unit) var(--short-height);
+  background-position:
+    calc(50% + var(--rotation-shift)) center,
+    calc(50% + var(--rotation-shift) + var(--half-sequence)) center,
+    calc(50% + var(--rotation-shift)) center;
+  opacity: 0.85;
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 2px;
+  background: rgba(255,255,255,0.4);
+  transform: translateY(-50%);
+  z-index: 0;
+  box-shadow: 0 0 8px rgba(255,255,255,0.2);
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-mid {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 2px;
+  background: rgba(255,255,255,0.95);
+  transform: translateX(-50%);
+  box-shadow: 0 0 14px rgba(255,255,255,0.35);
+  z-index: 1;
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-base {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 6px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.35), rgba(255,255,255,0));
+  opacity: 0.7;
+  z-index: 0;
+}
+#cropModal .rotation-scale input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  appearance: none;
+  background: transparent;
+  z-index: 2;
+  cursor: pointer;
+}
+#cropModal .rotation-scale input[type="range"]:focus {
+  outline: none;
+}
+#cropModal .rotation-scale input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+#cropModal .rotation-scale input[type="range"]::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+#cropModal .rotation-scale input[type="range"]::-webkit-slider-runnable-track,
+#cropModal .rotation-scale input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: transparent;
+}
+#cropModal .rotation-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.85);
+  min-width: 54px;
+  text-align: center;
+  position: absolute;
+  top: -1.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#cropModal #cropWarning {
+  flex: 1;
+}
+</style>
 <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="cropModalLabel">Crop Image</h5>
@@ -910,10 +1264,48 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="img-container">
           <img id="imageToCrop" src="" alt="Image to Crop" style="max-width: 100%;">
         </div>
+        <div class="img-controls">
+          <div class="control-panel" role="group" aria-label="Crop controls">
+            <div class="control-row control-row--slider" role="group" aria-label="Rotation fine control">
+              <button type="button" class="control-btn" id="nudgeRotateLeft" title="Rotate left 5°">↺ 5°</button>
+              <div class="rotation-scale" aria-hidden="false">
+                <span class="rotation-value" id="rotationValue">0°</span>
+                <div class="rotation-ruler" aria-hidden="true">
+                  <span class="tick-track" aria-hidden="true"></span>
+                  <span class="ruler-line" aria-hidden="true"></span>
+                  <span class="ruler-mid" aria-hidden="true"></span>
+                  <span class="ruler-base" aria-hidden="true"></span>
+                  <input type="range" id="rotateSlider" min="-180" max="180" step="1" value="0" aria-label="Rotation" />
+                </div>
+              </div>
+              <button type="button" class="control-btn" id="nudgeRotateRight" title="Rotate right 5°">↻ 5°</button>
+            </div>
+            <div class="control-row control-row--primary" role="toolbar" aria-label="Primary crop toolbar">
+                <div class="control-pair" role="group" aria-label="90 degree rotation">
+                  <button type="button" class="control-btn control-btn-icon" id="rotateLeft" title="Rotate left 90°">⟲</button>
+                  <button type="button" class="control-btn control-btn-icon" id="rotateRight" title="Rotate right 90°">⟳</button>
+                </div>
+                <div class="control-pair" role="group" aria-label="Zoom controls">
+                  <button type="button" class="control-btn control-btn-icon" id="zoomOut" title="Zoom out">🔍−</button>
+                  <button type="button" class="control-btn control-btn-icon" id="zoomIn" title="Zoom in">🔍+</button>
+                </div>
+              <button type="button" class="control-btn control-btn-primary" id="resetCrop" title="Reset crop">Reset</button>
+                <div class="control-pair" role="group" aria-label="Fit and aspect">
+                  <button type="button" class="control-btn" id="fitCrop" title="Fit to frame">⤢</button>
+                  <button type="button" class="control-btn" id="oneToOne" title="1:1 Aspect Ratio">1 : 1</button>
+                </div>
+                <div class="control-pair" role="group" aria-label="Flip controls">
+                  <button type="button" class="control-btn" id="flipHorizontal" title="Flip horizontally">⇋</button>
+                  <button type="button" class="control-btn" id="flipVertical" title="Flip vertically">⇅</button>
+                </div>
+              </div>
+          </div>
+            <div id="cropWarning" class="text-danger small" style="display:none;">Invalid image (allowed: png/jpeg/webp, max 5MB)</div>
+          </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="cropButton">Crop & Save</button>
+        <button type="button" class="btn btn-primary" id="cropButton" disabled>Crop & Save</button>
       </div>
     </div>
   </div>
@@ -925,11 +1317,182 @@ require_once __DIR__ . '/../../includes/header.php';
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
 
 <script>
+// Disable Web Check-In unless login access is granted
+(() => {
+  const loginSelect = document.getElementById('login_access');
+  const webToggle = document.getElementById('allow_web_attendance');
+  if (!loginSelect || !webToggle) return;
+  const sync = () => {
+    const granted = loginSelect.value === '1';
+    webToggle.disabled = !granted;
+    if (!granted) {
+      webToggle.checked = false;
+    }
+  };
+  loginSelect.addEventListener('change', sync);
+  sync();
+})();
+
 let cropper;
+let cropperResizeTimeout;
+let flipX = 1;
+let flipY = 1;
+let rotationAngle = 0;
+
+const rotationSlider = document.getElementById('rotateSlider');
+const rotationValue = document.getElementById('rotationValue');
+const rotationScale = document.querySelector('#cropModal .rotation-scale');
+
+const setRotationShift = (angle) => {
+  if (!rotationScale) {
+    return;
+  }
+  // Recompute tick sizing so 3 long-ticks map to one side (180°) -> 6 long ticks across full track
+  const trackPct = 0.92; // left:4% right:4% earlier in CSS
+  const trackWidth = rotationScale.clientWidth * trackPct;
+  // We want 6 long ticks across full width -> each long spacing is trackWidth / 6
+  const longSpacing = Math.max(28, trackWidth / 6); // enforce a minimum so ticks stay visible
+  const tickUnit = longSpacing / 10; // pattern consists of 10 units: long + 4 short + mid + 4 short
+  rotationScale.style.setProperty('--tick-unit', `${tickUnit}px`);
+  rotationScale.style.setProperty('--sequence-width', `${longSpacing}px`);
+  rotationScale.style.setProperty('--half-sequence', `${longSpacing / 2}px`);
+
+  // Compute travel limited by sequence and container for a stable visual range
+  const maxBySeq = longSpacing / 2;
+  const maxByContainer = rotationScale.clientWidth * 0.4;
+  const travel = Math.min(maxBySeq, maxByContainer);
+  let clamped = Math.max(-180, Math.min(180, angle));
+  let shift = (clamped / 180) * travel;
+  // Ensure we never exceed visual travel bounds
+  shift = Math.max(-travel, Math.min(travel, shift));
+  rotationScale.style.setProperty('--rotation-shift', `${shift}px`);
+};
+
+const setRotationDisplay = (angle) => {
+  // Always work with a normalized/clamped value for display and visuals
+  const clamped = normalizeAngle(Number(angle));
+  if (rotationSlider) {
+    rotationSlider.value = clamped;
+  }
+  if (rotationValue) {
+    rotationValue.textContent = `${clamped}°`;
+  }
+  setRotationShift(clamped);
+  // Disable/enable nudge buttons at limits
+  const leftBtn = document.getElementById('nudgeRotateLeft');
+  const rightBtn = document.getElementById('nudgeRotateRight');
+  if (leftBtn) leftBtn.disabled = angle <= -180;
+  if (rightBtn) rightBtn.disabled = angle >= 180;
+};
+
+const normalizeAngle = (angle) => {
+  if (Number.isNaN(angle)) {
+    return 0;
+  }
+  return Math.max(-180, Math.min(180, angle));
+};
+
+const updateRotation = (angle) => {
+  rotationAngle = normalizeAngle(angle);
+  setRotationDisplay(rotationAngle);
+  if (!cropper) {
+    return;
+  }
+  cropper.rotateTo(rotationAngle);
+};
+
+const enforceAspectRatio = () => {
+  if (!cropper) {
+    return;
+  }
+  cropper.setAspectRatio(1);
+};
+
+setRotationDisplay(rotationAngle);
+setRotationShift(rotationAngle);
+window.addEventListener('resize', () => setRotationShift(rotationAngle));
+
+const bindCropperControls = () => {
+  const bind = (id, handler) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.onclick = handler;
+    }
+  };
+
+  const safe = (fn) => () => {
+    if (!cropper) {
+      return;
+    }
+    fn();
+  };
+
+  bind('rotateLeft', safe(() => updateRotation(rotationAngle - 90)));
+  bind('rotateRight', safe(() => updateRotation(rotationAngle + 90)));
+  bind('zoomIn', safe(() => cropper.zoom(0.12)));
+  bind('zoomOut', safe(() => cropper.zoom(-0.12)));
+  bind('flipHorizontal', safe(() => {
+    flipX = -flipX;
+    cropper.scaleX(flipX);
+  }));
+  bind('flipVertical', safe(() => {
+    flipY = -flipY;
+    cropper.scaleY(flipY);
+  }));
+  bind('fitCrop', safe(() => {
+    const canvasData = cropper.getCanvasData();
+    if (!canvasData.width || !canvasData.height) {
+      return;
+    }
+    const size = Math.min(canvasData.width, canvasData.height);
+    cropper.setCropBoxData({
+      left: canvasData.left + (canvasData.width - size) / 2,
+      top: canvasData.top + (canvasData.height - size) / 2,
+      width: size,
+      height: size
+    });
+  }));
+  bind('resetCrop', safe(() => {
+    cropper.reset();
+    flipX = 1;
+    flipY = 1;
+    rotationAngle = 0;
+    updateRotation(0);
+    enforceAspectRatio();
+  }));
+  bind('nudgeRotateLeft', safe(() => updateRotation(rotationAngle - 5)));
+  bind('nudgeRotateRight', safe(() => updateRotation(rotationAngle + 5)));
+  if (rotationSlider) {
+    // Always listen to the slider input/change and update rotation visually.
+    const onSliderChange = (e) => {
+      const raw = parseInt(e.target.value, 10);
+      const val = Number.isNaN(raw) ? 0 : raw;
+      const clamped = normalizeAngle(val);
+      // Ensure the native slider reflects the clamped value (prevents odd behavior in some browsers)
+      e.target.value = clamped;
+      // Update visual/logic regardless of cropper presence.
+      updateRotation(clamped);
+    };
+    rotationSlider.addEventListener('input', onSliderChange);
+    rotationSlider.addEventListener('change', onSliderChange);
+  }
+};
+
+bindCropperControls();
 
 function previewImage(event) {
   const file = event.target.files[0];
-  if (file) {
+    if (file) {
+      // Validate size / type
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      const allowed = ['image/jpeg','image/png','image/webp'];
+      const warningEl = document.getElementById('cropWarning');
+      if (!allowed.includes(file.type) || file.size > maxSize) {
+        if (warningEl) { warningEl.style.display = 'inline'; }
+        alert('Image must be PNG/JPEG/WEBP and <= 5MB');
+        return;
+      }
+      if (warningEl) { warningEl.style.display = 'none'; }
     const reader = new FileReader();
     reader.onload = function(e) {
       document.getElementById('imageToCrop').src = e.target.result;
@@ -944,14 +1507,28 @@ function previewImage(event) {
       // Initialize cropper
       cropper = new Cropper(document.getElementById('imageToCrop'), {
         aspectRatio: 1,
-        viewMode: 1,
-        autoCropArea: 1,
+        viewMode: 2,
+        autoCropArea: 0.85,
         responsive: true,
         guides: true,
-        highlight: true,
+        highlight: false,
+        background: false,
         cropBoxMovable: true,
-        cropBoxResizable: true
+        cropBoxResizable: true,
+        minCropBoxWidth: 220,
+        minCropBoxHeight: 220,
+        minContainerWidth: 600,
+        minContainerHeight: 430
       });
+      flipX = 1;
+      flipY = 1;
+      rotationAngle = 0;
+      cropper.scaleX(flipX);
+      cropper.scaleY(flipY);
+      updateRotation(0);
+      enforceAspectRatio();
+      // Enable controls
+      document.getElementById('cropButton').disabled = false;
     }
     reader.readAsDataURL(file);
   }
@@ -959,14 +1536,16 @@ function previewImage(event) {
 
 document.getElementById('cropButton').addEventListener('click', function() {
   if (cropper) {
-    const canvas = cropper.getCroppedCanvas({
-      width: 400,
-      height: 400
-    });
-    
+    // Disable crop button while processing
+    const cb = document.getElementById('cropButton');
+    cb.disabled = true;
+    const canvas = cropper.getCroppedCanvas({ width: 400, height: 400 });
+
+    // Export JPEG for smaller size (quality 0.85)
     canvas.toBlob(function(blob) {
       const reader = new FileReader();
       reader.onload = function(e) {
+        // Ensure dataURL is a jpeg to match blob
         document.getElementById('croppedImage').value = e.target.result;
         document.getElementById('photoPreview').src = e.target.result;
         const cropModal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
@@ -975,10 +1554,28 @@ document.getElementById('cropButton').addEventListener('click', function() {
         // Destroy cropper
         cropper.destroy();
         cropper = null;
+        rotationAngle = 0;
+        setRotationDisplay(0);
+        if (cb) cb.disabled = false;
       }
       reader.readAsDataURL(blob);
-    });
+    }, 'image/jpeg', 0.85);
   }
+});
+
+window.addEventListener('resize', () => {
+  if (!cropper) {
+    return;
+  }
+  clearTimeout(cropperResizeTimeout);
+  cropperResizeTimeout = setTimeout(() => {
+    if (!cropper) {
+      return;
+    }
+    const currentData = cropper.getData();
+    cropper.reset();
+    cropper.setData(currentData);
+  }, 150);
 });
 </script>
 <script>

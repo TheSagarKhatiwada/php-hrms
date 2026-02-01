@@ -185,6 +185,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->commit();
         if ($debug) error_log("✓ Transaction committed successfully");
         
+        // Send notification to assigned user
+        require_once __DIR__ . '/../../includes/task_notification_helper.php';
+        try {
+            $notification_result = sendTaskAssignmentNotification($pdo, $task_id, $assigned_to, $current_user_id);
+            if ($debug) {
+                error_log("✓ Notification sent - Email: " . ($notification_result['email'] ? 'Yes' : 'No') . 
+                          ", SMS: " . ($notification_result['sms'] ? 'Yes' : 'No'));
+            }
+        } catch (Exception $notif_error) {
+            // Log notification error but don't fail the task creation
+            error_log("Warning: Failed to send task notification: " . $notif_error->getMessage());
+        }
+        
         // Clean any buffered output before sending JSON
         ob_clean();
         

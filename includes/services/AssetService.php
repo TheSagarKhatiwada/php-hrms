@@ -380,10 +380,10 @@ class AssetService
 
         $condition = $payload['assetCondition'] ?? $payload['AssetCondition'] ?? null;
         if ($condition !== null || $requireAll) {
-            $allowed = ['New', 'Good', 'Fair', 'Poor'];
+            $allowed = ['Excellent', 'Good', 'Fair', 'Poor'];
             $condition = $condition ? ucfirst(strtolower($condition)) : null;
             if ($requireAll && !in_array($condition, $allowed, true)) {
-                $condition = 'New';
+                $condition = 'Good';
             }
             if ($condition !== null) {
                 $data['AssetCondition'] = in_array($condition, $allowed, true) ? $condition : 'Good';

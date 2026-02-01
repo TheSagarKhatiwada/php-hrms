@@ -73,6 +73,9 @@ require_once 'includes/header.php';
                 <h3 class="card-title fs-5 m-0">Manage Your Notifications</h3>
                 
                 <div class="card-tools">
+                    <a href="notification-preferences.php" class="btn btn-sm btn-outline-secondary me-2" title="Notification Preferences">
+                        <i class="fas fa-cog me-1"></i> Preferences
+                    </a>
                     <form method="post" class="d-inline me-2">
                         <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                         <button type="submit" name="mark_all_read" class="btn btn-sm btn-outline-primary">

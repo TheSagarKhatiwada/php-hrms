@@ -33,7 +33,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT e.*, d.title as designation_title 
         FROM employees e
-        LEFT JOIN designations d ON e.designation = d.id
+        LEFT JOIN designations d ON e.designation_id = d.id
         WHERE e.emp_id = ?
     ");
     $stmt->execute([$userId]);
@@ -114,7 +114,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT e.*, d.title as designation_title 
         FROM employees e
-        LEFT JOIN designations d ON e.designation = d.id
+        LEFT JOIN designations d ON e.designation_id = d.id
         WHERE e.emp_id = ?
     ");
     $stmt->execute([$userId]);
@@ -495,8 +495,8 @@ $canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendanc
         <div class="card-body py-3">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <h2 class=" mb-0"><?php echo date('l'); ?></h2>
-                    <h4 class="opacity-85" id="date"><?php echo date('F j, Y'); ?></h4>
+                    <h2 class=" mb-0"><?php echo hrms_format_preferred_date(date('Y-m-d'), 'l'); ?></h2>
+                    <h4 class="opacity-85" id="date"><?php echo hrms_format_preferred_date(date('Y-m-d'), 'F j, Y'); ?></h4>
                 </div>
                 <div class="col-md-6 text-md-end">
                     <div class="d-flex align-items-center justify-content-md-end">
@@ -684,7 +684,7 @@ $canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendanc
                                 <?php else: ?>
                                     <?php foreach($recentAttendance as $record): ?>
                                         <tr>
-                                            <td><?php echo date('D, M d', strtotime($record['date'])); ?></td>
+                                            <td><?php echo hrms_format_preferred_date($record['date'], 'D, M d'); ?></td>
                                             <td><?php echo date('h:i A', strtotime($record['clock_in'])); ?></td>
                                             <td>
                                                 <?php 
@@ -946,6 +946,10 @@ $canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendanc
 <!-- Dashboard Scripts -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const applyDigits = (value) => (window.hrmsUseBsDates && typeof window.hrmsToNepaliDigits === 'function')
+        ? window.hrmsToNepaliDigits(value)
+        : value;
+
     // Digital clock function
     function updateClock() {
         const now = new Date();
@@ -955,7 +959,7 @@ document.addEventListener('DOMContentLoaded', function() {
         hours = hours ? hours : 12; // the hour '0' should be '12'
         const minutes = now.getMinutes().toString().padStart(2, '0');
         const seconds = now.getSeconds().toString().padStart(2, '0');
-        const timeString = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
+        const timeString = applyDigits(hours + ':' + minutes + ':' + seconds + ' ' + ampm);
         
         // Update digital clock in Today's Attendance card
         const digitalClock = document.getElementById('digital-clock');

@@ -14,6 +14,21 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+$isAdmin = function_exists('is_admin') && is_admin();
+$canManageContacts = $isAdmin || has_permission('manage_contacts');
+
+if (!$canManageContacts) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        header('Content-Type: application/json');
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'You do not have permission to manage contacts.']);
+        exit();
+    }
+    $_SESSION['error'] = 'You do not have permission to access Contacts.';
+    header('Location: dashboard.php');
+    exit();
+}
+
 // Handle AJAX requests for contact management
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
@@ -149,7 +164,7 @@ $board_where_conditions = [];
 // For contact search
 if (!empty($search_query)) {
     $contact_where_conditions[] = "(c.first_name LIKE :search OR c.last_name LIKE :search OR c.email LIKE :search OR c.phone LIKE :search OR c.mobile LIKE :search OR c.title LIKE :search OR c.organization LIKE :search)";
-    $employee_where_conditions[] = "(ev.first_name LIKE :search OR ev.last_name LIKE :search OR ev.email LIKE :search OR ev.phone LIKE :search OR ev.mobile LIKE :search OR ev.title LIKE :search OR ev.organization LIKE :search)";
+    $employee_where_conditions[] = "(e.first_name LIKE :search OR e.last_name LIKE :search OR e.email LIKE :search OR e.phone LIKE :search OR e.office_phone LIKE :search OR d.title LIKE :search OR b.name LIKE :search)";
     $board_where_conditions[] = "(bv.first_name LIKE :search OR bv.last_name LIKE :search OR bv.email LIKE :search OR bv.phone LIKE :search OR bv.mobile LIKE :search OR bv.title LIKE :search OR bv.organization LIKE :search)";
 }
 
@@ -172,6 +187,7 @@ if ($include_contacts) {
         cg.color as group_color,
         cg.icon as group_icon,
         c.first_name,
+        '' as middle_name,
         c.last_name,
         c.title,
         c.organization,
@@ -190,62 +206,65 @@ if ($include_contacts) {
 
 // Employee contacts (only from employees, exclude admins/HR who are in board)
 if ($include_employees) {
-    $employee_additional_where = "ev.contact_group_id = 1";
+    $employee_additional_where = "e.status = 'active' AND (e.exit_date IS NULL OR e.exit_date = '')";
     if (!empty($employee_where_conditions)) {
         $employee_additional_where .= " AND " . implode(' AND ', $employee_where_conditions);
     }
     
     $sql_parts[] = "
     (SELECT 
-        ev.id,
-        ev.contact_group_id,
+        e.emp_id as id,
+        1 as contact_group_id,
         'Employees' as group_name,
         '#28a745' as group_color,
         'fas fa-users' as group_icon,
-        ev.first_name,
-        ev.last_name,
-        ev.title,
-        ev.organization,
-        ev.email,
-        ev.phone,
-        ev.mobile,
-        ev.address,
-        ev.photo,
-        ev.notes,
-        ev.is_active,
+        e.first_name,
+        e.middle_name,
+        e.last_name,
+        d.title as title,
+        b.name as organization,
+        e.email,
+        e.phone,
+        e.office_phone as mobile,
+        '' as address,
+        e.user_image as photo,
+        '' as notes,
+        CASE WHEN e.status = 'active' THEN 1 ELSE 0 END as is_active,
         'employee' as source_type
-    FROM employee_contacts_view ev
-    WHERE $employee_additional_where
-    AND ev.id NOT IN (SELECT bv.id FROM board_contacts_view bv))";
+    FROM employees e
+    LEFT JOIN designations d ON e.designation_id = d.id
+    LEFT JOIN branches b ON e.branch = b.id
+    WHERE $employee_additional_where)";
 }
 
 // Board member contacts
 if ($include_board) {
-    $board_additional_where = "bv.contact_group_id = 2";
+    $board_additional_where = "c.contact_group_id = 2";
     if (!empty($board_where_conditions)) {
         $board_additional_where .= " AND " . implode(' AND ', $board_where_conditions);
     }
     
     $sql_parts[] = "
     (SELECT 
-        bv.id,
-        bv.contact_group_id,
+        c.id,
+        c.contact_group_id,
         'Board Members' as group_name,
         '#dc3545' as group_color,
         'fas fa-crown' as group_icon,
-        bv.first_name,
-        bv.last_name,
-        bv.title,
-        bv.organization,
-        bv.email,
-        bv.phone,
-        bv.mobile,
-        bv.address,
-        bv.photo,
-        bv.notes,
-        bv.is_active,
+        c.first_name,
+        '' as middle_name,
+        c.last_name,
+        c.title,
+        c.organization,
+        c.email,
+        c.phone,
+        c.mobile,
+        c.address,
+        c.photo,
+        c.notes,
+        c.is_active,
         'board' as source_type
-    FROM board_contacts_view bv
+    FROM contacts c
     WHERE $board_additional_where)";
 }
 
@@ -359,6 +378,17 @@ foreach ($all_contacts as $contact) {
                                 <div class="col-xl-3 col-lg-4 col-md-6">
                                     <div class="contact-card card h-100 border-0 shadow-sm">
                                         <div class="card-body text-center">
+                                            <?php
+                                                $contactJson = json_encode($contact);
+                                                $contactDataAttr = htmlspecialchars(base64_encode($contactJson ?: '{}'), ENT_QUOTES, 'UTF-8');
+                                            ?>
+                                            <?php
+                                                $fullName = trim(
+                                                    ($contact['first_name'] ?? '') . ' ' .
+                                                    ($contact['middle_name'] ?? '') . ' ' .
+                                                    ($contact['last_name'] ?? '')
+                                                );
+                                            ?>
                                             <!-- Contact Photo -->
                                             <div class="mb-3">
                                                 <img src="<?php 
@@ -368,25 +398,25 @@ foreach ($all_contacts as $contact) {
                                                     }
                                                     echo htmlspecialchars($imagePath);
                                                 ?>" 
-                                                     alt="<?php echo htmlspecialchars($contact['first_name'] . ' ' . $contact['last_name']); ?>" 
+                                                     alt="<?php echo htmlspecialchars($fullName); ?>" 
                                                      class="rounded-circle border"
                                                      style="width: 80px; height: 80px; object-fit: cover;"
                                                      onerror="this.src='resources/userimg/default-image.jpg'">
                                             </div>
                                             
                                             <!-- Contact Info -->
-                                            <h6 class="card-title mb-1">
-                                                <?php echo htmlspecialchars($contact['first_name'] . ' ' . $contact['last_name']); ?>
+                                            <h6 class="card-title mb-1 contact-name">
+                                                <?php echo htmlspecialchars($fullName); ?>
                                             </h6>
                                             
                                             <?php if (!empty($contact['title'])): ?>
-                                                <p class="text-primary mb-1 fw-medium small">
+                                                <p class="text-primary mb-1 fw-medium small contact-title">
                                                     <?php echo htmlspecialchars($contact['title']); ?>
                                                 </p>
                                             <?php endif; ?>
                                             
                                             <?php if (!empty($contact['organization'])): ?>
-                                                <p class="text-muted mb-2 small">
+                                                <p class="text-muted mb-2 small contact-org">
                                                     <?php echo htmlspecialchars($contact['organization']); ?>
                                                 </p>
                                             <?php endif; ?>
@@ -418,7 +448,7 @@ foreach ($all_contacts as $contact) {
                                                 <div class="col">
                                                     <?php if ($contact['source_type'] === 'contact'): ?>
                                                         <button class="btn btn-outline-secondary btn-sm w-100 edit-contact" 
-                                                                data-contact='<?php echo json_encode($contact); ?>'
+                                                            data-contact="<?php echo $contactDataAttr; ?>"
                                                                 title="Edit" data-bs-toggle="tooltip">
                                                             <i class="fas fa-edit"></i>
                                                         </button>
@@ -434,7 +464,7 @@ foreach ($all_contacts as $contact) {
                                             <!-- View Button - Full Width -->
                                             <div class="d-grid">
                                                 <button class="btn btn-info btn-sm view-contact" 
-                                                        data-contact='<?php echo json_encode($contact); ?>'
+                                                    data-contact="<?php echo $contactDataAttr; ?>"
                                                         title="View Details" data-bs-toggle="tooltip">
                                                     <i class="fas fa-eye me-1"></i> View Details
                                                 </button>
@@ -671,19 +701,19 @@ foreach ($all_contacts as $contact) {
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Email</label>
-                                <p id="view-contact-email" class="mb-0"></p>
+                                <p id="view-contact-email" class="mb-0 text-break"></p>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Phone</label>
-                                <p id="view-contact-phone" class="mb-0"></p>
+                                <p id="view-contact-phone" class="mb-0 text-break"></p>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Mobile</label>
-                                <p id="view-contact-mobile" class="mb-0"></p>
+                                <p id="view-contact-mobile" class="mb-0 text-break"></p>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Organization</label>
-                                <p id="view-contact-organization" class="mb-0"></p>
+                                <p id="view-contact-organization" class="mb-0 text-break"></p>
                             </div>
                             <div class="col-12">
                                 <label class="form-label fw-bold">Address</label>
@@ -708,6 +738,35 @@ foreach ($all_contacts as $contact) {
 <style>
 .contact-card {
     transition: all 0.3s ease;
+}
+
+.contact-card .card-body {
+    padding: 1rem 1rem 0.75rem;
+    text-align: center;
+}
+
+.contact-card .contact-name {
+    font-size: 1.25rem;
+    line-height: 1.2;
+    /* min-height: 2.4em; */
+    width: 100%;
+    display: -webkit-box;
+    display: block;
+    text-align: center;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.contact-card .contact-title,
+.contact-card .contact-org {
+    line-height: 1.2;
+    min-height: 1.3em;
+    margin-bottom: 0.25rem;
+    width: 100%;
+    display: block;
+    text-align: center;
 }
 
 .contact-card:hover {
@@ -896,12 +955,34 @@ document.addEventListener('DOMContentLoaded', function() {
     // Modal instances
     console.log('Initializing modal instances...');
     const viewContactModalElement = document.getElementById('viewContactModal');
-    const viewContactModal = bootstrap.Modal.getOrCreateInstance(viewContactModalElement);
     const contactModalElement = document.getElementById('contactModal');
+
+    if (viewContactModalElement && viewContactModalElement.parentElement !== document.body) {
+        document.body.appendChild(viewContactModalElement);
+    }
+    if (contactModalElement && contactModalElement.parentElement !== document.body) {
+        document.body.appendChild(contactModalElement);
+    }
+
+    const viewContactModal = bootstrap.Modal.getOrCreateInstance(viewContactModalElement);
     const contactModalInstance = bootstrap.Modal.getOrCreateInstance(contactModalElement);
     console.log('Modal instances initialized:', { viewContactModal, contactModalInstance });
 
     let currentViewContact = null; // To store the contact being viewed/edited from view modal
+
+    function decodeContactPayload(payload) {
+        if (!payload) {
+            console.error('Missing contact payload for decoding');
+            return null;
+        }
+
+        try {
+            return JSON.parse(atob(payload));
+        } catch (error) {
+            console.error('Failed to decode contact payload', { payload, error });
+            return null;
+        }
+    }
 
     // Handle view contact (when clicking .view-contact on a card)
     document.querySelectorAll('.view-contact').forEach(button => {
@@ -909,7 +990,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('.view-contact button clicked', this);
             console.log('Raw data-contact attribute:', this.dataset.contact);
             try {
-                currentViewContact = JSON.parse(this.dataset.contact); 
+                currentViewContact = decodeContactPayload(this.dataset.contact);
                 console.log('Parsed contact data for view:', currentViewContact);
                 
                 if (!currentViewContact || typeof currentViewContact !== 'object') {
@@ -998,7 +1079,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('.edit-contact button clicked (from card)', this);
             console.log('Raw data-contact attribute:', this.dataset.contact);
             try {
-                const contact = JSON.parse(this.dataset.contact);
+                const contact = decodeContactPayload(this.dataset.contact);
                 console.log('Parsed contact data for edit (from card):', contact);
                 if (!contact || typeof contact !== 'object') {
                     console.error('Parsed contact data for edit (from card) is invalid.', contact);
@@ -1090,31 +1171,6 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('group_icon').value = groupData.groupIcon;
             document.querySelector('#groupForm [name="action"]').value = 'update_group';
         });
-    });
-
-    // Accordion and New Icon Rotation Logic for Group Collapse
-    const allCollapseTriggers = document.querySelectorAll('[data-bs-toggle="collapse"][data-bs-target^="#group-"]');
-
-    allCollapseTriggers.forEach(function(headerElement) {
-        const targetId = headerElement.getAttribute('data-bs-target');
-        const collapseTarget = document.querySelector(targetId);
-        // Ensure we select the correct icon within this specific header
-        const icon = headerElement.querySelector('.toggle-icon.fas.fa-chevron-down'); 
-
-        if (collapseTarget && icon) {
-            // Event listener for when this specific collapse element starts to show
-            collapseTarget.addEventListener('show.bs.collapse', function () {
-                // Add \'rotated\' class to the icon of the showing element
-                icon.classList.add('rotated');
-                // Bootstrap with data-bs-parent will handle closing other items
-            });
-
-            // Event listener for when this specific collapse element starts to hide
-            collapseTarget.addEventListener('hide.bs.collapse', function () {
-                // Remove \'rotated\' class from the icon of the hiding element
-                icon.classList.remove('rotated');
-            });
-        }
     });
 
     // Reset forms when modals are hidden

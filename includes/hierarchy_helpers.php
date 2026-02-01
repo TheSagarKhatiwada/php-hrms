@@ -40,7 +40,7 @@ function getHierarchyPath($pdo, $employeeId) {
     while ($currentEmployeeId) {
         $stmt = $pdo->prepare("
             SELECT emp_id, supervisor_id, CONCAT(first_name, ' ', last_name) as full_name, 
-                   designation, role_id
+                   designation_id, role_id
             FROM employees 
             WHERE emp_id = ? AND exit_date IS NULL
         ");
@@ -91,7 +91,7 @@ function getTeamMembers($pdo, $supervisorId, $includeIndirect = false) {
         $stmt = $pdo->prepare("
             SELECT e.*, d.title as designation_title, dept.name as department_name
             FROM employees e
-            LEFT JOIN designations d ON e.designation = d.id
+            LEFT JOIN designations d ON e.designation_id = d.id
             LEFT JOIN departments dept ON e.department_id = dept.id
             WHERE e.id IN ($placeholders) AND e.exit_date IS NULL
             ORDER BY e.first_name, e.last_name
@@ -101,7 +101,7 @@ function getTeamMembers($pdo, $supervisorId, $includeIndirect = false) {
         $stmt = $pdo->prepare("
             SELECT e.*, d.title as designation_title, dept.name as department_name
             FROM employees e
-            LEFT JOIN designations d ON e.designation = d.id
+            LEFT JOIN designations d ON e.designation_id = d.id
             LEFT JOIN departments dept ON e.department_id = dept.id
             WHERE e.supervisor_id = ? AND e.exit_date IS NULL
             ORDER BY e.first_name, e.last_name
@@ -269,7 +269,7 @@ function getBoardMembers($pdo) {
     $stmt = $pdo->prepare("
         SELECT e.id, e.emp_id, e.first_name, e.last_name, 
                CONCAT(e.first_name, ' ', e.last_name) as full_name,
-               e.designation, e.organizational_level,
+               e.designation_id, e.organizational_level,
                bp.position_name, bp.position_level, bp.description
         FROM employees e
         JOIN board_positions bp ON e.board_position_id = bp.id
@@ -320,7 +320,7 @@ function getCompleteOrganizationalHierarchy($pdo) {
         SELECT 
             e.id, e.emp_id, e.first_name, e.last_name,
             CONCAT(e.first_name, ' ', e.last_name) as full_name,
-            e.designation, e.supervisor_id, e.department_id, 
+            e.designation_id, e.supervisor_id, e.department_id, 
             e.board_position_id, e.organizational_level,
             bp.position_name as board_position,
             bp.position_level as board_level,
@@ -433,13 +433,13 @@ function getCompleteOrganizationalStructure($pdo) {
         SELECT 
             e.id, e.emp_id, e.first_name, e.last_name,
             CONCAT(e.first_name, ' ', e.last_name) as full_name,
-            e.designation, e.supervisor_id, e.department_id, 
+            e.designation_id, e.supervisor_id, e.department_id, 
             d.name as department_name,
             des.title as designation_title,
             r.name as role_name
         FROM employees e
         LEFT JOIN departments d ON e.department_id = d.id
-        LEFT JOIN designations des ON e.designation = des.id
+        LEFT JOIN designations des ON e.designation_id = des.id
         LEFT JOIN roles r ON e.role_id = r.id
         WHERE e.exit_date IS NULL
         ORDER BY e.supervisor_id IS NULL DESC, e.supervisor_id, e.first_name

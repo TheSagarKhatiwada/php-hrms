@@ -2,7 +2,14 @@
 ob_start(); // Start output buffering
 $page = 'Search Results';
 require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/utilities.php';
 include 'includes/db_connection.php';
+
+if (!has_permission('topbar_global_search')) {
+    $_SESSION['error'] = 'You do not have permission to use global search.';
+    header('Location: dashboard.php');
+    exit();
+}
 
 // Get search query
 $query = isset($_GET['query']) ? trim($_GET['query']) : '';

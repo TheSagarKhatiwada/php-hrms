@@ -143,6 +143,15 @@ try {
 
 	// Notify target if directly assigned to employee
 	if ($assignmentType === 'employee' && $assignedTo) {
+		// New notification system with email/SMS
+		require_once __DIR__ . '/../../includes/task_notification_helper.php';
+		try {
+			sendTaskAssignmentNotification($pdo, $taskId, $assignedTo, $who);
+		} catch (Exception $notif_error) {
+			error_log("Warning: Failed to send task reassignment notification: " . $notif_error->getMessage());
+		}
+		
+		// Legacy notification system (keeping for backward compatibility)
 		require_once __DIR__ . '/../../includes/notification_helpers.php';
 		try {
 			notify_employee($assignedTo, 'task_assigned', [

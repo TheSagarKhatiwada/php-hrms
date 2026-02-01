@@ -115,7 +115,17 @@ function getDBConfig() {
 // Make DB_CONFIG global to ensure accessibility
 $GLOBALS['DB_CONFIG'] = $DB_CONFIG;
 
-// Validate configuration
+// Remote Nepali calendar API configuration (optional)
+// Set HRMS_NEPALI_CALENDAR_API_URL in .env to enable fetching AD/BS calendar data from an external service.
+if (!defined('NEPALI_CALENDAR_API_URL')) {
+    define('NEPALI_CALENDAR_API_URL', hrms_env('HRMS_NEPALI_CALENDAR_API_URL', ''));
+}
+
+if (!defined('NEPALI_CALENDAR_API_KEY')) {
+    define('NEPALI_CALENDAR_API_KEY', hrms_env('HRMS_NEPALI_CALENDAR_API_KEY', ''));
+}
+
+// Validate core database configuration
 if (empty($DB_CONFIG['host']) || empty($DB_CONFIG['name']) || empty($DB_CONFIG['user'])) {
     error_log("CRITICAL ERROR: Incomplete database configuration in config.php");
     die("Database configuration error. Please check your configuration file.");

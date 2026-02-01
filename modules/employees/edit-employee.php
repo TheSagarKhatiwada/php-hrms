@@ -2,8 +2,9 @@
 $page = 'Edit Employee';
 $page = 'employees';
 // Include utilities for role check functions
-require_once '../../includes/session_config.php';
-require_once '../../includes/utilities.php';
+require_once __DIR__ . '/../../includes/session_config.php';
+require_once __DIR__ . '/../../includes/utilities.php';
+require_once __DIR__ . '/../../includes/db_connection.php';
 
 // Use the standardized role check function
 if (!is_admin() && get_user_role() === '0') {
@@ -11,8 +12,12 @@ if (!is_admin() && get_user_role() === '0') {
     exit();
 }
 
-// Fetch employee details
-include '../../includes/db_connection.php'; // Include database connection
+// Ensure database connection is available before proceeding
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+  $_SESSION['error'] = 'Database connection is unavailable.';
+  header('Location: employees.php');
+  exit();
+}
 
 if (!isset($_GET['id'])) {
   header('Location: employees.php');
@@ -30,6 +35,25 @@ if (!$employee) {
     $_SESSION['error'] = "Employee not found";
     header('Location: employees.php');
     exit();
+}
+
+$permissionCatalog = hrms_menu_permissions_catalog();
+hrms_sync_permissions_from_catalog();
+$rolePermissionCodes = hrms_get_permissions_for_role($employee['role_id'] ?? 0);
+$userPermissionOverrides = hrms_get_user_permission_overrides($emp_id, true);
+$permissionIdMap = [];
+$missingPermissionCodes = [];
+
+try {
+  $permIdStmt = $pdo->query('SELECT id, name FROM permissions');
+  foreach ($permIdStmt->fetchAll(PDO::FETCH_ASSOC) as $permRow) {
+    $code = $permRow['name'] ?? null;
+    if ($code) {
+      $permissionIdMap[$code] = (int)$permRow['id'];
+    }
+  }
+} catch (PDOException $e) {
+  $permissionIdMap = [];
 }
 
 $academicStmt = $pdo->prepare("SELECT degree_level, institution, field_of_study, graduation_year, grade, remarks
@@ -124,14 +148,13 @@ require_once __DIR__ . '/../../includes/header.php';
     </a>
   </div>
   
-  <!-- Employee Edit Card -->
-  <div class="card border-0 shadow-sm">
-    <div class="card-body">
-      <form id="editEmployeeForm" method="POST" action="update-employee.php" enctype="multipart/form-data">
-        <div class="row">
-          <div class="col-md-8">
-            <input type="hidden" name="emp_id" value="<?php echo htmlspecialchars($emp_id); ?>">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <form id="editEmployeeForm" method="POST" action="update-employee.php" enctype="multipart/form-data">
+              <input type="hidden" name="emp_id" value="<?php echo htmlspecialchars($employee['emp_id']); ?>">
 
+              <div class="row g-4">
+          <div class="col-md-8">
             <ul class="nav nav-tabs nav-fill" id="employeeFormTabs" role="tablist">
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="personal-tab" data-bs-toggle="tab" data-bs-target="#tab-personal" type="button" role="tab" aria-controls="tab-personal" aria-selected="true">
@@ -153,6 +176,13 @@ require_once __DIR__ . '/../../includes/header.php';
                   <i class="fas fa-tasks me-1"></i>Assigned Details
                 </button>
               </li>
+              <?php if (is_admin() || has_permission('manage_user_permissions')): ?>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#tab-permissions" type="button" role="tab" aria-controls="tab-permissions" aria-selected="false">
+                  <i class="fas fa-user-shield me-1"></i>Permissions
+                </button>
+              </li>
+              <?php endif; ?>
             </ul>
 
             <div class="tab-content border border-top-0 rounded-bottom p-4">
@@ -161,7 +191,7 @@ require_once __DIR__ . '/../../includes/header.php';
                 <div class="row gy-3 gx-2">
                   <div class="col-md-4">
                     <label for="empFirstName" class="form-label">First Name <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="empFirstName" name="empFirstName" required value="<?php echo htmlspecialchars($employee['first_name']); ?>">
+                    <input type="text" class="form-control" id="empFirstName" name="empFirstName" required value="<?php echo htmlspecialchars($employee['first_name'] ?? ''); ?>">
                   </div>
                   <div class="col-md-4">
                     <label for="empMiddleName" class="form-label">Middle Name</label>
@@ -169,7 +199,7 @@ require_once __DIR__ . '/../../includes/header.php';
                   </div>
                   <div class="col-md-4">
                     <label for="empLastName" class="form-label">Last Name <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="empLastName" name="empLastName" required value="<?php echo htmlspecialchars($employee['last_name']); ?>">
+                    <input type="text" class="form-control" id="empLastName" name="empLastName" required value="<?php echo htmlspecialchars($employee['last_name'] ?? ''); ?>">
                   </div>
                   <div class="col-md-6">
                     <label for="dob" class="form-label">Date of Birth</label>
@@ -178,7 +208,7 @@ require_once __DIR__ . '/../../includes/header.php';
                   <div class="col-md-6">
                     <label for="gender" class="form-label">Gender <span class="text-danger">*</span></label>
                     <select class="form-select" id="gender" name="gender" required>
-                      <option value="" disabled>Select a Gender</option>
+                      <option value="" disabled <?php echo empty($displayGender) ? 'selected' : ''; ?>>Select a Gender</option>
                       <option value="M" <?php echo ($displayGender === 'M') ? 'selected' : ''; ?>>Male</option>
                       <option value="F" <?php echo ($displayGender === 'F') ? 'selected' : ''; ?>>Female</option>
                     </select>
@@ -187,11 +217,11 @@ require_once __DIR__ . '/../../includes/header.php';
                     <label for="empPhone" class="form-label">Personal Phone <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" id="empPhone" name="empPhone" required 
                            pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign" 
-                           value="<?php echo htmlspecialchars($employee['phone']); ?>">
+                           value="<?php echo htmlspecialchars($employee['phone'] ?? ''); ?>">
                   </div>
                   <div class="col-md-6">
                     <label for="empEmail" class="form-label">Personal Email <span class="text-danger">*</span></label>
-                    <input type="email" class="form-control" id="empEmail" name="empEmail" required value="<?php echo htmlspecialchars($employee['email']); ?>">
+                    <input type="email" class="form-control" id="empEmail" name="empEmail" required value="<?php echo htmlspecialchars($employee['email'] ?? ''); ?>">
                   </div>
                   <div class="col-12 pt-1">
                     <h6 class="text-uppercase text-muted small mb-2">Family &amp; Marital Information</h6>
@@ -209,11 +239,11 @@ require_once __DIR__ . '/../../includes/header.php';
                     <select class="form-select" id="marital_status" name="marital_status">
                       <option value="">Select Status</option>
                       <?php foreach ($maritalStatusOptions as $value => $label): ?>
-                        <option value="<?php echo $value; ?>" <?php echo ($employee['marital_status'] ?? '') === $value ? 'selected' : ''; ?>><?php echo $label; ?></option>
+                        <option value="<?php echo $value; ?>" <?php echo (!empty($employee['marital_status']) && $employee['marital_status'] === $value) ? 'selected' : ''; ?>><?php echo $label; ?></option>
                       <?php endforeach; ?>
                     </select>
                   </div>
-                  <div class="col-md-6 <?php echo (($employee['marital_status'] ?? '') === 'married') ? '' : 'd-none'; ?>" id="spouseFieldWrapper">
+                  <div class="col-md-6 <?php echo (!empty($employee['marital_status']) && $employee['marital_status'] === 'married') ? '' : 'd-none'; ?>" id="spouseFieldWrapper">
                     <label for="spouse_name" class="form-label">Spouse Name</label>
                     <input type="text" class="form-control" id="spouse_name" name="spouse_name" value="<?php echo htmlspecialchars($employee['spouse_name'] ?? ''); ?>">
                   </div>
@@ -226,14 +256,13 @@ require_once __DIR__ . '/../../includes/header.php';
                   </div>
                   <div class="col-md-6">
                     <label for="emergency_contact_relationship" class="form-label">Relationship</label>
-                    <?php $selectedRelationship = $employee['emergency_contact_relationship'] ?? ''; ?>
                     <select class="form-select" id="emergency_contact_relationship" name="emergency_contact_relationship">
                       <option value="">Select Relationship</option>
                       <?php foreach ($relationshipOptions as $option): ?>
-                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo ($selectedRelationship === $option) ? 'selected' : ''; ?>><?php echo $option; ?></option>
+                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo (!empty($employee['emergency_contact_relationship']) && $employee['emergency_contact_relationship'] === $option) ? 'selected' : ''; ?>><?php echo $option; ?></option>
                       <?php endforeach; ?>
-                      <?php if ($selectedRelationship && !in_array($selectedRelationship, $relationshipOptions, true)): ?>
-                        <option value="<?php echo htmlspecialchars($selectedRelationship); ?>" selected><?php echo htmlspecialchars($selectedRelationship); ?></option>
+                      <?php if (!empty($employee['emergency_contact_relationship']) && !in_array($employee['emergency_contact_relationship'], $relationshipOptions, true)): ?>
+                        <option value="<?php echo htmlspecialchars($employee['emergency_contact_relationship']); ?>" selected><?php echo htmlspecialchars($employee['emergency_contact_relationship']); ?></option>
                       <?php endif; ?>
                     </select>
                   </div>
@@ -253,7 +282,7 @@ require_once __DIR__ . '/../../includes/header.php';
                     <select class="form-select" id="blood_group" name="blood_group">
                       <option value="">Select Blood Group</option>
                       <?php foreach ($bloodGroupOptions as $value => $label): ?>
-                        <option value="<?php echo $value; ?>" <?php echo ($employee['blood_group'] ?? '') === $value ? 'selected' : ''; ?>><?php echo $label; ?></option>
+                        <option value="<?php echo $value; ?>" <?php echo (!empty($employee['blood_group']) && $employee['blood_group'] === $value) ? 'selected' : ''; ?>><?php echo $label; ?></option>
                       <?php endforeach; ?>
                     </select>
                   </div>
@@ -289,13 +318,12 @@ require_once __DIR__ . '/../../includes/header.php';
                           <select class="form-select" id="permanent_district" name="permanent_district">
                             <option value="">Select District</option>
                             <?php 
-                              $permanentDistrictValue = $employee['permanent_district'] ?? '';
                               $permanentDistrictFound = false;
                               foreach ($districtRecords as $districtRow):
                                 $districtName = $districtRow['district_name'];
                                 $provinceName = $provinceIndex[$districtRow['province_id']] ?? '';
                                 $postalCode = $districtRow['postal_code'] ?? '';
-                                $selected = ($permanentDistrictValue === $districtName) ? 'selected' : '';
+                                $selected = (!empty($employee['permanent_district']) && $employee['permanent_district'] === $districtName) ? 'selected' : '';
                                 if ($selected) {
                                   $permanentDistrictFound = true;
                                 }
@@ -304,42 +332,48 @@ require_once __DIR__ . '/../../includes/header.php';
                                 <?php echo htmlspecialchars($districtName); ?>
                               </option>
                             <?php endforeach; ?>
-                            <?php if (!$permanentDistrictFound && !empty($permanentDistrictValue)): ?>
-                              <option value="<?php echo htmlspecialchars($permanentDistrictValue); ?>" data-province="<?php echo htmlspecialchars($employee['permanent_state'] ?? ''); ?>" data-postal="<?php echo htmlspecialchars($employee['permanent_postal_code'] ?? ''); ?>" selected>
-                                <?php echo htmlspecialchars($permanentDistrictValue); ?>
+                            <?php if (!$permanentDistrictFound && !empty($employee['permanent_district'])): ?>
+                              <option value="<?php echo htmlspecialchars($employee['permanent_district']); ?>" data-province="<?php echo htmlspecialchars($employee['permanent_state'] ?? ''); ?>" data-postal="<?php echo htmlspecialchars($employee['permanent_postal_code'] ?? ''); ?>" selected>
+                                <?php echo htmlspecialchars($employee['permanent_district']); ?>
                               </option>
                             <?php endif; ?>
                           </select>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
-                          <input type="text" class="form-control" id="permanent_state" name="permanent_state" placeholder="Select District" value="<?php echo htmlspecialchars($employee['permanent_state'] ?? 'Select District'); ?>">
+                          <input type="text" class="form-control" id="permanent_state" name="permanent_state" placeholder="Select District" value="<?php echo htmlspecialchars($employee['permanent_state'] ?? ''); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
-                          <input type="text" class="form-control" id="permanent_postal_code" name="permanent_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($employee['permanent_postal_code'] ?? 'Select District'); ?>">
+                          <input type="text" class="form-control" id="permanent_postal_code" name="permanent_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($employee['permanent_postal_code'] ?? ''); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
                           <?php if (!empty($countryRecords)): ?>
                           <select class="form-select" id="permanent_country" name="permanent_country">
-                            <?php $permanentCountryVal = $employee['permanent_country'] ?? 'Nepal';
-                              foreach ($countryRecords as $c):
-                                $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
-                                // handle variants like "NP Nepal" or "NP\u00A0Nepal"
-                                if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
-                                  $displayName = $m[2];
-                                } else {
-                                  $displayName = $cName;
-                                }
-                                $selected = ($permanentCountryVal === $cName) || (empty($permanentCountryVal) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                                // flags removed — only show country names
+                            <?php foreach ($countryRecords as $c):
+                              $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
+                                $displayName = $m[2];
+                              } else {
+                                $displayName = $cName;
+                              }
+                              $selected = (!empty($employee['permanent_country']) && $employee['permanent_country'] === $cName) || (empty($employee['permanent_country']) && strtolower($cName) === 'nepal') ? 'selected' : '';
                             ?>
                               <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
-                          <?php else: ?>
-                            <input type="text" class="form-control" id="permanent_country" name="permanent_country" placeholder="Country" value="<?php echo htmlspecialchars($employee['permanent_country'] ?? 'Nepal'); ?>">
+                          <?php else:
+                            $fallbackCountries = ['Nepal','India','United States','United Kingdom','Pakistan','Bangladesh','China','Japan','Australia','Canada'];
+                          ?>
+                          <select class="form-select" id="permanent_country" name="permanent_country">
+                            <?php foreach ($fallbackCountries as $cName):
+                              $selected = (!empty($employee['permanent_country']) && $employee['permanent_country'] === $cName) || (empty($employee['permanent_country']) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              $displayName = $cName;
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
                           <?php endif; ?>
                         </div>
                       </div>
@@ -368,56 +402,59 @@ require_once __DIR__ . '/../../includes/header.php';
                           <select class="form-select" id="current_district" name="current_district">
                             <option value="">Select District</option>
                             <?php 
-                              $currentDistrictValue = $employee['current_district'] ?? '';
                               $currentDistrictFound = false;
                               foreach ($districtRecords as $districtRow):
                                 $districtName = $districtRow['district_name'];
                                 $provinceName = $provinceIndex[$districtRow['province_id']] ?? '';
                                 $postalCode = $districtRow['postal_code'] ?? '';
-                                $selected = ($currentDistrictValue === $districtName) ? 'selected' : '';
-                                if ($selected) {
-                                  $currentDistrictFound = true;
-                                }
+                                $selected = (!empty($employee['current_district']) && $employee['current_district'] === $districtName) ? 'selected' : '';
+                                if ($selected) { $currentDistrictFound = true; }
                             ?>
                               <option value="<?php echo htmlspecialchars($districtName); ?>" data-province="<?php echo htmlspecialchars($provinceName); ?>" data-postal="<?php echo htmlspecialchars($postalCode); ?>" <?php echo $selected; ?>>
                                 <?php echo htmlspecialchars($districtName); ?>
                               </option>
                             <?php endforeach; ?>
-                            <?php if (!$currentDistrictFound && !empty($currentDistrictValue)): ?>
-                              <option value="<?php echo htmlspecialchars($currentDistrictValue); ?>" data-province="<?php echo htmlspecialchars($employee['current_state'] ?? ''); ?>" data-postal="<?php echo htmlspecialchars($employee['current_postal_code'] ?? ''); ?>" selected>
-                                <?php echo htmlspecialchars($currentDistrictValue); ?>
+                            <?php if (!$currentDistrictFound && !empty($employee['current_district'])): ?>
+                              <option value="<?php echo htmlspecialchars($employee['current_district']); ?>" data-province="<?php echo htmlspecialchars($employee['current_state'] ?? ''); ?>" data-postal="<?php echo htmlspecialchars($employee['current_postal_code'] ?? ''); ?>" selected>
+                                <?php echo htmlspecialchars($employee['current_district']); ?>
                               </option>
                             <?php endif; ?>
                           </select>
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Province / State</label>
-                          <input type="text" class="form-control" id="current_state" name="current_state" placeholder="Select District" value="<?php echo htmlspecialchars($employee['current_state'] ?? 'Select District'); ?>">
+                          <input type="text" class="form-control" id="current_state" name="current_state" placeholder="Select District" value="<?php echo htmlspecialchars($employee['current_state'] ?? ''); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Postal Code</label>
-                          <input type="text" class="form-control" id="current_postal_code" name="current_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($employee['current_postal_code'] ?? 'Select District'); ?>">
+                          <input type="text" class="form-control" id="current_postal_code" name="current_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($employee['current_postal_code'] ?? ''); ?>">
                         </div>
                         <div class="col-sm-6">
                           <label class="form-label">Country</label>
                           <?php if (!empty($countryRecords)): ?>
                           <select class="form-select" id="current_country" name="current_country">
-                            <?php $currentCountryVal = $employee['current_country'] ?? 'Nepal';
-                              foreach ($countryRecords as $c):
-                                $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
-                                if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
-                                  $displayName = $m[2];
-                                } else {
-                                  $displayName = $cName;
-                                }
-                                $selected = ($currentCountryVal === $cName) || (empty($currentCountryVal) && strtolower($cName) === 'nepal') ? 'selected' : '';
-                                // flags removed — only show country names
+                            <?php foreach ($countryRecords as $c):
+                              $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
+                                $displayName = $m[2];
+                              } else {
+                                $displayName = $cName;
+                              }
+                              $selected = (!empty($employee['current_country']) && $employee['current_country'] === $cName) || (empty($employee['current_country']) && strtolower($cName) === 'nepal') ? 'selected' : '';
                             ?>
                               <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
                             <?php endforeach; ?>
                           </select>
-                          <?php else: ?>
-                            <input type="text" class="form-control" id="current_country" name="current_country" placeholder="Country" value="<?php echo htmlspecialchars($employee['current_country'] ?? 'Nepal'); ?>">
+                          <?php else:
+                            $fallbackCountries = ['Nepal','India','United States','United Kingdom','Pakistan','Bangladesh','China','Japan','Australia','Canada'];
+                          ?>
+                          <select class="form-select" id="current_country" name="current_country">
+                            <?php foreach ($fallbackCountries as $cName):
+                              $selected = (!empty($employee['current_country']) && $employee['current_country'] === $cName) || (empty($employee['current_country']) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($cName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
                           <?php endif; ?>
                         </div>
                       </div>
@@ -425,7 +462,6 @@ require_once __DIR__ . '/../../includes/header.php';
                   </div>
                 </div>
               </div>
-
               <div class="tab-pane fade" id="tab-academic" role="tabpanel" aria-labelledby="academic-tab">
                 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
                   <div>
@@ -601,15 +637,121 @@ require_once __DIR__ . '/../../includes/header.php';
                     </select>
                   </div>
                   <div class="col-md-6">
-                    <label class="form-label">Web Check-In/Checkout</label>
-                    <div class="form-check form-switch mt-2">
-                      <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo !empty($employee['allow_web_attendance']) ? 'checked' : ''; ?>>
-                      <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                    <div class="d-flex align-items-center justify-content-between">
+                      <label class="form-label mb-0">Web Check-In/Checkout</label>
+                      <div class="form-check form-switch m-0">
+                        <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo !empty($employee['allow_web_attendance']) ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                      </div>
                     </div>
-                    <small class="text-muted">Leave disabled for employees who must rely on biometric devices only.</small>
+                    <small class="text-muted d-block mt-1">Leave disabled for employees who must rely on biometric devices only.</small>
                   </div>
                 </div>
               </div>
+              <?php if (is_admin() || has_permission('manage_user_permissions')): ?>
+              <div class="tab-pane fade" id="tab-permissions" role="tabpanel" aria-labelledby="permissions-tab">
+                <h5 class="fw-semibold mb-3">Permission Overrides</h5>
+                <p class="text-muted small">This view mirrors the Roles &amp; Permissions &rarr; Permission Overrides page. Leave a permission on Inherit to rely on the employee&rsquo;s role; switch to Allow or Deny for explicit overrides.</p>
+                <?php if (!empty($permissionCatalog['sections'])): ?>
+                  <div class="accordion" id="employeePermissionAccordion">
+                    <?php foreach ($permissionCatalog['sections'] as $sectionKey => $section): ?>
+                      <?php
+                        $sectionChildren = $section['children'] ?? [];
+                        if (empty($sectionChildren)) {
+                          continue;
+                        }
+                        $accordionId = 'emp-perm-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', (string)$sectionKey);
+                      ?>
+                      <div class="accordion-item mb-3">
+                        <h2 class="accordion-header" id="heading-<?php echo htmlspecialchars($accordionId); ?>">
+                          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-<?php echo htmlspecialchars($accordionId); ?>">
+                            <i class="<?php echo htmlspecialchars($section['icon'] ?? 'fas fa-layer-group'); ?> me-2"></i>
+                            <?php echo htmlspecialchars($section['label'] ?? ucfirst((string)$sectionKey)); ?>
+                          </button>
+                        </h2>
+                        <div id="collapse-<?php echo htmlspecialchars($accordionId); ?>" class="accordion-collapse collapse" data-bs-parent="#employeePermissionAccordion">
+                          <div class="accordion-body">
+                            <?php foreach ($sectionChildren as $child): ?>
+                              <?php $childPermissions = $child['permissions'] ?? []; ?>
+                              <?php if (empty($childPermissions)) { continue; } ?>
+                              <div class="mb-4">
+                                <h6 class="fw-semibold mb-2"><?php echo htmlspecialchars($child['label'] ?? 'Permissions'); ?></h6>
+                                <div class="table-responsive">
+                                  <table class="table table-sm align-middle">
+                                    <thead>
+                                      <tr>
+                                        <th>Permission</th>
+                                        <th>Description</th>
+                                        <th>Role default</th>
+                                        <th class="text-center">Allow</th>
+                                        <th class="text-center">Deny</th>
+                                        <th class="text-center">Inherit</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <?php foreach ($childPermissions as $permission): ?>
+                                        <?php
+                                          $code = $permission['code'] ?? null;
+                                          if (!$code) {
+                                              continue;
+                                          }
+                                          $roleHas = in_array($code, $rolePermissionCodes, true);
+                                          $overrideValue = $userPermissionOverrides[$code] ?? null;
+                                          $allowChecked = ($overrideValue === 1);
+                                          $denyChecked = ($overrideValue === 0);
+                                          $inheritChecked = (!$allowChecked && !$denyChecked);
+                                          $missing = !isset($permissionIdMap[$code]);
+                                          if ($missing && !in_array($code, $missingPermissionCodes, true)) {
+                                              $missingPermissionCodes[] = $code;
+                                          }
+                                        ?>
+                                        <tr>
+                                          <td class="fw-medium">
+                                            <?php echo htmlspecialchars($permission['label'] ?? $code); ?>
+                                            <div class="text-muted small">Code: <?php echo htmlspecialchars($code); ?></div>
+                                          </td>
+                                          <td><?php echo htmlspecialchars($permission['description'] ?? ''); ?></td>
+                                          <td>
+                                            <?php if ($roleHas): ?>
+                                              <span class="badge bg-success">Granted</span>
+                                            <?php else: ?>
+                                              <span class="badge bg-secondary">Not granted</span>
+                                            <?php endif; ?>
+                                          </td>
+                                          <td class="text-center">
+                                            <input type="radio" class="form-check-input" name="perm_override[<?php echo htmlspecialchars($code); ?>]" value="allow" <?php echo $allowChecked ? 'checked' : ''; ?> <?php echo $missing ? 'disabled' : ''; ?>>
+                                          </td>
+                                          <td class="text-center">
+                                            <input type="radio" class="form-check-input" name="perm_override[<?php echo htmlspecialchars($code); ?>]" value="deny" <?php echo $denyChecked ? 'checked' : ''; ?> <?php echo $missing ? 'disabled' : ''; ?>>
+                                          </td>
+                                          <td class="text-center">
+                                            <input type="radio" class="form-check-input" name="perm_override[<?php echo htmlspecialchars($code); ?>]" value="inherit" <?php echo $inheritChecked ? 'checked' : ''; ?> <?php echo $missing ? 'disabled' : ''; ?>>
+                                          </td>
+                                        </tr>
+                                      <?php endforeach; ?>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            <?php endforeach; ?>
+                          </div>
+                        </div>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                <?php else: ?>
+                  <p class="text-muted">No permissions are defined in the catalog.</p>
+                <?php endif; ?>
+                <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div>
+                    <?php if (!empty($missingPermissionCodes)): ?>
+                      <span class="text-danger small">Missing permission codes: <?php echo htmlspecialchars(implode(', ', $missingPermissionCodes)); ?></span>
+                    <?php endif; ?>
+                  </div>
+                  <button type="submit" name="save_user_permissions" value="1" class="btn btn-primary">Save Permission Overrides</button>
+                </div>
+              </div>
+              <?php endif; ?>
             </div>
           </div>
 
@@ -617,15 +759,23 @@ require_once __DIR__ . '/../../includes/header.php';
             <div class="text-center mb-3">
               <div class="position-relative d-inline-block">
                 <img id="photoPreview" src="<?php 
-                  $imagePath = $employee['user_image'] ?: '../../resources/userimg/default-image.jpg';
-                  if (!empty($employee['user_image']) && !str_starts_with($employee['user_image'], '../') && !str_starts_with($employee['user_image'], 'http')) {
-                    $imagePath = '../../' . $employee['user_image'];
+                  // Ensure we use the same base path as other pages ($home) so images resolve correctly
+                  $imagePath = '';
+                  if (!empty($employee['user_image'])) {
+                    // If value looks like an absolute URL, use it. Otherwise prefix with $home
+                    if (str_starts_with($employee['user_image'], 'http') || str_starts_with($employee['user_image'], '/')) {
+                      $imagePath = $employee['user_image'];
+                    } else {
+                      $imagePath = (isset($home) ? $home : '../../') . ltrim($employee['user_image'], '/');
+                    }
+                  } else {
+                    $imagePath = (isset($home) ? $home : '../../') . 'resources/userimg/default-image.jpg';
                   }
                   echo htmlspecialchars($imagePath);
                 ?>" 
                      alt="Employee Photo" class="rounded-circle img-thumbnail" 
                      style="width: 200px; height: 200px; object-fit: cover;"
-                     onerror="this.src='../../resources/userimg/default-image.jpg'">
+                     onerror="this.src='<?php echo htmlspecialchars((isset($home) ? $home : '../../') . 'resources/userimg/default-image.jpg'); ?>'">
                 <button type="button" class="btn btn-sm btn-primary position-absolute bottom-0 end-0 rounded-circle"
                         onclick="document.getElementById('empPhoto').click();">
                   <i class="fas fa-camera"></i>
@@ -648,8 +798,287 @@ require_once __DIR__ . '/../../includes/header.php';
 </div>
 
 <!-- Image Crop Modal -->
+<style>
+#cropModal .modal-dialog {
+  max-width: min(1024px, calc(100vw - 2rem));
+}
+#cropModal .modal-content {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: #1b1d25;
+  color: #f2f2f2;
+}
+#cropModal .modal-header,
+#cropModal .modal-footer {
+  border-color: rgba(255,255,255,0.08);
+}
+#cropModal .img-container {
+  width: 100%;
+  min-height: 460px;
+  max-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d0f16;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+#cropModal .img-container img {
+  max-width: 100%;
+  max-height: 100%;
+}
+#cropModal .img-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1.25rem;
+}
+#cropModal .control-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(15,17,25,0.92), rgba(13,15,22,0.85));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+}
+#cropModal .control-row.control-row--primary {
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+#cropModal .control-row--primary .control-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 180px;
+}
+#cropModal .control-row--primary .control-cluster .control-pair {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: center;
+}
+#cropModal .control-row--primary .control-cluster--left .control-pair {
+  justify-content: flex-start;
+}
+#cropModal .control-row--primary .control-cluster--right .control-pair {
+  justify-content: flex-end;
+}
+#cropModal .control-row--primary .control-btn.control-btn-primary {
+  min-width: 120px;
+  align-self: center;
+  margin: 0 0.5rem;
+}
+@media (max-width: 768px) {
+  #cropModal .control-row.control-row--primary {
+    flex-direction: column;
+  }
+  #cropModal .control-row--primary .control-cluster,
+  #cropModal .control-row--primary .control-pair {
+    align-items: center;
+    justify-content: center !important;
+  }
+  #cropModal .control-row--primary .control-btn.control-btn-primary {
+    width: 100%;
+    margin: 0;
+  }
+}
+#cropModal .control-row.control-row--secondary {
+  background: linear-gradient(135deg, rgba(15,17,25,0.75), rgba(13,15,22,0.65));
+  border-style: dashed;
+  border-color: rgba(255,255,255,0.12);
+}
+#cropModal .control-row.control-row--slider {
+  border-radius: 22px;
+  padding: 0.75rem 1rem;
+  background: rgba(7,8,12,0.85);
+  border: 1px solid rgba(255,255,255,0.06);
+  gap: 0.85rem;
+}
+#cropModal .control-row--slider .control-btn {
+  min-width: 72px;
+  height: 46px;
+}
+#cropModal .control-btn {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.02);
+  color: #f7f7f7;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+#cropModal .control-btn.control-btn-icon {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+#cropModal .control-btn.control-btn-primary {
+  background: linear-gradient(135deg, #3a3f52, #252839);
+  border-color: rgba(138,92,246,0.45);
+  box-shadow: 0 8px 15px rgba(138,92,246,0.3);
+}
+#cropModal .control-btn:hover {
+  border-color: rgba(138,92,246,0.65);
+  background: rgba(138,92,246,0.08);
+}
+#cropModal .control-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.6);
+  margin-right: 0.35rem;
+}
+#cropModal .rotation-scale {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  --rotation-shift: 0px;
+  --tick-unit: 14px;
+  --sequence-width: calc(var(--tick-unit) * 10);
+  --half-sequence: calc(var(--tick-unit) * 5);
+  --long-height: 24px;
+  --mid-height: 18px;
+  --short-height: 11px;
+}
+#cropModal .rotation-scale .rotation-ruler {
+  position: relative;
+  width: 100%;
+  height: 34px;
+}
+#cropModal .rotation-scale .rotation-ruler::before {
+  content: '';
+  position: absolute;
+  inset: 6px 4%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0) 100%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+#cropModal .rotation-scale .tick-track {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 50%;
+  height: var(--long-height);
+  transform: translateY(-50%);
+  pointer-events: none;
+  background-repeat: repeat-x, repeat-x, repeat-x;
+  background-image:
+    linear-gradient(90deg, rgba(255,255,255,0.85) 0 2px, transparent 2px),
+    linear-gradient(90deg, rgba(255,255,255,0.65) 0 2px, transparent 2px),
+    linear-gradient(90deg, rgba(255,255,255,0.45) 0 2px, transparent 2px);
+  background-size:
+    var(--sequence-width) var(--long-height),
+    var(--sequence-width) var(--mid-height),
+    var(--tick-unit) var(--short-height);
+  background-position:
+    calc(50% + var(--rotation-shift)) center,
+    calc(50% + var(--rotation-shift) + var(--half-sequence)) center,
+    calc(50% + var(--rotation-shift)) center;
+  opacity: 0.85;
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 2px;
+  background: rgba(255,255,255,0.4);
+  transform: translateY(-50%);
+  z-index: 0;
+  box-shadow: 0 0 8px rgba(255,255,255,0.2);
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-mid {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 2px;
+  background: rgba(255,255,255,0.95);
+  transform: translateX(-50%);
+  box-shadow: 0 0 14px rgba(255,255,255,0.35);
+  z-index: 1;
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-base {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 6px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.35), rgba(255,255,255,0));
+  opacity: 0.7;
+  z-index: 0;
+}
+#cropModal .rotation-scale input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  appearance: none;
+  background: transparent;
+  z-index: 2;
+}
+#cropModal .rotation-scale input[type="range"]:focus {
+  outline: none;
+}
+#cropModal .rotation-scale input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #c5c5c5);
+  border: 1px solid rgba(0,0,0,0.35);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.45);
+}
+#cropModal .rotation-scale input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #c5c5c5);
+  border: 1px solid rgba(0,0,0,0.35);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.45);
+}
+#cropModal .rotation-scale input[type="range"]::-webkit-slider-runnable-track,
+#cropModal .rotation-scale input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: transparent;
+}
+#cropModal .rotation-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.85);
+  min-width: 54px;
+  text-align: center;
+}
+#cropModal .rotation-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.85);
+  min-width: 54px;
+  text-align: center;
+  position: absolute;
+  top: -1.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#cropModal #cropWarning {
+  flex: 1;
+}
+</style>
 <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="cropModalLabel">Crop Image</h5>
@@ -659,10 +1088,48 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="img-container">
           <img id="imageToCrop" src="" alt="Image to Crop" style="max-width: 100%;">
         </div>
+        <div class="img-controls">
+          <div class="control-panel" role="group" aria-label="Crop controls">
+            <div class="control-row control-row--slider" role="group" aria-label="Rotation fine control">
+              <button type="button" class="control-btn" id="nudgeRotateLeft" title="Rotate left 5°">↺ 5°</button>
+              <div class="rotation-scale" aria-hidden="false">
+                <span class="rotation-value" id="rotationValue">0°</span>
+                <div class="rotation-ruler" aria-hidden="true">
+                  <span class="tick-track" aria-hidden="true"></span>
+                  <span class="ruler-line" aria-hidden="true"></span>
+                  <span class="ruler-mid" aria-hidden="true"></span>
+                  <span class="ruler-base" aria-hidden="true"></span>
+                  <input type="range" id="rotateSlider" min="-180" max="180" step="1" value="0" aria-label="Rotation" />
+                </div>
+              </div>
+              <button type="button" class="control-btn" id="nudgeRotateRight" title="Rotate right 5°">↻ 5°</button>
+            </div>
+            <div class="control-row control-row--primary" role="toolbar" aria-label="Primary crop toolbar">
+                <div class="control-pair" role="group" aria-label="90 degree rotation">
+                  <button type="button" class="control-btn control-btn-icon" id="rotateLeft" title="Rotate left 90°">⟲</button>
+                  <button type="button" class="control-btn control-btn-icon" id="rotateRight" title="Rotate right 90°">⟳</button>
+                </div>
+                <div class="control-pair" role="group" aria-label="Zoom controls">
+                  <button type="button" class="control-btn control-btn-icon" id="zoomOut" title="Zoom out">🔍−</button>
+                  <button type="button" class="control-btn control-btn-icon" id="zoomIn" title="Zoom in">🔍+</button>
+                </div>
+              <button type="button" class="control-btn control-btn-primary" id="resetCrop" title="Reset crop">Reset</button>
+                <div class="control-pair" role="group" aria-label="Fit and aspect">
+                  <button type="button" class="control-btn" id="fitCrop" title="Fit to frame">⤢</button>
+                  <button type="button" class="control-btn" id="oneToOne" title="1:1 Aspect Ratio">1:1</button>
+                </div>
+                <div class="control-pair" role="group" aria-label="Flip controls">
+                  <button type="button" class="control-btn" id="flipHorizontal" title="Flip horizontally">⇋</button>
+                  <button type="button" class="control-btn" id="flipVertical" title="Flip vertically">⇅</button>
+                </div>
+            </div>
+          </div>
+            <div id="cropWarning" class="text-danger small" style="display:none;">Invalid image (allowed: png/jpeg/webp, max 5MB)</div>
+          </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="cropButton">Crop & Save</button>
+        <button type="button" class="btn btn-primary" id="cropButton" disabled>Crop & Save</button>
       </div>
     </div>
   </div>
@@ -674,11 +1141,175 @@ require_once __DIR__ . '/../../includes/header.php';
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
 
 <script>
+// Disable Web Check-In unless login access is granted
+(() => {
+  const loginSelect = document.getElementById('login_access');
+  const webToggle = document.getElementById('allow_web_attendance');
+  if (!loginSelect || !webToggle) return;
+  const sync = () => {
+    const granted = loginSelect.value === '1';
+    webToggle.disabled = !granted;
+    if (!granted) {
+      webToggle.checked = false;
+    }
+  };
+  loginSelect.addEventListener('change', sync);
+  sync();
+})();
+
 let cropper;
+let cropperResizeTimeout;
+let flipX = 1;
+let flipY = 1;
+let rotationAngle = 0;
+
+const rotationSlider = document.getElementById('rotateSlider');
+const rotationValue = document.getElementById('rotationValue');
+const rotationScale = document.querySelector('#cropModal .rotation-scale');
+
+const setRotationShift = (angle) => {
+  if (!rotationScale) {
+    return;
+  }
+  // Recompute tick sizing so 3 long-ticks map to one side (180°) -> 6 long ticks across full track
+  const trackPct = 0.92; // left:4% right:4% earlier in CSS
+  const trackWidth = rotationScale.clientWidth * trackPct;
+  // We want 6 long ticks across full width -> each long spacing is trackWidth / 6
+  const longSpacing = Math.max(28, trackWidth / 6); // enforce a minimum so ticks stay visible
+  const tickUnit = longSpacing / 10; // pattern consists of 10 units: long + 4 short + mid + 4 short
+  rotationScale.style.setProperty('--tick-unit', `${tickUnit}px`);
+  rotationScale.style.setProperty('--sequence-width', `${longSpacing}px`);
+  rotationScale.style.setProperty('--half-sequence', `${longSpacing / 2}px`);
+
+  // Compute travel limited by sequence and container for a stable visual range
+  const maxBySeq = longSpacing / 2;
+  const maxByContainer = rotationScale.clientWidth * 0.4;
+  const travel = Math.min(maxBySeq, maxByContainer);
+  let clamped = Math.max(-180, Math.min(180, angle));
+  let shift = (clamped / 180) * travel;
+  // Ensure we never exceed visual travel bounds
+  shift = Math.max(-travel, Math.min(travel, shift));
+  rotationScale.style.setProperty('--rotation-shift', `${shift}px`);
+};
+
+const setRotationDisplay = (angle) => {
+  // Always work with a normalized/clamped value for display and visuals
+  const clamped = normalizeAngle(Number(angle));
+  if (rotationSlider) {
+    rotationSlider.value = clamped;
+  }
+  if (rotationValue) {
+    rotationValue.textContent = `${clamped}°`;
+  }
+  setRotationShift(clamped);
+  // Disable/enable nudge buttons at limits
+  const leftBtn = document.getElementById('nudgeRotateLeft');
+  const rightBtn = document.getElementById('nudgeRotateRight');
+  if (leftBtn) leftBtn.disabled = clamped <= -180;
+  if (rightBtn) rightBtn.disabled = clamped >= 180;
+};
+
+const normalizeAngle = (angle) => {
+  if (Number.isNaN(angle)) {
+    return 0;
+  }
+  return Math.max(-180, Math.min(180, angle));
+};
+
+const updateRotation = (angle) => {
+  rotationAngle = normalizeAngle(angle);
+  setRotationDisplay(rotationAngle);
+  if (!cropper) {
+    return;
+  }
+  cropper.rotateTo(rotationAngle);
+};
+
+const enforceAspectRatio = () => {
+  if (!cropper) {
+    return;
+  }
+  cropper.setAspectRatio(1);
+};
+
+setRotationDisplay(rotationAngle);
+
+const bindCropperControls = () => {
+  const bind = (id, handler) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.onclick = handler;
+    }
+  };
+
+  const safe = (fn) => () => {
+    if (!cropper) {
+      return;
+    }
+    fn();
+  };
+
+  bind('rotateLeft', safe(() => updateRotation(rotationAngle - 90)));
+  bind('rotateRight', safe(() => updateRotation(rotationAngle + 90)));
+  bind('zoomIn', safe(() => cropper.zoom(0.12)));
+  bind('zoomOut', safe(() => cropper.zoom(-0.12)));
+  bind('flipHorizontal', safe(() => {
+    flipX = -flipX;
+    cropper.scaleX(flipX);
+  }));
+  bind('flipVertical', safe(() => {
+    flipY = -flipY;
+    cropper.scaleY(flipY);
+  }));
+  bind('fitCrop', safe(() => {
+    const canvasData = cropper.getCanvasData();
+    if (!canvasData.width || !canvasData.height) {
+      return;
+    }
+    const size = Math.min(canvasData.width, canvasData.height);
+    cropper.setCropBoxData({
+      left: canvasData.left + (canvasData.width - size) / 2,
+      top: canvasData.top + (canvasData.height - size) / 2,
+      width: size,
+      height: size
+    });
+  }));
+  bind('resetCrop', safe(() => {
+    cropper.reset();
+    flipX = 1;
+    flipY = 1;
+    rotationAngle = 0;
+    updateRotation(0);
+    enforceAspectRatio();
+  }));
+  bind('nudgeRotateLeft', safe(() => updateRotation(rotationAngle - 5)));
+  bind('nudgeRotateRight', safe(() => updateRotation(rotationAngle + 5)));
+  if (rotationSlider) {
+    rotationSlider.addEventListener('input', (e) => {
+      if (!cropper) {
+        return;
+      }
+      const val = parseInt(e.target.value, 10);
+      updateRotation(Number.isNaN(val) ? 0 : val);
+    });
+  }
+};
+
+bindCropperControls();
 
 function previewImage(event) {
   const file = event.target.files[0];
   if (file) {
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    const allowed = ['image/jpeg','image/png','image/webp'];
+    const warningEl = document.getElementById('cropWarning');
+    if (!allowed.includes(file.type) || file.size > maxSize) {
+      if (warningEl) { warningEl.style.display = 'inline'; }
+      alert('Image must be PNG/JPEG/WEBP and <= 5MB');
+      return;
+    }
+    if (warningEl) { warningEl.style.display = 'none'; }
+
     const reader = new FileReader();
     reader.onload = function(e) {
       document.getElementById('imageToCrop').src = e.target.result;
@@ -690,17 +1321,32 @@ function previewImage(event) {
         cropper.destroy();
       }
       
-      // Initialize cropper
+      // Initialize cropper with larger container and smoother behavior
       cropper = new Cropper(document.getElementById('imageToCrop'), {
         aspectRatio: 1,
-        viewMode: 1,
-        autoCropArea: 1,
+        viewMode: 2,
+        autoCropArea: 0.85,
         responsive: true,
         guides: true,
-        highlight: true,
+        highlight: false,
+        background: false,
         cropBoxMovable: true,
-        cropBoxResizable: true
+        cropBoxResizable: true,
+        minCropBoxWidth: 220,
+        minCropBoxHeight: 220,
+        minContainerWidth: 600,
+        minContainerHeight: 430
       });
+      flipX = 1;
+      flipY = 1;
+      rotationAngle = 0;
+      cropper.scaleX(flipX);
+      cropper.scaleY(flipY);
+      updateRotation(0);
+      enforceAspectRatio();
+
+      // Enable controls
+      document.getElementById('cropButton').disabled = false;
     }
     reader.readAsDataURL(file);
   }
@@ -708,11 +1354,12 @@ function previewImage(event) {
 
 document.getElementById('cropButton').addEventListener('click', function() {
   if (cropper) {
-    const canvas = cropper.getCroppedCanvas({
-      width: 400,
-      height: 400
-    });
-    
+    // Disable crop button while processing
+    const cb = document.getElementById('cropButton');
+    if (cb) cb.disabled = true;
+    const canvas = cropper.getCroppedCanvas({ width: 400, height: 400 });
+
+    // Export JPEG for smaller size (quality 0.85)
     canvas.toBlob(function(blob) {
       const reader = new FileReader();
       reader.onload = function(e) {
@@ -724,10 +1371,28 @@ document.getElementById('cropButton').addEventListener('click', function() {
         // Destroy cropper
         cropper.destroy();
         cropper = null;
+        rotationAngle = 0;
+        setRotationDisplay(0);
+        if (cb) cb.disabled = false;
       }
       reader.readAsDataURL(blob);
-    });
+    }, 'image/jpeg', 0.85);
   }
+});
+
+window.addEventListener('resize', () => {
+  if (!cropper) {
+    return;
+  }
+  clearTimeout(cropperResizeTimeout);
+  cropperResizeTimeout = setTimeout(() => {
+    if (!cropper) {
+      return;
+    }
+    const currentData = cropper.getData();
+    cropper.reset();
+    cropper.setData(currentData);
+  }, 150);
 });
 </script>
 <script>

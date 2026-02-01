@@ -4,6 +4,88 @@ $home = '../../';
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 require_once '../../includes/db_connection.php';
+
+// Roles & permissions matrix for attendance reports
+$isAdmin = (function_exists('is_admin') && is_admin()) ? true : false;
+$canViewDailyReports = $isAdmin || has_permission('view_attendance_reports_daily');
+$canViewPeriodicReports = $isAdmin || has_permission('view_attendance_reports_periodic');
+$canViewTimesheetReports = $isAdmin || has_permission('view_attendance_reports_timesheet');
+$canGenerateReports = $isAdmin || has_permission('generate_attendance_reports');
+$canViewAllBranchAttendance = $isAdmin || has_permission('view_all_branch_attendance');
+$canManageReportArtifacts = $isAdmin || has_permission('manage_attendance_report_artifacts');
+$canViewAllGeneratedReports = $isAdmin || $canManageReportArtifacts || has_permission('view_all_user_generated_reports');
+$canViewSensitiveAttendance = $isAdmin || has_permission('view_sensitive_attendance_metrics');
+
+if (!$canViewDailyReports && !$canViewPeriodicReports && !$canViewTimesheetReports) {
+  $_SESSION['error'] = 'You do not have permission to view attendance reports.';
+  header('Location: ../../dashboard.php');
+  exit;
+}
+
+$reportTypeOptions = [];
+if ($canViewDailyReports) {
+  $reportTypeOptions['daily'] = 'Daily Attendance';
+}
+if ($canViewPeriodicReports) {
+  $reportTypeOptions['periodic'] = 'Periodic Attendance';
+}
+if ($canViewTimesheetReports) {
+  $reportTypeOptions['timesheet'] = 'Periodic Time Sheet';
+}
+$defaultReportType = array_key_first($reportTypeOptions);
+$hasMultipleReportTypes = count($reportTypeOptions) > 1;
+
+$viewerBranch = ['id' => null, 'name' => null];
+if (!$canViewAllBranchAttendance && isset($_SESSION['user_id'])) {
+  try {
+    $branchStmt = $pdo->prepare('SELECT e.branch_id, e.branch, b.name FROM employees e LEFT JOIN branches b ON e.branch = b.id WHERE e.emp_id = :emp LIMIT 1');
+    $branchStmt->execute([':emp' => $_SESSION['user_id']]);
+    if ($row = $branchStmt->fetch(PDO::FETCH_ASSOC)) {
+      $branchId = $row['branch_id'] ?: $row['branch'];
+      $viewerBranch['id'] = $branchId ? (int)$branchId : null;
+      $viewerBranch['name'] = $row['name'] ?: 'Assigned Branch';
+    }
+  } catch (PDOException $e) {
+    // Fail silently; backend enforcement still applies
+  }
+}
+
+$branchOptions = [];
+if ($canViewAllBranchAttendance) {
+  try {
+    $stmt = $pdo->query('SELECT id, name FROM branches ORDER BY name');
+    while ($b = $stmt->fetch(PDO::FETCH_ASSOC)) {
+      $branchOptions[] = ['id' => (int)$b['id'], 'name' => $b['name']];
+    }
+  } catch (PDOException $e) {
+    $branchOptions = [];
+  }
+} elseif ($viewerBranch['id']) {
+  $branchOptions[] = ['id' => $viewerBranch['id'], 'name' => $viewerBranch['name'] ?: 'My Branch'];
+}
+if (!$canViewAllBranchAttendance && empty($branchOptions)) {
+  $branchOptions[] = ['id' => '', 'name' => 'My Branch'];
+}
+
+$branchSelectDisabled = !$canViewAllBranchAttendance;
+$selectedBranchId = $branchOptions[0]['id'] ?? '';
+
+$showGeneratedByColumn = $isAdmin || $canManageReportArtifacts;
+$showBranchColumn = $canViewAllBranchAttendance;
+
+$reportPermissionsPayload = [
+  'defaultType' => $defaultReportType,
+  'allowedTypes' => array_keys($reportTypeOptions),
+  'canGenerate' => $canGenerateReports,
+  'canViewAllBranches' => $canViewAllBranchAttendance,
+  'canViewAllGenerated' => $canViewAllGeneratedReports,
+  'selectedBranchId' => $selectedBranchId,
+  'manageArtifacts' => $canManageReportArtifacts,
+  'showGeneratedColumn' => $showGeneratedByColumn,
+  'viewerBranch' => $viewerBranch,
+  'canViewSensitive' => $canViewSensitiveAttendance,
+];
+
 require_once '../../includes/header.php';
 
 if (!isset($_SESSION['generated_reports'])) { $_SESSION['generated_reports'] = []; }
@@ -145,19 +227,28 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
 </div>
 <section class="content">
   <div class="container-fluid">
+    <?php if ($canGenerateReports): ?>
     <div class="form-section">
+      <?php if (!$hasMultipleReportTypes): ?>
+        <input type="hidden" id="reportType" value="<?php echo h($defaultReportType); ?>">
+      <?php endif; ?>
+      <?php if ($branchSelectDisabled): ?>
+        <input type="hidden" id="branchSelect" value="<?php echo h((string)$selectedBranchId); ?>">
+      <?php endif; ?>
       <div class="row g-3">
+        <?php if ($hasMultipleReportTypes): ?>
         <div class="col-md-2">
           <label class="form-label fw-semibold">Report Type</label>
           <div class="input-field themed-field" style="width:100%; border-radius:5px; padding:2px; display:flex; align-items:center;">
             <i id="reportTypeIcon" class="fas fa-clipboard-list mr-2" style="font-size:1.4rem;"></i>
             <select id="reportType" class="form-select border-0 bg-transparent" style="box-shadow:none;">
-              <option value="daily" selected>Daily Attendance</option>
-              <option value="periodic">Periodic Attendance</option>
-              <option value="timesheet">Periodic Time Sheet</option>
+              <?php foreach ($reportTypeOptions as $value => $labelText): ?>
+                <option value="<?php echo h($value); ?>" <?php echo $value === $defaultReportType ? 'selected' : ''; ?>><?php echo h($labelText); ?></option>
+              <?php endforeach; ?>
             </select>
           </div>
         </div>
+        <?php endif; ?>
         <!-- Daily single date (replicates daily-report.php native date input markup) -->
     <div class="col-md-2" id="singleDateWrap">
           <label for="reportdate" class="form-label fw-semibold">Report Date <span class="text-danger">*</span></label>
@@ -174,23 +265,26 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
             <input type="text" class="form-control border-0" id="reportDateRange" name="reportDateRange" required>
           </div>
         </div>
-  <div class="col-md-2">
+        <?php if (!$branchSelectDisabled): ?>
+        <div class="col-md-2">
           <label class="form-label fw-semibold" for="branchSelect">Branch</label>
           <div class="input-field themed-field" style="width:100%; border-radius:5px; padding:2px; display:flex; align-items:center;">
             <i class="fas fa-building mr-2" style="font-size:1.5rem;"></i>
             <select id="branchSelect" class="form-control border-0">
-              <option value="">All Branches</option>
-              <?php
-                try {
-                  $stmt = $pdo->query("SELECT id, name FROM branches ORDER BY name");
-                  while($b = $stmt->fetch(PDO::FETCH_ASSOC)){
-                    echo '<option value="'.h($b['id']).'">'.h($b['name']).'</option>';
-                  }
-                } catch(Exception $e) { echo '<option disabled>Error</option>'; }
-              ?>
+              <?php if ($canViewAllBranchAttendance): ?>
+                <option value="">All Branches</option>
+                <?php foreach ($branchOptions as $branch): ?>
+                  <option value="<?php echo h($branch['id']); ?>" <?php echo (string)$branch['id'] === (string)$selectedBranchId ? 'selected' : ''; ?>><?php echo h($branch['name']); ?></option>
+                <?php endforeach; ?>
+              <?php else: ?>
+                <?php foreach ($branchOptions as $branch): ?>
+                  <option value="<?php echo h($branch['id']); ?>" selected><?php echo h($branch['name']); ?></option>
+                <?php endforeach; ?>
+              <?php endif; ?>
             </select>
           </div>
         </div>
+        <?php endif; ?>
   <div class="col-md-3">
           <label class="form-label fw-semibold" for="employeeSelectBox">Employees</label>
           <div class="input-field themed-field employee-select-wrapper" style="width:100%; border-radius:5px; padding:2px; display:flex; align-items:center;">
@@ -215,22 +309,35 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
             </div>
           </div>
         </div>
+        <?php if ($canGenerateReports): ?>
         <div class="col-md-2 d-flex align-items-end">
           <button id="generateBtn" class="btn btn-primary w-100"><i class="fas fa-play me-1"></i>Generate</button>
         </div>
+        <?php endif; ?>
       </div>
     </div>
+    <?php endif; ?>
 
     <div class="card">
       <div class="card-header py-2"><h5 class="mb-0">Generated Reports</h5></div>
       <div class="card-body p-2">
   <div class="row g-2 mb-2">
-          <div class="col-md-2 col-6">
-            <select id="grFilterType" class="form-select form-select-sm">
-              <option value="">All Types</option>
-              <option value="daily">Daily</option>
-              <option value="periodic">Periodic</option>
-              <option value="timesheet">Time Sheet</option>
+          <div class="<?php echo $hasMultipleReportTypes ? 'col-md-2 col-6' : 'col-md-2 col-6 d-none'; ?>" id="grFilterTypeCol">
+            <select id="grFilterType" class="form-select form-select-sm" aria-label="Filter by report type">
+              <?php if ($hasMultipleReportTypes): ?>
+              <option value="" selected>All Types</option>
+              <?php endif; ?>
+              <?php foreach ($reportTypeOptions as $value => $labelText): ?>
+                <option value="<?php echo h($value); ?>" <?php echo (!$hasMultipleReportTypes && $value === $defaultReportType) ? 'selected' : ''; ?>><?php
+                  if ($value === 'daily') {
+                      echo 'Daily';
+                  } elseif ($value === 'periodic') {
+                      echo 'Periodic';
+                  } else {
+                      echo 'Time Sheet';
+                  }
+                ?></option>
+              <?php endforeach; ?>
             </select>
           </div>
           <div class="col-md-2 col-6">
@@ -244,7 +351,7 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
           </div>
           <div class="col-md-3 text-end">
             <div class="d-flex flex-column flex-md-row gap-2 align-items-end justify-content-end">
-              <div class="form-check form-switch small mb-0" id="grShowDeletedWrap" style="display:none;">
+              <div class="form-check form-switch small mb-0" id="grShowDeletedWrap" style="display:<?php echo $canManageReportArtifacts ? 'block' : 'none'; ?>;">
                 <input class="form-check-input" type="checkbox" role="switch" id="grShowDeleted">
                 <label class="form-check-label" for="grShowDeleted" title="Show soft-deleted (last 30 days)">Deleted</label>
               </div>
@@ -262,15 +369,20 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
                 <th style="width:40px;">#</th>
                 <th>Report Type</th>
                 <th>Date / Range</th>
+                <?php if ($showBranchColumn): ?>
                 <th>Branch</th>
+                <?php endif; ?>
                 <th>Employees</th>
+                <?php if ($showGeneratedByColumn): ?>
                 <th>Generated By</th>
+                <?php endif; ?>
                 <th class="d-none" data-col="deletedBy">Deleted By</th>
                 <th style="width:120px;">Actions</th>
               </tr>
             </thead>
             <tbody id="generatedReportsBody">
-              <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
+              <?php $initialCols = $showGeneratedByColumn ? 8 : 7; ?>
+              <tr><td colspan="<?= $initialCols; ?>" class="text-center text-muted">Loading...</td></tr>
             </tbody>
           </table>
           <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2" id="grPaginationWrap" style="display:none;">
@@ -299,7 +411,16 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
 <script src="<?= $home; ?>plugins/moment/moment.min.js"></script>
 <script src="<?= $home; ?>plugins/daterangepicker/daterangepicker.js"></script>
 <script>
+const REPORT_PERMISSIONS = <?php echo json_encode($reportPermissionsPayload, JSON_UNESCAPED_SLASHES); ?>;
 (function(){
+  const CAN_GENERATE_REPORTS = !!(REPORT_PERMISSIONS && REPORT_PERMISSIONS.canGenerate);
+  const CAN_MANAGE_ARTIFACTS = !!(REPORT_PERMISSIONS && REPORT_PERMISSIONS.manageArtifacts);
+  const SHOW_GENERATED_COLUMN = !!(REPORT_PERMISSIONS && REPORT_PERMISSIONS.showGeneratedColumn);
+  const CAN_VIEW_ALL_BRANCHES = !!(REPORT_PERMISSIONS && REPORT_PERMISSIONS.canViewAllBranches);
+  const DEFAULT_REPORT_TYPE = REPORT_PERMISSIONS && REPORT_PERMISSIONS.defaultType ? REPORT_PERMISSIONS.defaultType : '';
+  const ALLOWED_REPORT_TYPES = (REPORT_PERMISSIONS && Array.isArray(REPORT_PERMISSIONS.allowedTypes)) ? REPORT_PERMISSIONS.allowedTypes : [];
+  const HAS_MULTIPLE_REPORT_TYPES = ALLOWED_REPORT_TYPES.length > 1;
+  const grFilterTypeEl = document.getElementById('grFilterType');
   // Ensure SweetAlert2 availability (footer loads it async via CDN); create lightweight stub to queue calls
   if(!window.Swal){
     window.__swalQueue=[];
@@ -325,153 +446,316 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
     }
   }
   const reportType = document.getElementById('reportType');
-  const singleWrap = document.getElementById('singleDateWrap');
-  const rangeWrap = document.getElementById('dateRangeWrap');
-  const dateRangeInput = document.getElementById('reportDateRange');
-
-  function toggleDateInputs(){
-    if(reportType.value==='daily') {
-      singleWrap.classList.remove('d-none');
-      rangeWrap.classList.add('d-none');
-    } else {
-      singleWrap.classList.add('d-none');
-      rangeWrap.classList.remove('d-none');
+  if(reportType){
+    const singleWrap = document.getElementById('singleDateWrap');
+    const rangeWrap = document.getElementById('dateRangeWrap');
+    const dateRangeInput = document.getElementById('reportDateRange');
+    const branchSelect = document.getElementById('branchSelect');
+    if(branchSelect && REPORT_PERMISSIONS && typeof REPORT_PERMISSIONS.selectedBranchId !== 'undefined' && branchSelect.value === ''){
+      branchSelect.value = REPORT_PERMISSIONS.selectedBranchId || '';
     }
-    updateReportTypeIcon();
-  }
-  function updateReportTypeIcon(){
-    const iconEl = document.getElementById('reportTypeIcon');
-    if(!iconEl) return;
-    const map = {
-      daily:'fa-calendar-day',
-      periodic:'fa-calendar-range', // if unavailable fallback below
-      timesheet:'fa-clock'
-    };
-    // fallback for any non-standard icon
-    const value = reportType.value;
-    iconEl.className = 'fas mr-2'; // reset
-    if(value==='daily') iconEl.classList.add('fa-calendar-day');
-    else if(value==='periodic') iconEl.classList.add('fa-calendar-alt');
-    else if(value==='timesheet') iconEl.classList.add('fa-clock');
-    else iconEl.classList.add('fa-clipboard-list');
-  }
-  reportType.addEventListener('change', function(){
+    const canChangeReportType = reportType.tagName === 'SELECT';
+    const canChangeBranch = branchSelect && branchSelect.tagName === 'SELECT';
+
+    const emsBox = document.getElementById('employeeSelectBox');
+    const emsToggle = document.getElementById('emsToggle');
+    const emsMenu = emsBox ? emsBox.querySelector('.ems-menu') : null;
+    const emsOptions = document.getElementById('emsOptions');
+    const emsLabel = emsBox ? emsBox.querySelector('.ems-label') : null;
+    const emsCount = document.getElementById('emsCount');
+    const emsSearch = document.getElementById('emsSearch');
+    const hiddenValues = document.getElementById('employeeValues');
+    const btnAll = document.getElementById('emsSelectAll');
+    const btnClear = document.getElementById('emsClear');
+    const btnApply = document.getElementById('emsApply');
+
+    function toggleDateInputs(){
+      if(!singleWrap || !rangeWrap) return;
+      if(reportType.value==='daily') {
+        singleWrap.classList.remove('d-none');
+        rangeWrap.classList.add('d-none');
+      } else {
+        singleWrap.classList.add('d-none');
+        rangeWrap.classList.remove('d-none');
+      }
+      updateReportTypeIcon();
+    }
+    function updateReportTypeIcon(){
+      const iconEl = document.getElementById('reportTypeIcon');
+      if(!iconEl) return;
+      const value = reportType.value;
+      iconEl.className = 'fas mr-2';
+      if(value==='daily') iconEl.classList.add('fa-calendar-day');
+      else if(value==='periodic') iconEl.classList.add('fa-calendar-alt');
+      else if(value==='timesheet') iconEl.classList.add('fa-clock');
+      else iconEl.classList.add('fa-clipboard-list');
+    }
+    if(canChangeReportType){
+      reportType.addEventListener('change', function(){
+        toggleDateInputs();
+        loadEmployees();
+      });
+    }
     toggleDateInputs();
-    loadEmployees();
-  });
-  toggleDateInputs();
-  updateReportTypeIcon();
+    updateReportTypeIcon();
 
-  // Initialize daterangepicker matching periodic-time-report.php with conditional 32-day cap only for Time Sheet
-  if(window.jQuery && window.jQuery.fn && window.jQuery.fn.daterangepicker && dateRangeInput){
-    const MAX_RANGE_DAYS = 32;
-    $(dateRangeInput).daterangepicker({
-      locale:{ format:'DD/MM/YYYY' },
-      opens:'auto',
-      alwaysShowCalendars:false,
-      startDate: moment().subtract(1,'months').startOf('month'),
-      endDate: moment().subtract(1,'months').endOf('month'),
-      maxDate: moment(),
-      autoApply:false,
-      isInvalidDate: function(date){
-        // Only enforce during an in-progress selection for timesheet type
-        const dr = $(dateRangeInput).data('daterangepicker');
-        if(reportType.value !== 'timesheet' || !dr) return false;
-        if(dr.startDate && !dr.endDate){
-          const diff = Math.abs(date.startOf('day').diff(dr.startDate.startOf('day'),'days'))+1;
+    if(window.jQuery && window.jQuery.fn && window.jQuery.fn.daterangepicker && dateRangeInput){
+      const MAX_RANGE_DAYS = 32;
+      $(dateRangeInput).daterangepicker({
+        locale:{ format:'DD/MM/YYYY' },
+        opens:'auto',
+        alwaysShowCalendars:false,
+        startDate: moment().subtract(1,'months').startOf('month'),
+        endDate: moment().subtract(1,'months').endOf('month'),
+        maxDate: moment(),
+        autoApply:false,
+        isInvalidDate: function(date){
+          const dr = $(dateRangeInput).data('daterangepicker');
+          if(reportType.value !== 'timesheet' || !dr) return false;
+          if(dr.startDate && !dr.endDate){
+            const diff = Math.abs(date.startOf('day').diff(dr.startDate.startOf('day'),'days'))+1;
             if(diff>MAX_RANGE_DAYS) return true;
+          }
+          return false;
+        },
+        ranges:{
+          'This Month':[moment().startOf('month'), moment().endOf('month')],
+          'Last Month':[moment().subtract(1,'months').startOf('month'), moment().subtract(1,'months').endOf('month')],
+          'Last 30 Days':[moment().subtract(29,'days'), moment()],
+          'This Quarter':[moment().startOf('quarter'), moment().endOf('quarter')],
+          'Last Quarter':[moment().subtract(1,'quarter').startOf('quarter'), moment().subtract(1,'quarter').endOf('quarter')]
         }
-        return false;
-      },
-      ranges:{
-        'This Month':[moment().startOf('month'), moment().endOf('month')],
-        'Last Month':[moment().subtract(1,'months').startOf('month'), moment().subtract(1,'months').endOf('month')],
-        'Last 30 Days':[moment().subtract(29,'days'), moment()],
-        'This Quarter':[moment().startOf('quarter'), moment().endOf('quarter')],
-        'Last Quarter':[moment().subtract(1,'quarter').startOf('quarter'), moment().subtract(1,'quarter').endOf('quarter')]
-      }
-    });
-    // Post-apply trimming only for timesheet
-    $(dateRangeInput).on('apply.daterangepicker', function(ev, picker){
-      if(reportType.value !== 'timesheet') return;
-      let s = picker.startDate.clone();
-      let e = picker.endDate.clone();
-      let diff = e.diff(s,'days')+1;
-      if(diff>MAX_RANGE_DAYS){
-        e = s.clone().add(MAX_RANGE_DAYS-1,'days');
-        picker.setEndDate(e);
-        $(this).val(s.format('DD/MM/YYYY')+' - '+e.format('DD/MM/YYYY'));
-        if(window.Swal){ Swal.fire({icon:'info',title:'Range trimmed',text:'Time Sheet maximum is 32 days.'}); }
-      }
-    });
-  }
+      });
+      $(dateRangeInput).on('apply.daterangepicker', function(ev, picker){
+        if(reportType.value !== 'timesheet') return;
+        let s = picker.startDate.clone();
+        let e = picker.endDate.clone();
+        let diff = e.diff(s,'days')+1;
+        if(diff>MAX_RANGE_DAYS){
+          e = s.clone().add(MAX_RANGE_DAYS-1,'days');
+          picker.setEndDate(e);
+          $(this).val(s.format('DD/MM/YYYY')+' - '+e.format('DD/MM/YYYY'));
+          if(window.Swal){ Swal.fire({icon:'info',title:'Range trimmed',text:'Time Sheet maximum is 32 days.'}); }
+        }
+      });
+    }
 
-  // Single date picker (replace native) using daterangepicker for unified theming
-  const singleDateEl = document.getElementById('reportdate');
-  if(window.jQuery && window.jQuery.fn && window.jQuery.fn.daterangepicker && singleDateEl){
-    $(singleDateEl).daterangepicker({
-      singleDatePicker:true,
-      showDropdowns:true,
-      locale:{ format:'DD/MM/YYYY' },
-      maxDate: moment(),
-      autoApply:true
-    });
-  }
+    const singleDateEl = document.getElementById('reportdate');
+    if(window.jQuery && window.jQuery.fn && window.jQuery.fn.daterangepicker && singleDateEl){
+      $(singleDateEl).daterangepicker({
+        singleDatePicker:true,
+        showDropdowns:true,
+        locale:{ format:'DD/MM/YYYY' },
+        maxDate: moment(),
+        autoApply:true
+      });
+    }
 
-  // Branch -> employees
-  document.getElementById('branchSelect').addEventListener('change', loadEmployees);
-  const emsBox = document.getElementById('employeeSelectBox');
-  const emsToggle = document.getElementById('emsToggle');
-  const emsMenu = emsBox.querySelector('.ems-menu');
-  const emsOptions = document.getElementById('emsOptions');
-  const emsLabel = emsBox.querySelector('.ems-label');
-  const emsCount = document.getElementById('emsCount');
-  const emsSearch = document.getElementById('emsSearch');
-  const hiddenValues = document.getElementById('employeeValues');
-  const btnAll = document.getElementById('emsSelectAll');
-  const btnClear = document.getElementById('emsClear');
-  const btnApply = document.getElementById('emsApply');
+    function renderEmployees(list){
+      if(!emsOptions) return;
+      emsOptions.innerHTML='';
+      const liAll=document.createElement('li');
+      liAll.dataset.text='all employees';
+      const allChk=document.createElement('input');
+      allChk.type='checkbox';
+      allChk.id='emsAllChk';
+      allChk.checked=true;
+      const allLabel=document.createElement('label');
+      allLabel.setAttribute('for','emsAllChk');
+      allLabel.className='mb-0 flex-grow-1';
+      allLabel.textContent='All Employees';
+      liAll.append(allChk, allLabel);
+      emsOptions.appendChild(liAll);
+
+      list.forEach(emp=>{
+        const li=document.createElement('li');
+        li.dataset.text=(emp.emp_id+' - '+emp.name).toLowerCase();
+        const id='ems_'+emp.emp_id;
+        const checkbox=document.createElement('input');
+        checkbox.type='checkbox';
+        checkbox.id=id;
+        checkbox.dataset.val=emp.emp_id;
+        checkbox.dataset.label=emp.emp_id+' - '+emp.name;
+        checkbox.checked=true;
+        const label=document.createElement('label');
+        label.setAttribute('for', id);
+        label.className='mb-0 flex-grow-1';
+        label.textContent=emp.emp_id+' - '+emp.name;
+        li.append(checkbox, label);
+        emsOptions.appendChild(li);
+      });
+      updateSummary();
+    }
+
+    function loadEmployees(){
+      if(!branchSelect || !hiddenValues) return;
+      const branch = branchSelect.value;
+      const payload = {
+        branch,
+        report_type: reportType.value || 'daily'
+      };
+      if(payload.report_type === 'daily'){
+        const dateInput = document.getElementById('reportdate');
+        if(dateInput){ payload.date = dateInput.value; }
+      } else if(dateRangeInput){
+        payload.range = dateRangeInput.value;
+      }
+      const csrf = getCsrfToken();
+      if(csrf) payload.csrf_token = csrf;
+
+      fetch('../../api/fetch-employees-by-branch.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        credentials:'include',
+        body:new URLSearchParams(payload)
+      })
+        .then(async r=>{
+          const text = await r.text();
+          try { return JSON.parse(text); }
+          catch(err){ console.error('Employee fetch parse error', text); throw err; }
+        })
+        .then(data=>{
+          if(Array.isArray(data)){
+            renderEmployees(data);
+            hiddenValues.value='*';
+          } else if(data && data.status === 'error'){
+            notifyError(data.message || 'Failed to load employees');
+            renderEmployees([]);
+          }
+        })
+        .catch(()=>{ renderEmployees([]); });
+    }
+    if(canChangeBranch){
+      branchSelect.addEventListener('change', loadEmployees);
+    }
+    loadEmployees();
+
+    function updateSummary(){
+      if(!emsOptions || !hiddenValues || !emsLabel || !emsCount) return;
+      const allChk = document.getElementById('emsAllChk');
+      const empChks = Array.from(emsOptions.querySelectorAll('li input[type=checkbox]')).filter(c=>c.id!=='emsAllChk');
+      const checkedEmp = empChks.filter(c=>c.checked).map(c=>c.getAttribute('data-val'));
+      if(allChk && allChk.checked){
+        emsLabel.textContent='All Employees';
+        emsCount.textContent='ALL';
+        hiddenValues.value='*';
+      } else {
+        if(checkedEmp.length===0){
+          emsLabel.textContent='None Selected';
+          emsCount.textContent='0';
+          hiddenValues.value='';
+        } else {
+          emsLabel.textContent=checkedEmp.length+' Selected';
+          emsCount.textContent=checkedEmp.length;
+          hiddenValues.value=checkedEmp.join(',');
+        }
+      }
+    }
+
+    if(emsOptions){
+      emsOptions.addEventListener('change',(e)=>{
+        const tgt=e.target;
+        if(tgt.id==='emsAllChk'){
+          const state=tgt.checked; emsOptions.querySelectorAll('li input[type=checkbox]').forEach(c=>{ if(c.id!=='emsAllChk') c.checked=state; });
+        } else {
+          if(!tgt.checked){ const allChk=document.getElementById('emsAllChk'); if(allChk) allChk.checked=false; }
+        }
+        updateSummary();
+      });
+    }
+    if(btnAll){ btnAll.addEventListener('click', ()=>{ const allChk=document.getElementById('emsAllChk'); if(allChk){ allChk.checked=true; emsOptions.querySelectorAll('li input[type=checkbox]').forEach(c=>{ c.checked=true; }); updateSummary(); }}); }
+    if(btnClear){ btnClear.addEventListener('click', ()=>{ const allChk=document.getElementById('emsAllChk'); if(allChk){ allChk.checked=false; } emsOptions.querySelectorAll('li input[type=checkbox]').forEach(c=>{ if(c.id!=='emsAllChk') c.checked=false; }); updateSummary(); }); }
+    if(btnApply){ btnApply.addEventListener('click', ()=>{ closeMenu(); }); }
+
+    function closeMenu(){ if(emsBox){ emsBox.classList.remove('open'); emsBox.setAttribute('aria-expanded','false'); } }
+    function openMenu(){ if(emsBox){ emsBox.classList.add('open'); emsBox.setAttribute('aria-expanded','true'); if(emsSearch) emsSearch.focus(); } }
+    if(emsToggle){ emsToggle.addEventListener('click', ()=>{ if(emsBox && emsBox.classList.contains('open')) closeMenu(); else openMenu(); }); }
+    document.addEventListener('click', (e)=>{ if(emsBox && !emsBox.contains(e.target)) closeMenu(); });
+    if(emsSearch){ emsSearch.addEventListener('input', ()=>{
+      const term = emsSearch.value.toLowerCase();
+      emsOptions.querySelectorAll('li').forEach(li=>{ const t=li.dataset.text||''; li.style.display = t.includes(term)?'flex':'none'; });
+    }); }
+    const generateBtn = document.getElementById('generateBtn');
+    if(generateBtn){
+      generateBtn.addEventListener('click', function(e){
+        e.preventDefault();
+        const branch = branchSelect ? branchSelect.value : '';
+        const type = reportType.value || DEFAULT_REPORT_TYPE || 'daily';
+        const values = hiddenValues ? hiddenValues.value : '*';
+        const payload = { report_type: type, branch, employees: values || '*' };
+        if(type==='daily') {
+          const dateInput = document.getElementById('reportdate');
+          if(dateInput){ payload.date = dateInput.value; }
+        } else if(dateRangeInput){
+          payload.range = dateRangeInput.value;
+        }
+        const csrf = getCsrfToken();
+        if(csrf) payload.csrf_token = csrf;
+        fetch('../../api/generate-attendance-report.php', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(payload)})
+          .then(async r=>{
+            const text = await r.text();
+            try { return { ok:true, json: JSON.parse(text) }; }
+            catch(parseErr){ console.error('Report generate parse error raw response:', text); return { ok:false, raw:text, status:r.status }; }
+          })
+          .then(res => {
+            if(res.ok && res.json && res.json.status==='ok') { notifySuccess('Report generated'); loadGeneratedReports(1); return; }
+            if(res.ok && res.json){ notifyError('Generation failed: '+(res.json.message||'Unknown error')); return; }
+            notifyError('Request failed: '+(res.raw?res.raw.slice(0,300):'No response'));
+          })
+          .catch(err=>{ console.error('Report generate network error', err); notifyError('Request failed'); });
+      });
+    }
+  }
+  if(!HAS_MULTIPLE_REPORT_TYPES && grFilterTypeEl && !grFilterTypeEl.value && DEFAULT_REPORT_TYPE){
+    grFilterTypeEl.value = DEFAULT_REPORT_TYPE;
+  }
   // Generated reports dynamic loader
   function loadGeneratedReports(page=1){
     const params = new URLSearchParams({
       page,
       per_page: document.getElementById('grPerPage')?document.getElementById('grPerPage').value:10,
-      type: document.getElementById('grFilterType').value,
+      type: grFilterTypeEl ? grFilterTypeEl.value : (DEFAULT_REPORT_TYPE || ''),
       search: document.getElementById('grSearch').value.trim(),
       date_from: document.getElementById('grDateFrom').value,
       date_to: document.getElementById('grDateTo').value,
       show_deleted: document.getElementById('grShowDeleted') && document.getElementById('grShowDeleted').checked ? 1 : 0
     });
     const tbody = document.getElementById('generatedReportsBody');
-  tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>';
+    // compute visible header columns so placeholders match current column visibility
+    function grVisibleCols(){
+      return document.querySelectorAll('#grHeadRow th:not(.d-none)').length || 1;
+    }
+  tbody.innerHTML = `<tr><td colspan="${grVisibleCols()}" class="text-center text-muted">Loading...</td></tr>`;
     fetch('../../api/list-generated-reports.php?'+params.toString(), {credentials:'include'})
       .then(async r=>{
         const text = await r.text();
         let res;
         try { res = JSON.parse(text); } catch(parseErr){
-          tbody.innerHTML = `<tr><td colspan="8" class="text-danger small">Parse error loading data.<br><code>${escapeHtml(text.slice(0,400))}</code></td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="${grVisibleCols()}" class="text-danger small">Parse error loading data.<br><code>${escapeHtml(text.slice(0,400))}</code></td></tr>`;
           throw parseErr;
         }
         return res;
       })
       .then(res=>{
-  if(res.status!=='ok'){ tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Failed to load${res.message?': '+escapeHtml(res.message):''}</td></tr>`; return; }
-  if(!res.data.length){ tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No reports found.</td></tr>'; document.getElementById('grPaginationWrap').style.display='none'; return; }
+  if(res.status!=='ok'){ tbody.innerHTML = `<tr><td colspan="${grVisibleCols()}" class="text-center text-danger">Failed to load${res.message?': '+escapeHtml(res.message):''}</td></tr>`; return; }
+  if(!res.data.length){ tbody.innerHTML = `<tr><td colspan="${grVisibleCols()}" class="text-center text-muted">No reports found.</td></tr>`; document.getElementById('grPaginationWrap').style.display='none'; return; }
         let i= (res.pagination.page-1)*res.pagination.per_page + 1;
     // Toggle Deleted By column visibility
     const delByTh = document.querySelector('th[data-col="deletedBy"]');
     if(delByTh){
-      if(res.show_deleted){ delByTh.classList.remove('d-none'); }
+      if(CAN_MANAGE_ARTIFACTS && res.show_deleted){ delByTh.classList.remove('d-none'); }
       else { delByTh.classList.add('d-none'); }
     }
-    const showDelCol = !!(res.show_deleted);
+        const showDelCol = CAN_MANAGE_ARTIFACTS && !!(res.show_deleted);
+        const showGenCol = SHOW_GENERATED_COLUMN;
+        const showBranchCol = CAN_VIEW_ALL_BRANCHES;
   tbody.innerHTML = res.data.map(r=>`<tr class="${r.deleted_at?'table-danger':''}">
           <td>${i++}</td>
           <td>${escapeHtml(r.type_label)}</td>
           <td>${escapeHtml(r.date_label)}</td>
-          <td>${escapeHtml(r.branch_label)}</td>
+          ${showBranchCol ? `<td>${escapeHtml(r.branch_label)}</td>` : ''}
           <td>${buildEmployeesCell(r)}</td>
-          <td>
+          ${showGenCol ? `<td>
             <div class="d-flex align-items-center gap-2">
               <img src="${escapeAttr(r.generated_by_avatar||'')}" alt="" onerror="this.src='../../resources/userimg/default-image.jpg'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"> 
               <div class="d-flex flex-column gr-generated-stack">
@@ -479,7 +763,7 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
                 <small class="text-muted" style="font-size:.7rem;" title="${escapeHtml(r.generated_at)}">${escapeHtml(formatDateTime(r.generated_at))}</small>
               </div>
             </div>
-          </td>
+          </td>` : ''}
           ${showDelCol ? `<td>${r.deleted_at?`<div class=\"d-flex align-items-center gap-2\"><img src=\"${escapeAttr(r.deleted_by_avatar||'')}\" alt=\"\" onerror=\"this.src='../../resources/userimg/default-image.jpg'\" style=\"width:32px;height:32px;border-radius:50%;object-fit:cover;\"><div class=\"d-flex flex-column gr-generated-stack\"><span class=\"fw-semibold\">${escapeHtml(r.deleted_by_name||r.deleted_by||'')}</span><small class=\"text-muted\" style=\"font-size:.7rem;\" title=\"${escapeHtml(r.deleted_at)}\">${escapeHtml(formatDateTime(r.deleted_at))}</small></div></div>`:''}</td>`:''}
           <td class="text-nowrap">
         ${r.deleted_at 
@@ -502,9 +786,8 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
         activateTooltipElements(tbody);
         buildPagination(res.pagination);
         // Reveal show-deleted switch if admin
-        if(typeof res.is_admin !== 'undefined'){ const wrap=document.getElementById('grShowDeletedWrap'); if(wrap) wrap.style.display = res.is_admin ? 'block':'none'; }
     })
-  .catch(err=>{ if(!tbody.innerHTML.includes('Parse error')) tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error loading data</td></tr>'; console.error('Generated reports load failed', err); });
+  .catch(err=>{ if(!tbody.innerHTML.includes('Parse error')) tbody.innerHTML = `<tr><td colspan="${grVisibleCols()}" class="text-center text-danger">Error loading data</td></tr>`; console.error('Generated reports load failed', err); });
   }
   function escapeHtml(str){ return (str||'').replace(/[&<>"]+/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s])); }
   function escapeAttr(str){ return escapeHtml(str); }
@@ -611,7 +894,7 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
   document.getElementById('grPagination').addEventListener('click',e=>{ if(e.target.matches('.page-link')){ e.preventDefault(); const pg=parseInt(e.target.dataset.page); if(!isNaN(pg)) loadGeneratedReports(pg); }});
   document.getElementById('grPerPage').addEventListener('change',()=>loadGeneratedReports(1));
   document.getElementById('grApplyFilters').addEventListener('click',()=>loadGeneratedReports(1));
-  document.getElementById('grReset').addEventListener('click',()=>{ document.getElementById('grFilterType').value=''; document.getElementById('grDateFrom').value=''; document.getElementById('grDateTo').value=''; document.getElementById('grSearch').value=''; loadGeneratedReports(1); });
+  document.getElementById('grReset').addEventListener('click',()=>{ if(grFilterTypeEl){ grFilterTypeEl.value = HAS_MULTIPLE_REPORT_TYPES ? '' : (DEFAULT_REPORT_TYPE || ''); } document.getElementById('grDateFrom').value=''; document.getElementById('grDateTo').value=''; document.getElementById('grSearch').value=''; loadGeneratedReports(1); });
   const showDeleted = document.getElementById('grShowDeleted'); if(showDeleted){ showDeleted.addEventListener('change',()=>loadGeneratedReports(1)); }
   // (Removed legacy confirm() based deletion handler in favor of richer modal)
   // Replace confirm with modal (simplified version)
@@ -694,147 +977,6 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
   };
   // Initial load
   loadGeneratedReports();
-
-  function closeMenu(){ emsBox.classList.remove('open'); emsBox.setAttribute('aria-expanded','false'); }
-  function openMenu(){ emsBox.classList.add('open'); emsBox.setAttribute('aria-expanded','true'); emsSearch.focus(); }
-  emsToggle.addEventListener('click', ()=>{ emsBox.classList.contains('open')?closeMenu():openMenu(); });
-  document.addEventListener('click', (e)=>{ if(!emsBox.contains(e.target)) closeMenu(); });
-  emsSearch.addEventListener('input', ()=>{
-    const term = emsSearch.value.toLowerCase();
-    emsOptions.querySelectorAll('li').forEach(li=>{ const t=li.dataset.text||''; li.style.display = t.includes(term)?'flex':'none'; });
-  });
-
-  function renderEmployees(list){
-    emsOptions.innerHTML='';
-    const liAll=document.createElement('li');
-    liAll.dataset.text='all employees';
-    const allChk=document.createElement('input');
-    allChk.type='checkbox';
-    allChk.id='emsAllChk';
-    allChk.checked=true;
-    const allLabel=document.createElement('label');
-    allLabel.setAttribute('for','emsAllChk');
-    allLabel.className='mb-0 flex-grow-1';
-    allLabel.textContent='All Employees';
-    liAll.append(allChk, allLabel);
-    emsOptions.appendChild(liAll);
-
-    list.forEach(emp=>{
-      const li=document.createElement('li');
-      li.dataset.text=(emp.emp_id+' - '+emp.name).toLowerCase();
-      const id='ems_'+emp.emp_id;
-      const checkbox=document.createElement('input');
-      checkbox.type='checkbox';
-      checkbox.id=id;
-      checkbox.dataset.val=emp.emp_id;
-      checkbox.dataset.label=emp.emp_id+' - '+emp.name;
-      checkbox.checked=true;
-      const label=document.createElement('label');
-      label.setAttribute('for', id);
-      label.className='mb-0 flex-grow-1';
-      label.textContent=emp.emp_id+' - '+emp.name;
-      li.append(checkbox, label);
-      emsOptions.appendChild(li);
-    });
-    updateSummary();
-  }
-
-  function loadEmployees(){
-    const branch = document.getElementById('branchSelect').value;
-    const payload = {
-      branch,
-      report_type: reportType.value || 'daily'
-    };
-    if(payload.report_type === 'daily'){
-      payload.date = document.getElementById('reportdate').value;
-    } else if(dateRangeInput){
-      payload.range = dateRangeInput.value;
-    }
-    const csrf = getCsrfToken();
-    if(csrf) payload.csrf_token = csrf;
-
-    fetch('../../api/fetch-employees-by-branch.php', {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      credentials:'include',
-      body:new URLSearchParams(payload)
-    })
-      .then(async r=>{
-        const text = await r.text();
-        try { return JSON.parse(text); }
-        catch(err){ console.error('Employee fetch parse error', text); throw err; }
-      })
-      .then(data=>{
-        if(Array.isArray(data)){
-          renderEmployees(data);
-          hiddenValues.value='*';
-        } else if(data && data.status === 'error'){
-          notifyError(data.message || 'Failed to load employees');
-          renderEmployees([]);
-        }
-      })
-      .catch(()=>{ renderEmployees([]); });
-  }
-  loadEmployees();
-
-  function updateSummary(){
-    const allChk = document.getElementById('emsAllChk');
-    const empChks = Array.from(emsOptions.querySelectorAll('li input[type=checkbox]')).filter(c=>c.id!=='emsAllChk');
-    const checkedEmp = empChks.filter(c=>c.checked).map(c=>c.getAttribute('data-val'));
-    if(allChk && allChk.checked){
-      emsLabel.textContent='All Employees';
-      emsCount.textContent='ALL';
-      hiddenValues.value='*';
-    } else {
-      if(checkedEmp.length===0){
-        emsLabel.textContent='None Selected';
-        emsCount.textContent='0';
-        hiddenValues.value='';
-      } else {
-        emsLabel.textContent=checkedEmp.length+' Selected';
-        emsCount.textContent=checkedEmp.length;
-        hiddenValues.value=checkedEmp.join(',');
-      }
-    }
-  }
-
-  emsOptions.addEventListener('change',(e)=>{
-    const tgt=e.target;
-    if(tgt.id==='emsAllChk'){
-      const state=tgt.checked; emsOptions.querySelectorAll('li input[type=checkbox]').forEach(c=>{ if(c.id!=='emsAllChk') c.checked=state; });
-    } else {
-      if(!tgt.checked){ const allChk=document.getElementById('emsAllChk'); if(allChk) allChk.checked=false; }
-    }
-    updateSummary();
-  });
-  btnAll.addEventListener('click', ()=>{ const allChk=document.getElementById('emsAllChk'); if(allChk){ allChk.checked=true; emsOptions.querySelectorAll('li input[type=checkbox]').forEach(c=>{ c.checked=true; }); updateSummary(); }});
-  btnClear.addEventListener('click', ()=>{ const allChk=document.getElementById('emsAllChk'); if(allChk){ allChk.checked=false; } emsOptions.querySelectorAll('li input[type=checkbox]').forEach(c=>{ if(c.id!=='emsAllChk') c.checked=false; }); updateSummary(); });
-  btnApply.addEventListener('click', ()=>{ closeMenu(); });
-
-  document.getElementById('generateBtn').addEventListener('click', function(e){
-    e.preventDefault();
-    const type = reportType.value;
-    const branch = document.getElementById('branchSelect').value;
-    const values = hiddenValues.value;
-    let payload = { report_type: type, branch: branch, employees: values || '*' };
-    if(type==='daily') {
-      payload.date = document.getElementById('reportdate').value; // DD/MM/YYYY (API accepts both)
-    } else {
-      payload.range = dateRangeInput.value; // DD/MM/YYYY - DD/MM/YYYY
-    }
-  fetch('../../api/generate-attendance-report.php', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(payload)})
-      .then(async r=>{
-        const text = await r.text();
-        try { return { ok:true, json: JSON.parse(text) }; }
-        catch(parseErr){ console.error('Report generate parse error raw response:', text); return { ok:false, raw:text, status:r.status }; }
-      })
-      .then(res => {
-        if(res.ok && res.json && res.json.status==='ok') { notifySuccess('Report generated'); loadGeneratedReports(1); return; }
-        if(res.ok && res.json){ notifyError('Generation failed: '+(res.json.message||'Unknown error')); return; }
-        notifyError('Request failed: '+(res.raw?res.raw.slice(0,300):'No response')); }
-      )
-      .catch(err=>{ console.error('Report generate network error', err); notifyError('Request failed'); });
-  });
 })();
 </script>
 <!-- Delete Confirmation Modal -->
@@ -856,8 +998,10 @@ function h($s){return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');}
             <div class="col-6"><strong>Date/Range:</strong> <div id="grDelDate" class="fw-normal"></div></div>
             <div class="col-6"><strong>Branch:</strong> <div id="grDelBranch" class="fw-normal"></div></div>
             <div class="col-6"><strong>Employees:</strong> <div id="grDelEmployees" class="fw-normal"></div></div>
+            <?php if ($showGeneratedByColumn): ?>
             <div class="col-6"><strong>Generated By:</strong> <div id="grDelGeneratedBy" class="fw-normal"></div></div>
             <div class="col-6"><strong>Generated At:</strong> <div id="grDelGeneratedAt" class="fw-normal"></div></div>
+            <?php endif; ?>
           </div>
         </div>
         <div id="grDeleteError" class="alert alert-danger py-1 px-2 small mt-2 d-none" role="alert"></div>

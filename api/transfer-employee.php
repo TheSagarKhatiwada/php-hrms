@@ -12,7 +12,8 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-if (!is_admin()) {
+$canManageBranchAssignments = is_admin() || has_permission('manage_branch_assignments');
+if (!$canManageBranchAssignments) {
     http_response_code(403);
     echo json_encode(['status' => 'error', 'message' => 'Access denied.']);
     exit;

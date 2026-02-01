@@ -5,6 +5,7 @@ require_once 'includes/session_config.php';
 $page = 'Profile';
 require_once __DIR__ . '/includes/header.php';
 include 'includes/db_connection.php';
+require_once 'includes/csrf_protection.php';
 
 // Fetch user details from the database
 $user_id = $_SESSION['user_id'];
@@ -15,7 +16,7 @@ $stmt = $pdo->prepare("SELECT e.first_name,
                                       e.email, 
                                       e.phone, 
                                       e.join_date, 
-                                      e.designation, 
+                                      e.designation_id, 
                                       e.user_image, 
                                       e.emp_id, 
                                       e.branch, 
@@ -29,7 +30,7 @@ $stmt = $pdo->prepare("SELECT e.first_name,
                                       FROM employees e 
                                       INNER JOIN branches b ON e.branch = b.id 
                                       LEFT JOIN roles r ON e.role_id = r.id 
-                                      LEFT JOIN designations d ON e.designation = d.id 
+                                      LEFT JOIN designations d ON e.designation_id = d.id 
                                       WHERE e.emp_id = :emp_id");
 $stmt->execute(['emp_id' => $user_id]);
 $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -61,6 +62,16 @@ if ($years > 0) {
     }
 }
 
+// Convert duration digits to Nepali in BS mode
+$employmentDurationDisplay = hrms_should_use_bs_dates()
+    ? hrms_to_nepali_digits($employmentDuration)
+    : $employmentDuration;
+
+// Prepare Employee ID for BS digit display if needed
+$employeeIdDisplay = hrms_should_use_bs_dates()
+    ? hrms_to_nepali_digits($user_data['emp_id'] ?? '')
+    : ($user_data['emp_id'] ?? '');
+
 // Fetch assigned assets for the user
 $assigned_assets_stmt = $pdo->prepare("SELECT 
                                         fa.AssetName, 
@@ -73,6 +84,58 @@ $assigned_assets_stmt = $pdo->prepare("SELECT
                                     ORDER BY aa.AssignmentDate DESC");
 $assigned_assets_stmt->execute(['employee_id' => $user_id]); // Assuming $user_id is the ID from the employees table used in AssetAssignments.EmployeeID
 $assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Handle notification preferences update
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_preferences'])) {
+    if (!validate_csrf_token($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid security token. Please try again.';
+        header('Location: profile.php#notifications');
+        exit;
+    }
+    
+    $notification_types = ['task_assigned', 'task_status_update', 'task_completed', 'task_overdue'];
+    
+    try {
+        $pdo->beginTransaction();
+        
+        foreach ($notification_types as $type) {
+            $email_enabled = isset($_POST[$type . '_email']) ? 1 : 0;
+            $sms_enabled = isset($_POST[$type . '_sms']) ? 1 : 0;
+            
+            $stmt = $pdo->prepare("INSERT INTO notification_preferences (employee_id, notification_type, email_enabled, sms_enabled) 
+                                   VALUES (:employee_id, :notification_type, :email_enabled, :sms_enabled)
+                                   ON DUPLICATE KEY UPDATE email_enabled = :email_enabled, sms_enabled = :sms_enabled");
+            
+            $stmt->execute([
+                'employee_id' => $user_id,
+                'notification_type' => $type,
+                'email_enabled' => $email_enabled,
+                'sms_enabled' => $sms_enabled
+            ]);
+        }
+        
+        $pdo->commit();
+        $_SESSION['success'] = 'Notification preferences updated successfully!';
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        $_SESSION['error'] = 'Failed to update preferences: ' . $e->getMessage();
+    }
+    
+    header('Location: profile.php#notifications');
+    exit;
+}
+
+// Fetch notification preferences
+$preferences = [];
+$stmt = $pdo->prepare("SELECT notification_type, email_enabled, sms_enabled FROM notification_preferences WHERE employee_id = :employee_id");
+$stmt->execute(['employee_id' => $user_id]);
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $preferences[$row['notification_type']] = [
+        'email_enabled' => $row['email_enabled'],
+        'sms_enabled' => $row['sms_enabled']
+    ];
+}
+$default = ['email_enabled' => 1, 'sms_enabled' => 0];
 
 // Handle profile picture update
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['croppedImage'])) {
@@ -409,13 +472,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
 
                     <ul class="list-group list-group-flush mb-3">
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            <b>Employee ID</b> <span><?php echo htmlspecialchars($user_data['emp_id'] ?? ''); ?></span>
+                            <b>Employee ID</b> <span><?php echo htmlspecialchars($employeeIdDisplay); ?></span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0">
                             <b>Branch</b> <span><?php echo htmlspecialchars($user_data['branch_name']); ?></span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            <b>Joined Date</b> <span><?php echo htmlspecialchars($user_data['join_date']); ?></span>
+                            <b>Joined Date</b> <span><?php echo htmlspecialchars(hrms_format_preferred_date($user_data['join_date'] ?? null)); ?></span>
                         </li>
                     </ul>
                 </div>
@@ -474,6 +537,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                 <i class="fas fa-laptop me-1"></i> Assigned Assets
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#notifications" data-bs-toggle="tab">
+                                <i class="fas fa-bell me-1"></i> Notification Preferences
+                            </a>
+                        </li>
                     </ul>
                 </div><!-- /.card-header -->
                 <div class="card-body">
@@ -492,11 +560,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                             </div>
                                             <div class="profile-info-item">
                                                 <strong>Gender:</strong>
-                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['gender'] == 'M' ? 'Male' : 'Female'); ?></p>
+                                                <?php
+                                                    $rawGender = strtolower((string)($user_data['gender'] ?? ''));
+                                                    if (in_array($rawGender, ['m', 'male'], true)) {
+                                                        $genderLabel = 'Male';
+                                                    } elseif (in_array($rawGender, ['f', 'female'], true)) {
+                                                        $genderLabel = 'Female';
+                                                    } else {
+                                                        $genderLabel = 'Not specified';
+                                                    }
+                                                ?>
+                                                <p class="mb-0"><?php echo htmlspecialchars($genderLabel); ?></p>
                                             </div>
                                             <div class="profile-info-item">
                                                 <strong>Date of Birth:</strong>
-                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['date_of_birth']); ?></p>
+                                                <p class="mb-0"><?php echo htmlspecialchars(hrms_format_preferred_date($user_data['date_of_birth'] ?? null)); ?></p>
                                             </div>
                                         </div>
                                     </div>
@@ -513,13 +591,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                             </div>
                                             <div class="profile-info-item">
                                                 <strong>Joined Date:</strong>
-                                                <p class="mb-0"><?php echo htmlspecialchars($user_data['join_date']); ?></p>
+                                                <p class="mb-0"><?php echo htmlspecialchars(hrms_format_preferred_date($user_data['join_date'] ?? null)); ?></p>
                                             </div>
                                             <div class="profile-info-item">
                                                 <strong>Employment Duration:</strong>
                                                 <p class="mb-0">
                                                 <span class="special-badge employment-badge">
-                                                    <i class="fas fa-clock me-1"></i> <?php echo $employmentDuration; ?>
+                                                    <i class="fas fa-clock me-1"></i> <?php echo htmlspecialchars($employmentDurationDisplay); ?>
                                                 </span>
                                                 </p>
                                             </div>
@@ -534,7 +612,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                 <div>
                                     <i class="fas fa-user bg-primary"></i>
                                     <div class="timeline-item">
-                                        <span class="time"><i class="far fa-clock"></i> <?php echo htmlspecialchars($user_data['join_date'] ?? 'Unknown'); ?></span>
+                                        <span class="time"><i class="far fa-clock"></i> <?php echo htmlspecialchars(hrms_format_preferred_date($user_data['join_date'] ?? null)); ?></span>
                                         <h3 class="timeline-header">Joined as <?php echo htmlspecialchars($user_data['designation_title'] ?? 'Employee'); ?></h3> <!-- Changed to designation_title -->
                                         <div class="timeline-body">
                                             Joined <?php echo htmlspecialchars($user_data['branch_name']); ?> branch.
@@ -547,7 +625,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                         <span class="time"><i class="far fa-clock"></i> Now</span>
                                         <h3 class="timeline-header">Current Status</h3>
                                         <div class="timeline-body">
-                                            <?php echo empty($user_data['exit_date']) ? 'Currently active employee' : 'Exit on ' . htmlspecialchars($user_data['exit_date']); ?>
+                                            <?php echo empty($user_data['exit_date']) ? 'Currently active employee' : 'Exit on ' . htmlspecialchars(hrms_format_preferred_date($user_data['exit_date'])); ?>
                                         </div>
                                     </div>
                                 </div>
@@ -578,7 +656,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                                     <td><?php echo $asset_count++; ?>.</td>
                                                     <td><?php echo htmlspecialchars($asset['AssetName']); ?></td>
                                                     <td><?php echo htmlspecialchars($asset['AssetSerial']); ?></td>
-                                                    <td><?php echo htmlspecialchars(date('M d, Y', strtotime($asset['AssignmentDate']))); ?></td>
+                                                    <td><?php echo htmlspecialchars(hrms_format_preferred_date($asset['AssignmentDate'] ?? null, 'M d, Y')); ?></td>
                                                     <td>
                                                         <span class="badge bg-<?php 
                                                             echo $asset['AssetStatus'] == 'Assigned' ? 'success' : 
@@ -596,6 +674,109 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                                         <?php endif; ?>
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                        <!-- /.tab-pane -->
+                        
+                        <div class="tab-pane" id="notifications">
+                            <?php if (isset($_SESSION['success'])): ?>
+                                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                    <?= htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <?php if (isset($_SESSION['error'])): ?>
+                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                    <?= htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <div class="row">
+                                <div class="col-lg-12">
+                                    <div class="card shadow-sm mb-3">
+                                        <div class="card-header bg-primary text-white">
+                                            <h5 class="mb-0">Task Notification Settings</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="text-muted">Configure how you want to receive notifications for task-related activities.</p>
+                                            
+                                            <form method="POST" action="">
+                                                <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
+                                                <div class="table-responsive">
+                                                    <table class="table table-bordered">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="width: 75%;">Notification Type</th>
+                                                                <th class="text-center" style="width: 25%;">
+                                                                    <i class="fas fa-envelope"></i> Email
+                                                                </th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php
+                                                            $notifications = [
+                                                                'task_assigned' => [
+                                                                    'title' => 'New Task Assigned',
+                                                                    'description' => 'When a new task is assigned to you',
+                                                                    'icon' => 'fa-tasks'
+                                                                ],
+                                                                'task_status_update' => [
+                                                                    'title' => 'Task Status Updates',
+                                                                    'description' => 'When someone updates the status of a task you created',
+                                                                    'icon' => 'fa-sync'
+                                                                ],
+                                                                'task_completed' => [
+                                                                    'title' => 'Task Completed',
+                                                                    'description' => 'When a task you assigned is marked as completed',
+                                                                    'icon' => 'fa-check-circle'
+                                                                ],
+                                                                'task_overdue' => [
+                                                                    'title' => 'Overdue Task Reminders',
+                                                                    'description' => 'Daily reminders for tasks that are past their due date',
+                                                                    'icon' => 'fa-exclamation-triangle'
+                                                                ]
+                                                            ];
+                                                            
+                                                            foreach ($notifications as $type => $info):
+                                                                $prefs = $preferences[$type] ?? $default;
+                                                            ?>
+                                                                <tr>
+                                                                    <td>
+                                                                        <i class="fas <?= $info['icon'] ?> text-primary me-2"></i>
+                                                                        <strong><?= $info['title'] ?></strong><br>
+                                                                        <small class="text-muted"><?= $info['description'] ?></small>
+                                                                    </td>
+                                                                    <td class="text-center align-middle">
+                                                                        <div class="form-check form-switch d-inline-block">
+                                                                            <input class="form-check-input" 
+                                                                                   type="checkbox" 
+                                                                                   name="<?= $type ?>_email" 
+                                                                                   id="<?= $type ?>_email"
+                                                                                   <?= $prefs['email_enabled'] ? 'checked' : '' ?>>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            <?php endforeach; ?>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                
+                                                <div class="alert alert-info mt-3">
+                                                    <i class="fas fa-info-circle"></i> 
+                                                    <strong>Note:</strong> Enable email notifications to stay updated on task activities.
+                                                </div>
+                                                
+                                                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                                    <button type="submit" name="save_preferences" class="btn btn-primary">
+                                                        <i class="fas fa-save"></i> Save Preferences
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <!-- /.tab-pane -->
@@ -930,6 +1111,55 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
             // Form will submit normally and page will reload
         });
     });
+</script>
+
+<script>
+// Enforce Nepali digits on profile content in BS mode
+(function() {
+    if (!window.hrmsUseBsDates || typeof window.hrmsToNepaliDigits !== 'function') {
+        return;
+    }
+
+    const root = document.querySelector('.container-fluid');
+    if (!root) return;
+
+    const convertNodeText = (node) => {
+        if (node && node.nodeType === Node.TEXT_NODE && node.nodeValue && /[0-9]/.test(node.nodeValue)) {
+            node.nodeValue = window.hrmsToNepaliDigits(node.nodeValue);
+        }
+    };
+
+    const walk = (el) => {
+        if (!el || el.nodeType === Node.COMMENT_NODE) return;
+        if (el.nodeType === Node.TEXT_NODE) {
+            convertNodeText(el);
+            return;
+        }
+        // Skip inputs/textareas to avoid altering user input
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
+        let child = el.firstChild;
+        while (child) {
+            walk(child);
+            child = child.nextSibling;
+        }
+    };
+
+    const enforce = () => walk(root);
+    enforce();
+
+    if (window.MutationObserver) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((m) => {
+                if (m.type === 'characterData') {
+                    convertNodeText(m.target);
+                } else if (m.addedNodes && m.addedNodes.length) {
+                    m.addedNodes.forEach((n) => walk(n));
+                }
+            });
+        });
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
+    }
+})();
 </script>
 </body>
 </html>

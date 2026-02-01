@@ -398,6 +398,26 @@ npm run build
 
 ### Common Issues
 
+#### Remote Nepali Calendar API configuration 🔧
+
+The calendar module now requires a remote Nepali calendar API and no longer uses the local `date_conversion` table for AD↔BS mapping or calendar grid generation.
+
+- To enable, set the following in your `.env` file:
+
+```
+HRMS_NEPALI_CALENDAR_API_URL=https://nepali-calendar.example/api/calendar
+HRMS_NEPALI_CALENDAR_API_KEY=your_api_key_here
+```
+
+- **Important**: The system is configured for API-only operation. If `HRMS_NEPALI_CALENDAR_API_URL` is not set, calendar requests will fail with an explicit configuration error. This ensures consistent AD/BS results and avoids relying on stale local conversion tables.
+
+- When configured, the server will call the remote API for each requested month and merge local holidays/celebrations (if available). If the remote API is unavailable the request will fail with an error — we can optionally add a cached fallback later if desired.
+
+- If you need to test locally without a production API, use the included stub at `modules/calendar/test_remote_stub.php` and point `HRMS_NEPALI_CALENDAR_API_URL` to it.
+
+
+### Common Issues
+
 #### PHP Extension Missing
 ```
 Problem: league/flysystem-local requires ext-fileinfo
