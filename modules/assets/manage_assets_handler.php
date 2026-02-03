@@ -51,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $assetService->createAsset([
                 'assetName' => $_POST['assetName'] ?? '',
                 'categoryId' => $_POST['categoryId'] ?? null,
+                'productSerial' => $_POST['productSerial'] ?? null,
                 'purchaseDate' => $_POST['purchaseDate'] ?? null,
                 'purchaseCost' => $_POST['purchaseCost'] ?? null,
                 'warrantyEndDate' => $_POST['warrantyEndDate'] ?? null,
@@ -67,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $updated = $assetService->updateAsset($assetId, [
                 'assetName' => $_POST['assetName'] ?? null,
                 'categoryId' => $_POST['categoryId'] ?? null,
+                'productSerial' => $_POST['productSerial'] ?? null,
                 'purchaseDate' => $_POST['purchaseDate'] ?? null,
                 'purchaseCost' => $_POST['purchaseCost'] ?? null,
                 'warrantyEndDate' => $_POST['warrantyEndDate'] ?? null,

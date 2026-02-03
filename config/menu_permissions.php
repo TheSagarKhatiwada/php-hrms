@@ -402,14 +402,20 @@ return [
         'asset_management' => [
             'label' => 'Asset Management',
             'icon' => 'fas fa-clipboard-list',
-            'collapsible' => true,
+            'collapsible' => false,
             'children' => [
                 [
-                    'key' => 'asset_overview',
-                    'label' => 'Overview',
-                    'icon' => 'fas fa-tachometer-alt',
+                    'key' => 'asset_management_home',
+                    'label' => 'Asset Management',
+                    'icon' => 'fas fa-clipboard-list',
                     'route' => 'modules/assets/assets.php',
-                    'pages' => ['Assets Management'],
+                    'pages' => [
+                        'Assets Management',
+                        'Asset Categories',
+                        'Manage Assets',
+                        'Asset Assignments',
+                        'Maintenance Records',
+                    ],
                     'permissions' => [
                         [
                             'code' => 'view_assets',
@@ -423,70 +429,6 @@ return [
                             'label' => 'Manage assets',
                             'type' => 'manage',
                             'description' => 'Allows adding or editing assets.',
-                            'default_roles' => ['Admin'],
-                        ],
-                    ],
-                ],
-                [
-                    'key' => 'asset_categories',
-                    'label' => 'Categories',
-                    'icon' => 'fas fa-tags',
-                    'route' => 'modules/assets/manage_categories.php',
-                    'pages' => ['Asset Categories'],
-                    'permissions' => [
-                        [
-                            'code' => 'manage_assets',
-                            'label' => 'Manage assets',
-                            'type' => 'manage',
-                            'description' => 'Allows editing asset categories.',
-                            'default_roles' => ['Admin'],
-                        ],
-                    ],
-                ],
-                [
-                    'key' => 'asset_items',
-                    'label' => 'Fixed Assets',
-                    'icon' => 'fas fa-laptop',
-                    'route' => 'modules/assets/manage_assets.php',
-                    'pages' => ['Manage Assets'],
-                    'permissions' => [
-                        [
-                            'code' => 'manage_assets',
-                            'label' => 'Manage assets',
-                            'type' => 'manage',
-                            'description' => 'Allows editing asset inventory.',
-                            'default_roles' => ['Admin'],
-                        ],
-                    ],
-                ],
-                [
-                    'key' => 'asset_assignments',
-                    'label' => 'Assignments',
-                    'icon' => 'fas fa-people-carry',
-                    'route' => 'modules/assets/manage_assignments.php',
-                    'pages' => ['Asset Assignments'],
-                    'permissions' => [
-                        [
-                            'code' => 'manage_assets',
-                            'label' => 'Manage assets',
-                            'type' => 'manage',
-                            'description' => 'Allows assigning equipment.',
-                            'default_roles' => ['Admin'],
-                        ],
-                    ],
-                ],
-                [
-                    'key' => 'asset_maintenance',
-                    'label' => 'Maintenance',
-                    'icon' => 'fas fa-tools',
-                    'route' => 'modules/assets/manage_maintenance.php',
-                    'pages' => ['Maintenance Records'],
-                    'permissions' => [
-                        [
-                            'code' => 'manage_assets',
-                            'label' => 'Manage assets',
-                            'type' => 'manage',
-                            'description' => 'Allows tracking maintenance logs.',
                             'default_roles' => ['Admin'],
                         ],
                     ],

@@ -206,16 +206,13 @@ try {
                             <!-- Manage -->
                             <?php if ($canManageContacts): ?>
                             <li>
-                                <a class="dropdown-item" href="contacts.php">
+                                <a class="dropdown-item" href="modules/employees/employees.php">
                                     <i class="fas fa-users me-2"></i>Employees
                                 </a>
                             </li>
                             <?php endif; ?>
                             <li>
                                 <a class="dropdown-item" href="permissions.php">
-                                const serverTimezoneOffset = "<?php echo $timezoneOffset; ?>"; // Format: +HH:MM or -HH:MM
-                                const initialBsMode = <?php echo hrms_should_use_bs_dates() ? 'true' : 'false'; ?>;
-                                const nepaliDigitMap = { '0': '०', '1': '१', '2': '२', '3': '३', '4': '४', '5': '५', '6': '६', '7': '७', '8': '८', '9': '९' };
                                     <i class="fas fa-key me-2"></i>Permissions
                                 </a>
                             </li>

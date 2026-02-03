@@ -333,6 +333,7 @@ CREATE TABLE `fixedassets` (
   `AssetID` int(11) NOT NULL AUTO_INCREMENT,
   `AssetName` varchar(255) NOT NULL,
   `AssetSerial` varchar(100),
+  `ProductSerial` varchar(100),
   `AssetCategory` varchar(100),
   `AssetModel` varchar(100),
   `PurchaseDate` date,

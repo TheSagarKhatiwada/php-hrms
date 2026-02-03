@@ -219,9 +219,48 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <div>
       <h1 class="fs-2 fw-bold mb-1">Asset Maintenance</h1>
     </div>
-    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMaintenanceModal">
-      <i class="fas fa-plus me-2"></i> Add Maintenance
-    </button>
+    <?php
+      $assetToolbarInline = true;
+      $assetToolbarButtons = [
+        [
+          'type' => 'button',
+          'label' => 'Add Maintenance',
+          'icon' => 'fas fa-plus',
+          'classes' => 'btn btn-primary',
+          'attributes' => [
+            'type' => 'button',
+            'data-bs-toggle' => 'modal',
+            'data-bs-target' => '#addMaintenanceModal'
+          ]
+        ],
+        [
+          'type' => 'link',
+          'label' => 'Assets',
+          'icon' => 'fas fa-boxes',
+          'href' => 'manage_assets.php',
+          'classes' => 'btn btn-outline-primary'
+        ],
+        [
+          'type' => 'dropdown',
+          'label' => 'More',
+          'icon' => 'fas fa-ellipsis-h',
+          'classes' => 'btn btn-outline-secondary',
+          'items' => [
+            [
+              'label' => 'Categories',
+              'icon' => 'fas fa-tags',
+              'href' => 'manage_categories.php'
+            ],
+            [
+              'label' => 'Assignments',
+              'icon' => 'fas fa-people-carry',
+              'href' => 'manage_assignments.php'
+            ]
+          ]
+        ]
+      ];
+    ?>
+    <?php include __DIR__ . '/partials/assets_nav.php'; ?>
   </div>
   
   <!-- Maintenance Records Card -->
