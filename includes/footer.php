@@ -419,6 +419,63 @@ body.dark-mode .swal2-popup.swal2-toast .swal2-close:hover {
 <!-- Notifications System JS -->
 <script src="<?php echo isset($home) ? $home : './'; ?>resources/js/notifications.js"></script>
 
+<!-- AdminLTE App JS (enables sidebar + layout behaviors) -->
+<script src="<?php echo isset($home) ? $home : ''; ?>dist/js/adminlte.min.js"></script>
+
+<!-- Nepali digit enforcement (fails safe) -->
+<script>
+(function() {
+  try {
+    const cookieHasBs = (document.cookie || '').split(';').some(pair => pair.trim() === 'date_display_mode=bs');
+    const shouldUseBs = window.hrmsUseBsDates === true || cookieHasBs;
+    if (!shouldUseBs) return;
+
+    const defaultMapper = (value) => {
+      const map = {'0':'०','1':'१','2':'२','3':'३','4':'४','5':'५','6':'६','7':'७','8':'८','9':'९'};
+      return String(value).replace(/[0-9]/g, ch => map[ch] || ch);
+    };
+
+    const toNepaliDigits = typeof window.hrmsToNepaliDigits === 'function' ? window.hrmsToNepaliDigits : defaultMapper;
+
+    const skipTags = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'CODE', 'PRE']);
+
+    const processNode = (node) => {
+      if (!node || skipTags.has(node.nodeName)) return;
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        const original = node.textContent;
+        const converted = toNepaliDigits(original);
+        if (original !== converted) node.textContent = converted;
+        return;
+      }
+
+      node.childNodes.forEach(child => processNode(child));
+    };
+
+    const init = () => {
+      if (!document.body) return;
+      processNode(document.body);
+
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach(({ addedNodes }) => {
+          addedNodes.forEach(node => processNode(node));
+        });
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  } catch (err) {
+    console.warn('Nepali digit enforcement skipped', err);
+  }
+})();
+</script>
+
 <!-- Loading Overlay Script -->
 <script>
 // Force hide the loading overlay immediately and again after a short timeout

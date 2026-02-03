@@ -15,6 +15,7 @@ include __DIR__ . '/configuration.php';
 include __DIR__ . '/db_connection.php'; // Ensure DB connection is available
 include __DIR__ . '/settings.php'; // Include settings
 include __DIR__ . '/csrf_protection.php'; // Include CSRF protection functions
+require_once __DIR__ . '/date_preferences.php';
 
 // Define the adjustBrightness function at the beginning of the file
 if (!function_exists('adjustBrightness')) {
@@ -118,8 +119,20 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
   <!-- DataTables Bootstrap 5 (Fallback CDN via jsDelivr mirror) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs5@1.13.6/css/dataTables.bootstrap5.min.css" media="print" onload="this.media='all'">
   
+  <!-- AdminLTE CSS (required for sidebar/layout styling) -->
+  <link rel="stylesheet" href="<?php echo isset($home) ? $home : ''; ?>dist/css/adminlte.min.css">
+  
   <!-- SweetAlert2 CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+
+  <script>
+    // Expose BS mode flag and Nepali digit mapper for client-side formatters
+    window.hrmsUseBsDates = <?php echo hrms_should_use_bs_dates() ? 'true' : 'false'; ?>;
+    window.hrmsToNepaliDigits = function(value) {
+      var map = {'0':'०','1':'१','2':'२','3':'३','4':'४','5':'५','6':'६','7':'७','8':'८','9':'९'};
+      return String(value).replace(/[0-9]/g, function(ch) { return map[ch] || ch; });
+    };
+  </script>
   
   <!-- Custom CSS -->
   <style>
@@ -149,6 +162,11 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       --footer-height: 60px;
       /* Remove content padding */
       --content-padding: 0;
+      --surface-card-bg: #ffffff;
+      --surface-card-bg-dark: #2c3136;
+      --surface-card-border: rgba(0, 0, 0, 0.08);
+      --surface-card-border-dark: rgba(255, 255, 255, 0.08);
+      --surface-accordion-header-dark: #3a3f45;
     }
 
     body {
@@ -179,6 +197,11 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
     .btn-outline-primary {
       color: var(--primary-color) !important;
       border-color: var(--primary-color) !important;
+    }
+
+    /* Ensure card header actions align to end consistently across Bootstrap versions */
+    .card-header.d-flex > :last-child {
+      margin-left: auto;
     }
     
     .btn-outline-primary:hover,
@@ -321,6 +344,8 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       background-color: var(--primary-color);
       border-color: var(--primary-color);
     }
+
+    /* legacy: removed inline flag styling - flags are no longer shown here */
     
     .text-muted {
       color: #6c757d !important;
@@ -441,6 +466,46 @@ $appName = defined('APP_NAME') ? APP_NAME : get_setting('app_name', 'HRMS Pro');
       /* margin-bottom: 1rem; */
       position: relative;
       /* box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075); */
+    }
+
+    .card,
+    .accordion-item {
+      background-color: var(--surface-card-bg);
+      border-color: var(--surface-card-border);
+    }
+
+    .accordion-button {
+      color: inherit;
+    }
+
+    .accordion-button:not(.collapsed) {
+      color: var(--primary-color);
+    }
+
+    body.dark-mode .card,
+    body.dark-mode .accordion-item {
+      background-color: var(--surface-card-bg-dark);
+      border-color: var(--surface-card-border-dark);
+      color: #f8f9fa;
+    }
+
+    body.dark-mode .accordion-button {
+      background-color: var(--surface-card-bg-dark);
+      color: #f8f9fa;
+      border-color: var(--surface-card-border-dark);
+    }
+
+    body.dark-mode .accordion-button:not(.collapsed) {
+      background-color: rgba(var(--primary-rgb), 0.2);
+      color: #fff;
+    }
+
+    body.dark-mode .accordion-button:focus {
+      box-shadow: 0 0 0 0.15rem rgba(var(--primary-rgb), 0.35);
+    }
+
+    body.dark-mode .accordion-button::after {
+      filter: invert(1);
     }
     
     /* Dark mode support */

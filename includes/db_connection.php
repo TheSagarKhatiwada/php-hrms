@@ -80,16 +80,16 @@ try {
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::ATTR_EMULATE_PREPARES => true, // Use emulated prepared statements for better compatibility with MariaDB
         PDO::ATTR_TIMEOUT => 5, // 5 second timeout
-        PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true, // Enable buffered queries to prevent "unbuffered query" errors
     ];
     
     // Create the PDO instance
     $pdo = new PDO($dsn, $DB_CONFIG['user'], $DB_CONFIG['pass'], $options);
     
-    // Set SQL mode for compatibility across different environments
-    $pdo->exec("SET sql_mode = 'TRADITIONAL'");
+    // Set charset and SQL mode
+    $pdo->exec("SET NAMES {$DB_CONFIG['charset']} COLLATE utf8mb4_unicode_ci");
+    $pdo->exec("SET sql_mode = ''");
     
     // Test the connection with a simple query
     $pdo->query("SELECT 1");

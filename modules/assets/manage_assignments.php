@@ -39,6 +39,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             try {
+              // Prevent assigning an asset that is already checked out
+              $stmt = $pdo->prepare("SELECT Status FROM fixedassets WHERE AssetID = :assetId LIMIT 1");
+              $stmt->execute([':assetId' => $assetId]);
+              $statusRow = $stmt->fetch(PDO::FETCH_ASSOC);
+              if (!$statusRow) {
+                $_SESSION['error'] = "Selected asset does not exist.";
+                header('Location: manage_assignments.php');
+                exit();
+              }
+              if ($statusRow['Status'] !== 'Available') {
+                $_SESSION['error'] = "Asset is currently {$statusRow['Status']} and cannot be assigned.";
+                header('Location: manage_assignments.php');
+                exit();
+              }
+
                 // Prepare the SQL with NULL handling for expected return date
                 if ($expectedReturnDate === null) {                    $stmt = $pdo->prepare("INSERT INTO assetassignments (AssetID, EmployeeID, AssignmentDate, ExpectedReturnDate, Notes) 
                                          VALUES (:assetId, :employeeId, :assignDate, NULL, :notes)");
@@ -236,7 +251,7 @@ try {    $stmt = $pdo->query("SELECT
     LEFT JOIN fixedassets fa ON aa.AssetID = fa.AssetID
     LEFT JOIN assetcategories ac ON fa.CategoryID = ac.CategoryID
     LEFT JOIN employees e ON aa.EmployeeID = e.emp_id
-    LEFT JOIN designations d ON e.designation = d.id
+    LEFT JOIN designations d ON e.designation_id = d.id
     ORDER BY aa.AssignmentDate DESC");
     $assignments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
@@ -263,9 +278,49 @@ try {    $stmt = $pdo->query("SELECT
     <div>
       <h1 class="fs-2 fw-bold mb-1">Asset Assignments</h1>
     </div>
-    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAssignmentModal">
-      <i class="fas fa-plus me-2"></i> New Assignment
-    </button>
+    <?php
+      $assetToolbarInline = true;
+      $assetToolbarButtons = [
+        [
+          'type' => 'button',
+          'label' => 'New Assignment',
+          'icon' => 'fas fa-plus',
+          'classes' => 'btn btn-primary',
+          'attributes' => [
+            'type' => 'button',
+            'id' => 'add-assignment-btn',
+            'data-bs-toggle' => 'modal',
+            'data-bs-target' => '#addAssignmentModal'
+          ]
+        ],
+        [
+          'type' => 'link',
+          'label' => 'Maintenance',
+          'icon' => 'fas fa-tools',
+          'href' => 'manage_maintenance.php',
+          'classes' => 'btn btn-outline-warning'
+        ],
+        [
+          'type' => 'dropdown',
+          'label' => 'More',
+          'icon' => 'fas fa-ellipsis-h',
+          'classes' => 'btn btn-outline-secondary',
+          'items' => [
+            [
+              'label' => 'Fix Assets',
+              'icon' => 'fas fa-boxes',
+              'href' => 'manage_assets.php'
+            ],
+            [
+              'label' => 'Categories',
+              'icon' => 'fas fa-tags',
+              'href' => 'manage_categories.php'
+            ]
+          ]
+        ]
+      ];
+    ?>
+    <?php include __DIR__ . '/partials/assets_nav.php'; ?>
   </div>
 
   <!-- Assignments Table Card -->
@@ -356,7 +411,7 @@ try {    $stmt = $pdo->query("SELECT
                 // Fetch available assets (not assigned)
                 $stmt = $pdo->query("SELECT fa.AssetID, fa.AssetName, fa.AssetSerial, ac.CategoryShortCode 
                                    FROM fixedassets fa 
-                                   LEFT JOIN assetcategories ac ON fa.CategoryID = ac.CategoryID                                   LEFT JOIN assetassignments aa ON fa.AssetID = aa.AssetID 
+                                   LEFT JOIN assetcategories ac ON fa.CategoryID = ac.CategoryID
                                    WHERE fa.Status = 'Available' 
                                    ORDER BY fa.AssetName");
                 while ($asset = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -372,7 +427,7 @@ try {    $stmt = $pdo->query("SELECT
                 <?php                // Fetch all employees to whom assignment goes
                 $stmt = $pdo->query("SELECT emp_id, CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name, ' (', COALESCE(d.title, 'Unknown'), ')') AS EmployeeName 
                                      FROM employees e
-                                     LEFT JOIN designations d ON e.designation = d.id
+                                     LEFT JOIN designations d ON e.designation_id = d.id
                                      WHERE exit_date IS NULL
                                      ORDER BY first_name");
                 while ($employee = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -507,6 +562,11 @@ try {    $stmt = $pdo->query("SELECT
       $('#returnAssetModal').removeClass('show').css('display', 'none').attr('aria-hidden', 'true').removeAttr('aria-modal');
       $('body').removeClass('modal-open');
       $('.modal-backdrop').remove();
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('open') === 'add') {
+      openAddAssignmentModal();
     }
     
     // Add Assignment button in header

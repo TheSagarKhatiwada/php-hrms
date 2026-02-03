@@ -1,3 +1,17 @@
+<?php
+$__hasPermissionFunc = function_exists('has_permission');
+$__isAdminUser = function_exists('is_admin') && is_admin();
+
+$__canAccessContacts = $__isAdminUser;
+if (!$__canAccessContacts && $__hasPermissionFunc) {
+  if (has_permission('topbar_contacts_shortcut') || has_permission('manage_contacts')) {
+    $__canAccessContacts = true;
+  }
+}
+
+$__canUseGlobalSearch = $__isAdminUser ? true : ($__hasPermissionFunc ? has_permission('topbar_global_search') : true);
+$__canViewNotifications = $__isAdminUser ? true : ($__hasPermissionFunc ? has_permission('topbar_notifications_panel') : true);
+?>
 <!-- Main Header -->
 <header class="main-header">
   <!-- Modernized Navbar with Bootstrap 5 -->
@@ -9,10 +23,13 @@
       </button>
 
       <!-- Contacts Icon -->
+      <?php if ($__canAccessContacts): ?>
       <a href="<?php echo isset($home) ? $home : './'; ?>contacts.php" class="navbar-brand d-none d-sm-inline-block me-2" title="Contacts">
         <i class="fas fa-address-book text-primary"></i>
       </a>
+      <?php endif; ?>
 
+      <?php if ($__canUseGlobalSearch): ?>
       <!-- Search Form - Only visible on medium screens and larger -->
       <div class="d-none d-md-flex me-auto position-relative">
         <form action="<?php echo isset($home) ? $home : './'; ?>search-results.php" method="GET" class="search-form flex-grow-1">
@@ -24,6 +41,7 @@
           </div>
         </form>
       </div>
+      <?php endif; ?>
 
       <!-- Mobile brand centered -->
       <div class="d-sm-none mx-auto">
@@ -34,14 +52,17 @@
 
       <!-- Mobile Search & Menu Toggle -->
       <div class="d-flex d-md-none align-items-center">
+        <?php if ($__canUseGlobalSearch): ?>
         <!-- Search button for mobile -->
         <div class="nav-item">
           <a class="nav-link px-2" data-bs-toggle="collapse" href="#mobileSearch" role="button" aria-expanded="false" aria-controls="mobileSearch">
             <i class="fas fa-search"></i>
           </a>
         </div>
+        <?php endif; ?>
         
         
+        <?php if ($__canViewNotifications): ?>
         <!-- Mobile Notifications Dropdown -->
         <div class="nav-item dropdown ms-2">
           <a class="nav-link p-0 position-relative" href="#" id="mobileNotificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -71,22 +92,28 @@
             </div>
           </div>
         </div>
+        <?php endif; ?>
         
         <!-- Mobile User Menu Toggle -->
         <div class="nav-item dropdown ms-2">
           <?php
-          // Include the database connection file if not already included
-          if (!isset($pdo)) {
+          // Ensure database connection is available before querying
+          global $pdo;
+          if (!isset($pdo) || !$pdo instanceof PDO) {
             include_once __DIR__ . '/../includes/db_connection.php';
           }
           
           // Fetch user details from the database if not already available
-          if (!isset($user) && isset($_SESSION['user_id'])) {
+          if (!isset($user) && isset($_SESSION['user_id']) && $pdo instanceof PDO) {
             $user_id = $_SESSION['user_id'];
             $stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = :emp_id");
             $stmt->execute(['emp_id' => $user_id]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             $stmt->closeCursor();
+          }
+
+          if (!isset($user) || !is_array($user)) {
+            $user = [];
           }
           
           // Default home directory if not set
@@ -94,9 +121,18 @@
           
           // Company logo from settings
           $companyLogo = defined('COMPANY_LOGO') ? COMPANY_LOGO : 'company_logo.png';
+
+          $userImagePath = (!empty($user['user_image']))
+            ? $user['user_image']
+            : $homeDir . 'resources/userimg/default-image.jpg';
+          $userFullName = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+          if ($userFullName === '') {
+            $userFullName = 'Team Member';
+          }
+          $userDesignation = !empty($user['designation']) ? $user['designation'] : 'Not Assigned';
           ?>
           <a class="nav-link p-0" href="#" id="mobileMenuToggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-            <img src="<?php echo htmlspecialchars(($user['user_image'] ?? '') !== '' ? $user['user_image'] : $homeDir.'resources/userimg/default-image.jpg'); ?>" 
+            <img src="<?php echo htmlspecialchars($userImagePath); ?>" 
                 alt="User" class="rounded-circle border" width="32" height="32" style="object-fit: cover;">
           </a>
           
@@ -104,11 +140,11 @@
             <!-- Mobile Menu Items -->
             <div class="mobile-menu-header">
               <div class="d-flex align-items-center p-2 border-bottom">
-                <img src="<?php echo htmlspecialchars(($user['user_image'] ?? '') !== '' ? $user['user_image'] : $homeDir.'resources/userimg/default-image.jpg'); ?>" 
+                <img src="<?php echo htmlspecialchars($userImagePath); ?>" 
                     alt="User" class="rounded-circle me-2 border" width="40" height="40" style="object-fit: cover;">
                 <div>
-                  <h6 class="mb-0"><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name']); ?></h6>
-                  <small class="text-muted"><?php echo htmlspecialchars(($user['designation'] ?? '') !== '' ? $user['designation'] : 'Not Assigned'); ?></small>
+                  <h6 class="mb-0"><?php echo htmlspecialchars($userFullName); ?></h6>
+                  <small class="text-muted"><?php echo htmlspecialchars($userDesignation); ?></small>
                 </div>
               </div>
             </div>
@@ -142,6 +178,7 @@
           </div>
         </div>
       </div>
+      <?php if ($__canUseGlobalSearch): ?>
       <!-- Mobile Search - Collapsible -->
       <div class="collapse w-100 mt-2 mb-2 d-md-none" id="mobileSearch">
         <form action="<?php echo isset($home) ? $home : './'; ?>search-results.php" method="GET">
@@ -153,6 +190,7 @@
           </div>
         </form>
       </div>
+      <?php endif; ?>
 
       <!-- Right navbar items - Only visible on medium screens and larger -->
       <ul class="navbar-nav ms-auto align-items-center mobile-nav-icons d-none d-md-flex">
@@ -211,6 +249,19 @@
 
         
         
+        <?php $dateMode = function_exists('hrms_get_date_display_mode') ? hrms_get_date_display_mode() : 'ad'; ?>
+        <li class="nav-item me-1 date-mode-toggle-item">
+          <button
+            type="button"
+            class="btn btn-sm date-mode-chip"
+            id="dateModeToggleBtn"
+            data-current="<?php echo $dateMode; ?>"
+            data-endpoint="<?php echo isset($home) ? $home : './'; ?>api/set-date-mode.php"
+            title="Toggle between AD and BS dates">
+            <span class="chip-text fw-semibold"><?php echo strtoupper($dateMode); ?></span>
+          </button>
+        </li>
+
         <!-- Theme Toggle - Enhanced for better visibility and accessibility -->
         <li class="nav-item me-1">
           <button class="nav-link btn-icon theme-toggle px-2" id="darkModeToggle" aria-label="Toggle dark mode">
@@ -222,6 +273,7 @@
           </button>
         </li>
         
+        <?php if ($__canViewNotifications): ?>
         <!-- Notifications Dropdown -->
         <li class="nav-item dropdown me-1">
           <a class="nav-link position-relative px-2 no-caret" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -251,6 +303,7 @@
             </div>
           </div>
         </li>
+        <?php endif; ?>
         
         <!-- Fullscreen Toggle -->
         <li class="nav-item me-1">
@@ -270,6 +323,33 @@
     padding: 0.5rem 1rem;
     background-color: #ffffff;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .date-mode-toggle-item .date-mode-chip {
+    background: transparent;
+    border-radius: 999px;
+    color: var(--primary-color);
+    padding: 6px 10px;
+    line-height: 1;
+    box-shadow: none;
+    transition: transform 0.1s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+
+  .date-mode-toggle-item .date-mode-chip:hover {
+    border: 1px solid var(--primary-color);
+    background: rgba(13,110,253,0.06);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
+  }
+
+  .date-mode-toggle-item .date-mode-chip:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+
+  .date-mode-toggle-item .chip-text {
+    letter-spacing: 0.4px;
+    font-size: 0.9rem;
   }
 
   /* Reduced margins for mobile */
@@ -869,6 +949,41 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
   console.log('Topbar Dropdown prevention initialized'); // Log: Topbar Dropdown init
+
+  // Date mode toggle handling (chip button)
+  const dateModeToggleBtn = document.getElementById('dateModeToggleBtn');
+  if (dateModeToggleBtn) {
+    const endpoint = dateModeToggleBtn.dataset.endpoint || 'api/set-date-mode.php';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    dateModeToggleBtn.addEventListener('click', function() {
+      const current = dateModeToggleBtn.dataset.current === 'bs' ? 'bs' : 'ad';
+      const desiredMode = current === 'bs' ? 'ad' : 'bs';
+      dateModeToggleBtn.disabled = true;
+      fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken
+        },
+        body: JSON.stringify({ mode: desiredMode })
+      }).then(function(response) {
+        if (!response.ok) {
+          throw new Error('Failed to update date preference');
+        }
+        return response.json();
+      }).then(function(json) {
+        if (json.status === 'success') {
+          window.location.reload();
+        } else {
+          throw new Error(json.message || 'Unable to update preference');
+        }
+      }).catch(function(error) {
+        console.error('Date mode toggle error:', error);
+        alert('Unable to switch calendar mode. Please try again.');
+        dateModeToggleBtn.disabled = false;
+      });
+    });
+  }
   
   // Auto-hide header on scroll for mobile
   if (window.innerWidth < 768) {

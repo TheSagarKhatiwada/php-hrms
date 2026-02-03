@@ -38,6 +38,13 @@ try {
 
 // Process the request
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Authorization: only admins or users with 'manage_attendance' permission may update records
+    $canManageAttendance = (function_exists('is_admin') && is_admin()) || (function_exists('has_permission') && has_permission('manage_attendance'));
+    if (!$canManageAttendance) {
+        $_SESSION['error'] = 'Unauthorized action.';
+        header('Location: attendance.php');
+        exit();
+    }
     // Handle edit attendance form submission
     if (isset($_POST['attendanceId']) && !empty($_POST['attendanceId'])) {
         // Get form data
@@ -47,6 +54,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reason = $_POST['reason'];
         $remarks = isset($_POST['remarks']) ? trim($_POST['remarks']) : '';
         
+        // Ensure the record exists and that it's a manual entry (method == 1)
+        try {
+            $mstmt = $pdo->prepare("SELECT method FROM attendance_logs WHERE id = ? LIMIT 1");
+            $mstmt->execute([$attendanceId]);
+            $rec = $mstmt->fetch(PDO::FETCH_ASSOC);
+            if (!$rec) {
+                $_SESSION['error'] = 'Attendance record not found.';
+                header('Location: attendance.php');
+                exit();
+            }
+            if ((string)$rec['method'] !== '1') {
+                $_SESSION['error'] = 'Only manual attendance records may be edited.';
+                header('Location: attendance.php');
+                exit();
+            }
+        } catch (PDOException $e) {
+            error_log('DB error checking attendance method: ' . $e->getMessage());
+            $_SESSION['error'] = 'System error while validating attendance record.';
+            header('Location: attendance.php');
+            exit();
+        }
+
         // Validate required fields
         if (empty($attendanceDate) || empty($attendanceTime) || empty($reason)) {
             $_SESSION['error'] = 'All required fields must be filled.';

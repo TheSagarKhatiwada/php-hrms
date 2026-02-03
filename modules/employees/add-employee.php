@@ -2,6 +2,7 @@
 // Include session configuration and utilities
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
+require_once '../../includes/employee_profile_helpers.php';
 
 $page = 'Add Employee';
 $page = 'employees';
@@ -12,7 +13,28 @@ if (!is_admin() && get_user_role() === '0') {
     exit();
 }
 
-include '../../includes/db_connection.php'; // Include the database connection file
+// Always load DB connection relative to this file to avoid CWD issues
+require_once __DIR__ . '/../../includes/db_connection.php';
+if (!isset($pdo) || !$pdo instanceof PDO) {
+  // Retry once in case include_path resolution failed
+  include __DIR__ . '/../../includes/db_connection.php';
+}
+
+// Last-resort: attempt to bootstrap PDO directly if still missing (prevents empty dropdowns)
+if (!isset($pdo) || !$pdo instanceof PDO) {
+  require_once __DIR__ . '/../../includes/config.php';
+  $cfg = getDBConfig();
+  try {
+    $dsn = "mysql:host={$cfg['host']};dbname={$cfg['name']};charset={$cfg['charset']}";
+    $pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [
+      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+      PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
+  } catch (Throwable $e) {
+    // Leave $pdo unset; downstream guards will show safe fallbacks
+  }
+}
 
 // Get query parameters for repopulating form after errors
 $machId = $_GET['machId'] ?? '';
@@ -35,20 +57,105 @@ $officePhone = $_GET['office_phone'] ?? '';
 $supervisor_id = $_GET['supervisor_id'] ?? '';
 $department_id = $_GET['department_id'] ?? '';
 $allowWebAttendancePrefill = isset($_GET['allow_web_attendance']) ? (int)$_GET['allow_web_attendance'] : 0;
+$fatherName = $_GET['father_name'] ?? '';
+$motherName = $_GET['mother_name'] ?? '';
+$spouseName = $_GET['spouse_name'] ?? '';
+$maritalStatus = $_GET['marital_status'] ?? '';
+$emergencyContactName = $_GET['emergency_contact_name'] ?? '';
+$emergencyContactRelationship = $_GET['emergency_contact_relationship'] ?? '';
+$emergencyContactPhone = $_GET['emergency_contact_phone'] ?? '';
+$emergencyContactEmail = $_GET['emergency_contact_email'] ?? '';
+$bloodGroup = $_GET['blood_group'] ?? '';
+$allergies = $_GET['allergies'] ?? '';
+$medicalConditions = $_GET['medical_conditions'] ?? '';
+$medicalNotes = $_GET['medical_notes'] ?? '';
+$currentAddress = $_GET['current_address'] ?? '';
+$currentCity = $_GET['current_city'] ?? '';
+$currentDistrict = $_GET['current_district'] ?? '';
+$currentState = $_GET['current_state'] ?? 'Select District';
+$currentPostalCode = $_GET['current_postal_code'] ?? 'Select District';
+$currentCountry = $_GET['current_country'] ?? 'Nepal';
+$permanentAddress = $_GET['permanent_address'] ?? '';
+$permanentCity = $_GET['permanent_city'] ?? '';
+$permanentDistrict = $_GET['permanent_district'] ?? '';
+$permanentState = $_GET['permanent_state'] ?? 'Select District';
+$permanentPostalCode = $_GET['permanent_postal_code'] ?? 'Select District';
+$permanentCountry = $_GET['permanent_country'] ?? 'Nepal';
+
+$maritalStatusOptions = [
+  'single' => 'Single',
+  'married' => 'Married',
+  'divorced' => 'Divorced',
+  'widowed' => 'Widowed',
+  'other' => 'Other'
+];
+
+$bloodGroupOptions = [
+  'A+' => 'A+',
+  'A-' => 'A-',
+  'B+' => 'B+',
+  'B-' => 'B-',
+  'O+' => 'O+',
+  'O-' => 'O-',
+  'AB+' => 'AB+',
+  'AB-' => 'AB-',
+  'Unknown' => 'Unknown'
+];
+
+$relationshipOptions = [
+  'Father',
+  'Mother',
+  'Spouse',
+  'Sibling',
+  'Child',
+  'Relative',
+  'Friend',
+  'Guardian',
+  'Other'
+];
+
+$districtRecords = [];
+$provinceRecords = [];
+$provinceIndex = [];
+$countryRecords = [];
+if ($pdo instanceof PDO) {
+  try {
+    $provinceStmt = $pdo->query("SELECT province_id, province_name FROM provinces ORDER BY province_name");
+    $provinceRecords = $provinceStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($provinceRecords as $provinceRow) {
+      $provinceIndex[$provinceRow['province_id']] = $provinceRow['province_name'];
+    }
+
+    $districtStmt = $pdo->query("SELECT district_id, district_name, province_id, postal_code FROM districts ORDER BY district_name");
+    $districtRecords = $districtStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    // Try to load countries list if available in the DB
+    try {
+      // Read whatever columns exist in the countries table so helper can use iso/code if available
+      $countryStmt = $pdo->query("SELECT * FROM countries ORDER BY name");
+      $countryRecords = $countryStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+      $countryRecords = [];
+    }
+  } catch (Throwable $e) {
+    $districtRecords = [];
+    $provinceRecords = [];
+    $provinceIndex = [];
+  }
+}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
   // Get form data and trim/validate
-  $machId = trim($_POST['machId']);
+  $machId = trim($_POST['machId'] ?? '');
   $machIdNotApplicable = isset($_POST['mach_id_not_applicable']) ? 1 : 0;
-  $empBranchId = trim($_POST['empBranchId']);
-  $empFirstName = trim($_POST['empFirstName']);
-  $empMiddleName = trim($_POST['empMiddleName']);
-  $empLastName = trim($_POST['empLastName']);
-  $gender = trim($_POST['gender']);
-  $empEmail = trim($_POST['empEmail']);
-  $empPhone = trim($_POST['empPhone']);
-  $empHireDate = trim($_POST['empHireDate']);
-  $empJoinDate = trim($_POST['empJoinDate']);
+  $empBranchId = trim($_POST['empBranchId'] ?? '');
+  $empFirstName = trim($_POST['empFirstName'] ?? '');
+  $empMiddleName = trim($_POST['empMiddleName'] ?? '');
+  $empLastName = trim($_POST['empLastName'] ?? '');
+  $gender = trim($_POST['gender'] ?? '');
+  $empEmail = trim($_POST['empEmail'] ?? '');
+  $empPhone = trim($_POST['empPhone'] ?? '');
+  $empHireDate = trim($_POST['empHireDate'] ?? '');
+  $empJoinDate = trim($_POST['empJoinDate'] ?? '');
   $workStartTime = trim($_POST['work_start_time'] ?? '');
   $workEndTime = trim($_POST['work_end_time'] ?? '');
   if ($machIdNotApplicable) {
@@ -56,18 +163,44 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       $workStartTime = '';
       $workEndTime = '';
   }
-  $designationId = trim($_POST['designationId']); 
-  $loginAccess = trim($_POST['login_access']); 
-  $croppedImage = $_POST['croppedImage'];
-  $dob = trim($_POST['dob']);
-  $role = trim($_POST['role']);
-  $officeEmail = trim($_POST['office_email']);
-  $officePhone = trim($_POST['office_phone']);
+  $designationId = trim($_POST['designationId'] ?? '');
+  $loginAccess = trim($_POST['login_access'] ?? '');
+  $croppedImage = $_POST['croppedImage'] ?? '';
+  $dob = trim($_POST['dob'] ?? '');
+  $role = trim($_POST['role'] ?? '');
+  $officeEmail = trim($_POST['office_email'] ?? '');
+  $officePhone = trim($_POST['office_phone'] ?? '');
   $allowWebAttendance = isset($_POST['allow_web_attendance']) ? 1 : 0;
+  $fatherName = trim($_POST['father_name'] ?? '');
+  $motherName = trim($_POST['mother_name'] ?? '');
+  $spouseName = trim($_POST['spouse_name'] ?? '');
+  $maritalStatus = trim($_POST['marital_status'] ?? '');
+  $emergencyContactName = trim($_POST['emergency_contact_name'] ?? '');
+  $emergencyContactRelationship = trim($_POST['emergency_contact_relationship'] ?? '');
+  $emergencyContactPhone = trim($_POST['emergency_contact_phone'] ?? '');
+  $emergencyContactEmail = trim($_POST['emergency_contact_email'] ?? '');
+  $bloodGroup = trim($_POST['blood_group'] ?? '');
+  $allergies = trim($_POST['allergies'] ?? '');
+  $medicalConditions = trim($_POST['medical_conditions'] ?? '');
+  $medicalNotes = trim($_POST['medical_notes'] ?? '');
+  $currentAddress = trim($_POST['current_address'] ?? '');
+  $currentCity = trim($_POST['current_city'] ?? '');
+  $currentDistrict = trim($_POST['current_district'] ?? '');
+  $currentState = trim($_POST['current_state'] ?? '');
+  $currentPostalCode = trim($_POST['current_postal_code'] ?? '');
+  $currentCountry = trim($_POST['current_country'] ?? '');
+  $permanentAddress = trim($_POST['permanent_address'] ?? '');
+  $permanentCity = trim($_POST['permanent_city'] ?? '');
+  $permanentDistrict = trim($_POST['permanent_district'] ?? '');
+  $permanentState = trim($_POST['permanent_state'] ?? '');
+  $permanentPostalCode = trim($_POST['permanent_postal_code'] ?? '');
+  $permanentCountry = trim($_POST['permanent_country'] ?? '');
   
   // Hierarchy fields
   $supervisor_id = !empty($_POST['supervisor_id']) ? trim($_POST['supervisor_id']) : null;
   $department_id = !empty($_POST['department_id']) ? trim($_POST['department_id']) : null;
+  $academicRecords = collect_academic_records_from_request($_POST);
+  $experienceRecords = collect_experience_records_from_request($_POST);
 
   // Validate and clean gender field
   $gender = strtoupper(trim($gender)); // Ensure uppercase and no whitespace
@@ -88,18 +221,48 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
           $genderForDb = 'male';
   }
 
-  // Handle file upload
-  if ($croppedImage) {
-      $targetDir = "../../resources/userimg/uploads/";
+    // Handle file upload - validate data URL mime & size and save with correct extension
+    if ($croppedImage) {
+      // Ensure it's a valid data URL
+      if (!preg_match('#^data:(image/[a-zA-Z0-9.+-]+);base64,#', $croppedImage, $m)) {
+        redirect_with_message('add-employee.php', 'error', 'Invalid image data.');
+      }
+
+      $mime = strtolower($m[1]);
+      $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp'
+      ];
+
+      if (!isset($allowed[$mime])) {
+        redirect_with_message('add-employee.php', 'error', 'Unsupported image format. Allowed: JPG, PNG, WEBP.');
+      }
+
       $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $croppedImage));
-      $imageName = uniqid() . '.png';
+      if ($imageData === false) {
+        redirect_with_message('add-employee.php', 'error', 'Unable to decode uploaded image.');
+      }
+
+      $maxBytes = 5 * 1024 * 1024; // 5MB
+      if (strlen($imageData) > $maxBytes) {
+        redirect_with_message('add-employee.php', 'error', 'Cropped image exceeds 5MB maximum. Please upload a smaller image.');
+      }
+
+      $targetDir = "../../resources/userimg/uploads/";
+      if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0777, true);
+      }
+
+      $ext = $allowed[$mime];
+      $imageName = uniqid() . '.' . $ext;
       $targetFile = $targetDir . $imageName;
       // Store relative path for database
       $dbPath = "resources/userimg/uploads/" . $imageName;
       file_put_contents($targetFile, $imageData);
-  } else {
+    } else {
       $dbPath = "resources/userimg/default-image.jpg";
-  }
+    }
 
   // Generate empID based on branch_id value and finding the next available number
   $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE branch_id = ? ORDER BY emp_id DESC LIMIT 1");
@@ -116,12 +279,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   }
 
   try {
-    // Insert data into the database using prepared statements
-    $sql = "INSERT INTO employees (emp_id, mach_id, branch_id, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation_id, login_access, allow_web_attendance, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id, work_start_time, work_end_time, mach_id_not_applicable)
-      VALUES (:empId, :machId, :empBranchId, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designationId, :loginAccess, :allowWebAttendance, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id, :workStartTime, :workEndTime, :machIdNotApplicable)";
+    $pdo->beginTransaction();
+
+    $sql = "INSERT INTO employees (emp_id, mach_id, branch_id, first_name, middle_name, last_name, gender, email, phone, hire_date, join_date, designation_id, login_access, allow_web_attendance, user_image, date_of_birth, role_id, office_email, office_phone, supervisor_id, department_id, work_start_time, work_end_time, mach_id_not_applicable, father_name, mother_name, spouse_name, marital_status, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, emergency_contact_email, blood_group, allergies, medical_conditions, medical_notes, current_address, current_city, current_district, current_state, current_postal_code, current_country, permanent_address, permanent_city, permanent_district, permanent_state, permanent_postal_code, permanent_country)
+      VALUES (:empId, :machId, :empBranchId, :empFirstName, :empMiddleName, :empLastName, :gender, :empEmail, :empPhone, :hire_date, :empJoinDate, :designationId, :loginAccess, :allowWebAttendance, :userImage, :date_of_birth, :role_id, :officeEmail, :officePhone, :supervisor_id, :department_id, :workStartTime, :workEndTime, :machIdNotApplicable, :fatherName, :motherName, :spouseName, :maritalStatus, :emergencyContactName, :emergencyContactRelationship, :emergencyContactPhone, :emergencyContactEmail, :bloodGroup, :allergies, :medicalConditions, :medicalNotes, :currentAddress, :currentCity, :currentDistrict, :currentState, :currentPostalCode, :currentCountry, :permanentAddress, :permanentCity, :permanentDistrict, :permanentState, :permanentPostalCode, :permanentCountry)";
     $stmt = $pdo->prepare($sql);
-    
-    $result = $stmt->execute([
+    $stmt->execute([
         ':empId' => $empId,
         ':machId' => ($machId !== '' ? (int)$machId : null),
         ':empBranchId' => $empBranchId,
@@ -131,14 +294,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ':gender' => $genderForDb,
         ':empEmail' => $empEmail,
         ':empPhone' => $empPhone,
-        ':hire_date' => $empHireDate,
+        ':hire_date' => $empHireDate ?: null,
         ':empJoinDate' => $empJoinDate ?: null,
-        ':designationId' => (int)$designationId,
-        ':loginAccess' => (int)$loginAccess,
+        ':designationId' => ($designationId !== '' ? (int)$designationId : null),
+        ':loginAccess' => ($loginAccess !== '' ? (int)$loginAccess : 0),
         ':allowWebAttendance' => $allowWebAttendance,
         ':userImage' => $dbPath,
         ':date_of_birth' => $dob ?: null,
-        ':role_id' => (int)$role,
+        ':role_id' => ($role !== '' ? (int)$role : null),
         ':officeEmail' => $officeEmail ?: null,
         ':officePhone' => $officePhone ?: null,
         ':supervisor_id' => $supervisor_id,
@@ -146,71 +309,93 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       ,':workStartTime' => ($machIdNotApplicable ? null : ($workStartTime !== '' ? $workStartTime : '09:30:00'))
       ,':workEndTime' => ($machIdNotApplicable ? null : ($workEndTime !== '' ? $workEndTime : '18:00:00'))
       ,':machIdNotApplicable' => $machIdNotApplicable
+      ,':fatherName' => $fatherName ?: null
+      ,':motherName' => $motherName ?: null
+      ,':spouseName' => $spouseName ?: null
+      ,':maritalStatus' => $maritalStatus ?: null
+      ,':emergencyContactName' => $emergencyContactName ?: null
+      ,':emergencyContactRelationship' => $emergencyContactRelationship ?: null
+      ,':emergencyContactPhone' => $emergencyContactPhone ?: null
+      ,':emergencyContactEmail' => $emergencyContactEmail ?: null
+      ,':bloodGroup' => $bloodGroup ?: null
+      ,':allergies' => $allergies ?: null
+      ,':medicalConditions' => $medicalConditions ?: null
+      ,':medicalNotes' => $medicalNotes ?: null
+      ,':currentAddress' => $currentAddress ?: null
+      ,':currentCity' => $currentCity ?: null
+      ,':currentDistrict' => $currentDistrict ?: null
+      ,':currentState' => $currentState ?: null
+      ,':currentPostalCode' => $currentPostalCode ?: null
+      ,':currentCountry' => $currentCountry ?: null
+      ,':permanentAddress' => $permanentAddress ?: null
+      ,':permanentCity' => $permanentCity ?: null
+      ,':permanentDistrict' => $permanentDistrict ?: null
+      ,':permanentState' => $permanentState ?: null
+      ,':permanentPostalCode' => $permanentPostalCode ?: null
+      ,':permanentCountry' => $permanentCountry ?: null
     ]);
 
-    // Since employees table uses emp_id as primary key, get the inserted emp_id
-    $newEmployeeId = $empId; // Use the generated emp_id
+    sync_employee_academic_records($pdo, $empId, $academicRecords);
+    sync_employee_experience_records($pdo, $empId, $experienceRecords);
 
-    // Add detailed error logging
-    if (!$result) {
-        $errorInfo = $stmt->errorInfo();
-        $_SESSION['error'] = "Database error: " . $errorInfo[2];
-        error_log("Employee add error: " . print_r($errorInfo, true));
-    } else {
-        // Update attendance_logs with emp_Id from employees based on machine_id (only for valid numeric mach_id)
-        try {
-            $sql = "UPDATE attendance_logs a 
-                    JOIN employees e ON a.mach_id = e.mach_id 
-                    SET a.emp_Id = e.emp_id 
-                    WHERE a.mach_id IS NOT NULL 
-                    AND e.mach_id IS NOT NULL 
-                    AND a.mach_id > 0 
-                    AND e.mach_id > 0";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute();
-        } catch (PDOException $e) {
-            // Log the error but don't stop the employee creation process
-            error_log("Warning: Could not update attendance_logs: " . $e->getMessage());
-        }
+    $pdo->commit();
 
-        // Send welcome notification to the new employee if login access is granted
-        if ($loginAccess == '1' && $newEmployeeId) {
-            notify_employee($newEmployeeId, 'joined');
-            
-            // Also notify HR team or admins about the new employee
-            $fullName = $empFirstName . ' ' . ($empMiddleName ? $empMiddleName . ' ' : '') . $empLastName;
-            notify_system(
-                'New Employee Added', 
-                "A new employee ($fullName) has been added to the system with Employee ID: $empId",
-                'success',
-                true
+    $newEmployeeId = $empId;
+
+    try {
+        $sql = "UPDATE attendance_logs a 
+                JOIN employees e ON a.mach_id = e.mach_id 
+                SET a.emp_Id = e.emp_id 
+                WHERE a.mach_id IS NOT NULL 
+                AND e.mach_id IS NOT NULL 
+                AND a.mach_id > 0 
+                AND e.mach_id > 0";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+    } catch (PDOException $e) {
+        error_log("Warning: Could not update attendance_logs: " . $e->getMessage());
+    }
+
+    if ($loginAccess == '1' && $newEmployeeId) {
+        notify_employee($newEmployeeId, 'joined');
+        
+        $fullName = $empFirstName . ' ' . ($empMiddleName ? $empMiddleName . ' ' : '') . $empLastName;
+        notify_system(
+            'New Employee Added', 
+            "A new employee ($fullName) has been added to the system with Employee ID: $empId",
+            'success',
+            true
+        );
+        
+        $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE role_id = 1 OR role_id = 2");
+        $stmt->execute();
+        $adminIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (!empty($adminIds)) {
+            notify_users(
+                $adminIds,
+                'New Employee Added',
+                "Employee $fullName ($empId) has been added to the system",
+                'info',
+                'employees.php'
             );
-            
-            // Get admins/HR personnel to notify
-            $stmt = $pdo->prepare("SELECT emp_id FROM employees WHERE role_id = 1 OR role_id = 2"); // Assuming role_id 2 is HR
-            $stmt->execute();
-            $adminIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            
-            if (!empty($adminIds)) {
-                notify_users(
-                    $adminIds,
-                    'New Employee Added',
-                    "Employee $fullName ($empId) has been added to the system",
-                    'info',
-                    'employees.php'
-                );
-            }
         }
     }
 
     $_SESSION['success'] = "Employee added successfully!";
   } catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     $errorMessage = "Error adding employee: " . $e->getMessage();
     $_SESSION['error'] = $errorMessage;
     error_log("PDO Exception in add-employee.php: " . $e->getMessage());
     error_log("PDO Error Code: " . $e->getCode());
     error_log("Stack trace: " . $e->getTraceAsString());
   } catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     $errorMessage = "General error adding employee: " . $e->getMessage();
     $_SESSION['error'] = $errorMessage;
     error_log("General Exception in add-employee.php: " . $e->getMessage());
@@ -240,207 +425,524 @@ require_once __DIR__ . '/../../includes/header.php';
   <div class="card border-0 shadow-sm">
     <div class="card-body">
       <form id="addEmployeeForm" method="POST" action="add-employee.php" enctype="multipart/form-data">
-        <div class="row">
+        <div class="row g-4">
           <div class="col-md-8">
-            <div class="row mb-3">
-              <div class="col-md-4">
-                <div class="d-flex justify-content-between align-items-center">
-                  <label for="machId" class="form-label mb-0">Machine ID</label>
-                  <div class="form-check form-check-inline m-0 small">
-                    <input class="form-check-input" type="checkbox" id="machIdNotApplicable" name="mach_id_not_applicable" value="1" <?php echo $machIdNotApplicablePrefill ? 'checked' : ''; ?>>
-                    <label class="form-check-label" for="machIdNotApplicable">Not Applicable</label>
+            <ul class="nav nav-tabs nav-fill" id="employeeFormTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="personal-tab" data-bs-toggle="tab" data-bs-target="#tab-personal" type="button" role="tab" aria-controls="tab-personal" aria-selected="true">
+                  <i class="fas fa-user me-1"></i>Personal Info
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="academic-tab" data-bs-toggle="tab" data-bs-target="#tab-academic" type="button" role="tab" aria-controls="tab-academic" aria-selected="false">
+                  <i class="fas fa-graduation-cap me-1"></i>Academic
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="experience-tab" data-bs-toggle="tab" data-bs-target="#tab-experience" type="button" role="tab" aria-controls="tab-experience" aria-selected="false">
+                  <i class="fas fa-briefcase me-1"></i>Experience
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="assignment-tab" data-bs-toggle="tab" data-bs-target="#tab-assignment" type="button" role="tab" aria-controls="tab-assignment" aria-selected="false">
+                  <i class="fas fa-tasks me-1"></i>Assigned Details
+                </button>
+              </li>
+            </ul>
+
+            <div class="tab-content border border-top-0 rounded-bottom p-4">
+              <div class="tab-pane fade show active" id="tab-personal" role="tabpanel" aria-labelledby="personal-tab">
+                <h5 class="fw-semibold mb-3">Personal Information</h5>
+                <div class="row gy-3 gx-2">
+                  <div class="col-md-4">
+                    <label for="empFirstName" class="form-label">First Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="empFirstName" name="empFirstName" required value="<?php echo htmlspecialchars($empFirstName); ?>">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="empMiddleName" class="form-label">Middle Name</label>
+                    <input type="text" class="form-control" id="empMiddleName" name="empMiddleName" value="<?php echo htmlspecialchars($empMiddleName); ?>">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="empLastName" class="form-label">Last Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="empLastName" name="empLastName" required value="<?php echo htmlspecialchars($empLastName); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="dob" class="form-label">Date of Birth</label>
+                    <input type="date" class="form-control" id="dob" name="dob" value="<?php echo htmlspecialchars($dob); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="gender" class="form-label">Gender <span class="text-danger">*</span></label>
+                    <select class="form-select" id="gender" name="gender" required>
+                      <option value="" disabled <?php echo empty($gender) ? 'selected' : ''; ?>>Select a Gender</option>
+                      <option value="M" <?php echo ($gender === 'M') ? 'selected' : ''; ?>>Male</option>
+                      <option value="F" <?php echo ($gender === 'F') ? 'selected' : ''; ?>>Female</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="empPhone" class="form-label">Personal Phone <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="empPhone" name="empPhone" required 
+                           pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign" 
+                           value="<?php echo htmlspecialchars($empPhone); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="empEmail" class="form-label">Personal Email <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" id="empEmail" name="empEmail" required value="<?php echo htmlspecialchars($empEmail); ?>">
+                  </div>
+                  <div class="col-12 pt-1">
+                    <h6 class="text-uppercase text-muted small mb-2">Family &amp; Marital Information</h6>
+                  </div>
+                  <div class="col-md-4">
+                    <label for="father_name" class="form-label">Father's Name</label>
+                    <input type="text" class="form-control" id="father_name" name="father_name" value="<?php echo htmlspecialchars($fatherName); ?>">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="mother_name" class="form-label">Mother's Name</label>
+                    <input type="text" class="form-control" id="mother_name" name="mother_name" value="<?php echo htmlspecialchars($motherName); ?>">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="marital_status" class="form-label">Marital Status</label>
+                    <select class="form-select" id="marital_status" name="marital_status">
+                      <option value="">Select Status</option>
+                      <?php foreach ($maritalStatusOptions as $value => $label): ?>
+                        <option value="<?php echo $value; ?>" <?php echo ($maritalStatus === $value) ? 'selected' : ''; ?>><?php echo $label; ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-md-6 <?php echo ($maritalStatus === 'married') ? '' : 'd-none'; ?>" id="spouseFieldWrapper">
+                    <label for="spouse_name" class="form-label">Spouse Name</label>
+                    <input type="text" class="form-control" id="spouse_name" name="spouse_name" value="<?php echo htmlspecialchars($spouseName); ?>">
+                  </div>
+                  <div class="col-12 pt-1">
+                    <h6 class="text-uppercase text-muted small mb-2">Emergency Contact</h6>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="emergency_contact_name" class="form-label">Contact Name</label>
+                    <input type="text" class="form-control" id="emergency_contact_name" name="emergency_contact_name" value="<?php echo htmlspecialchars($emergencyContactName); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="emergency_contact_relationship" class="form-label">Relationship</label>
+                    <select class="form-select" id="emergency_contact_relationship" name="emergency_contact_relationship">
+                      <option value="">Select Relationship</option>
+                      <?php foreach ($relationshipOptions as $option): ?>
+                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo ($emergencyContactRelationship === $option) ? 'selected' : ''; ?>><?php echo $option; ?></option>
+                      <?php endforeach; ?>
+                      <?php if ($emergencyContactRelationship && !in_array($emergencyContactRelationship, $relationshipOptions, true)): ?>
+                        <option value="<?php echo htmlspecialchars($emergencyContactRelationship); ?>" selected><?php echo htmlspecialchars($emergencyContactRelationship); ?></option>
+                      <?php endif; ?>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="emergency_contact_phone" class="form-label">Emergency Phone</label>
+                    <input type="text" class="form-control" id="emergency_contact_phone" name="emergency_contact_phone" pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign" value="<?php echo htmlspecialchars($emergencyContactPhone); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="emergency_contact_email" class="form-label">Emergency Email</label>
+                    <input type="email" class="form-control" id="emergency_contact_email" name="emergency_contact_email" value="<?php echo htmlspecialchars($emergencyContactEmail); ?>">
+                  </div>
+                  <div class="col-12 pt-1">
+                    <h6 class="text-uppercase text-muted small mb-2">Health &amp; Medical</h6>
+                  </div>
+                  <div class="col-md-4">
+                    <label for="blood_group" class="form-label">Blood Group</label>
+                    <select class="form-select" id="blood_group" name="blood_group">
+                      <option value="">Select Blood Group</option>
+                      <?php foreach ($bloodGroupOptions as $value => $label): ?>
+                        <option value="<?php echo $value; ?>" <?php echo ($bloodGroup === $value) ? 'selected' : ''; ?>><?php echo $label; ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label for="allergies" class="form-label">Allergies</label>
+                    <textarea class="form-control" id="allergies" name="allergies" rows="2"><?php echo htmlspecialchars($allergies); ?></textarea>
+                  </div>
+                  <div class="col-md-4">
+                    <label for="medical_conditions" class="form-label">Medical Conditions</label>
+                    <textarea class="form-control" id="medical_conditions" name="medical_conditions" rows="2"><?php echo htmlspecialchars($medicalConditions); ?></textarea>
+                  </div>
+                  <div class="col-12">
+                    <label for="medical_notes" class="form-label">Medical Notes / Medications</label>
+                    <textarea class="form-control" id="medical_notes" name="medical_notes" rows="2"><?php echo htmlspecialchars($medicalNotes); ?></textarea>
+                  </div>
+                  <div class="col-12 pt-1">
+                    <h6 class="text-uppercase text-muted small mb-2">Address Information</h6>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                      <h6 class="fw-semibold mb-3">Permanent Address</h6>
+                      <div class="mb-3">
+                        <label for="permanent_address" class="form-label">Street Address</label>
+                        <textarea class="form-control" id="permanent_address" name="permanent_address" rows="2"><?php echo htmlspecialchars($permanentAddress); ?></textarea>
+                      </div>
+                      <div class="row g-2">
+                        <div class="col-sm-6">
+                          <label for="permanent_city" class="form-label">City</label>
+                          <input type="text" class="form-control" id="permanent_city" name="permanent_city" value="<?php echo htmlspecialchars($permanentCity); ?>">
+                        </div>
+                        <div class="col-sm-6">
+                          <label for="permanent_district" class="form-label">District</label>
+                          <select class="form-select" id="permanent_district" name="permanent_district">
+                            <option value="">Select District</option>
+                            <?php 
+                              $permanentDistrictFound = false;
+                              foreach ($districtRecords as $districtRow):
+                                $districtName = $districtRow['district_name'];
+                                $provinceName = $provinceIndex[$districtRow['province_id']] ?? '';
+                                $postalCode = $districtRow['postal_code'] ?? '';
+                                $selected = ($permanentDistrict === $districtName) ? 'selected' : '';
+                                if ($selected) {
+                                  $permanentDistrictFound = true;
+                                }
+                            ?>
+                              <option value="<?php echo htmlspecialchars($districtName); ?>" data-province="<?php echo htmlspecialchars($provinceName); ?>" data-postal="<?php echo htmlspecialchars($postalCode); ?>" <?php echo $selected; ?>>
+                                <?php echo htmlspecialchars($districtName); ?>
+                              </option>
+                            <?php endforeach; ?>
+                            <?php if (!$permanentDistrictFound && !empty($permanentDistrict)): ?>
+                              <option value="<?php echo htmlspecialchars($permanentDistrict); ?>" data-province="<?php echo htmlspecialchars($permanentState); ?>" data-postal="<?php echo htmlspecialchars($permanentPostalCode); ?>" selected>
+                                <?php echo htmlspecialchars($permanentDistrict); ?>
+                              </option>
+                            <?php endif; ?>
+                          </select>
+                        </div>
+                        <div class="col-sm-6">
+                          <label class="form-label">Province / State</label>
+                          <input type="text" class="form-control" id="permanent_state" name="permanent_state" placeholder="Select District" value="<?php echo htmlspecialchars($permanentState); ?>">
+                        </div>
+                        <div class="col-sm-6">
+                          <label class="form-label">Postal Code</label>
+                          <input type="text" class="form-control" id="permanent_postal_code" name="permanent_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($permanentPostalCode); ?>">
+                        </div>
+                        <div class="col-sm-6">
+                          <label class="form-label">Country</label>
+                          <?php if (!empty($countryRecords)): ?>
+                          <select class="form-select" id="permanent_country" name="permanent_country">
+                            <?php foreach ($countryRecords as $c):
+                              $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              // handle variants like 'NP Nepal' or 'NP\u00A0Nepal' or 'NP:Nepal'
+                              if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
+                                $displayName = $m[2];
+                              } else {
+                                $displayName = $cName;
+                              }
+                              $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              // flags removed — only show country names
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                          <?php else:
+                            // Fallback small country list so flags still display even when a countries table isn't present
+                            $fallbackCountries = ['Nepal','India','United States','United Kingdom','Pakistan','Bangladesh','China','Japan','Australia','Canada'];
+                          ?>
+                          <select class="form-select" id="permanent_country" name="permanent_country">
+                            <?php foreach ($fallbackCountries as $cName):
+                              $selected = ($permanentCountry === $cName) || (empty($permanentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              // flags removed — only show country names
+                              $displayName = $cName;
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                      <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <h6 class="fw-semibold mb-0">Current Address</h6>
+                        <div class="form-check form-switch m-0">
+                          <input class="form-check-input" type="checkbox" id="copyPermanentAddress">
+                          <label class="form-check-label small" for="copyPermanentAddress">Same as Permanent</label>
+                        </div>
+                      </div>
+                      <div class="mb-3">
+                        <label for="current_address" class="form-label">Street Address</label>
+                        <textarea class="form-control" id="current_address" name="current_address" rows="2"><?php echo htmlspecialchars($currentAddress); ?></textarea>
+                      </div>
+                      <div class="row g-2">
+                        <div class="col-sm-6">
+                          <label for="current_city" class="form-label">City</label>
+                          <input type="text" class="form-control" id="current_city" name="current_city" value="<?php echo htmlspecialchars($currentCity); ?>">
+                        </div>
+                        <div class="col-sm-6">
+                          <label for="current_district" class="form-label">District</label>
+                          <select class="form-select" id="current_district" name="current_district">
+                            <option value="">Select District</option>
+                            <?php 
+                              $currentDistrictFound = false;
+                              foreach ($districtRecords as $districtRow):
+                                $districtName = $districtRow['district_name'];
+                                $provinceName = $provinceIndex[$districtRow['province_id']] ?? '';
+                                $postalCode = $districtRow['postal_code'] ?? '';
+                                $selected = ($currentDistrict === $districtName) ? 'selected' : '';
+                                if ($selected) {
+                                  $currentDistrictFound = true;
+                                }
+                            ?>
+                              <option value="<?php echo htmlspecialchars($districtName); ?>" data-province="<?php echo htmlspecialchars($provinceName); ?>" data-postal="<?php echo htmlspecialchars($postalCode); ?>" <?php echo $selected; ?>>
+                                <?php echo htmlspecialchars($districtName); ?>
+                              </option>
+                            <?php endforeach; ?>
+                            <?php if (!$currentDistrictFound && !empty($currentDistrict)): ?>
+                              <option value="<?php echo htmlspecialchars($currentDistrict); ?>" data-province="<?php echo htmlspecialchars($currentState); ?>" data-postal="<?php echo htmlspecialchars($currentPostalCode); ?>" selected>
+                                <?php echo htmlspecialchars($currentDistrict); ?>
+                              </option>
+                            <?php endif; ?>
+                          </select>
+                        </div>
+                        <div class="col-sm-6">
+                          <label class="form-label">Province / State</label>
+                          <input type="text" class="form-control" id="current_state" name="current_state" placeholder="Select District" value="<?php echo htmlspecialchars($currentState); ?>">
+                        </div>
+                        <div class="col-sm-6">
+                          <label class="form-label">Postal Code</label>
+                          <input type="text" class="form-control" id="current_postal_code" name="current_postal_code" placeholder="Postal Code" value="<?php echo htmlspecialchars($currentPostalCode); ?>">
+                        </div>
+                        <div class="col-sm-6">
+                          <label class="form-label">Country</label>
+                          <?php if (!empty($countryRecords)): ?>
+                          <select class="form-select" id="current_country" name="current_country">
+                            <?php foreach ($countryRecords as $c):
+                              $cName = $c['name'] ?? $c['country_name'] ?? $c['country'] ?? '';
+                              if (preg_match('/^([A-Za-z]{2})[\s:.-]+(.+)$/u', trim($cName), $m)) {
+                                $displayName = $m[2];
+                              } else {
+                                $displayName = $cName;
+                              }
+                              $selected = ($currentCountry === $cName) || (empty($currentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              // flags removed — only show country names
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($displayName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                          <?php else:
+                            $fallbackCountries = ['Nepal','India','United States','United Kingdom','Pakistan','Bangladesh','China','Japan','Australia','Canada'];
+                          ?>
+                          <select class="form-select" id="current_country" name="current_country">
+                            <?php foreach ($fallbackCountries as $cName):
+                              $selected = ($currentCountry === $cName) || (empty($currentCountry) && strtolower($cName) === 'nepal') ? 'selected' : '';
+                              // flags removed — only show country names
+                            ?>
+                              <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($cName); ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <input type="text" class="form-control mt-1" id="machId" name="machId" value="<?php echo htmlspecialchars($machId); ?>" autofocus>
               </div>
-              <div class="col-md-8">
-                <label for="empBranch" class="form-label">Branch <span class="text-danger">*</span></label>
-                <select class="form-select" id="empBranch" name="empBranch" required>
-                  <option value="" disabled <?php echo empty($empBranchId) ? 'selected' : ''; ?>>Select a Branch</option>
-                  <?php 
-                    $branchQuery = "SELECT DISTINCT id, name FROM branches";
-                    $stmt = $pdo->query($branchQuery);
-                    while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $empBranchId) ? 'selected' : ''; 
-                      echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
-                    }
-                  ?>
-                </select>
-              </div>
-            </div>
-            
-            <div class="row mb-3">
-              <div class="col-md-4">
-                <label for="empFirstName" class="form-label">First Name <span class="text-danger">*</span></label>
-                <input type="text" class="form-control text-capitalize" id="empFirstName" name="empFirstName" required value="<?php echo htmlspecialchars($empFirstName); ?>">
-              </div>
-              <div class="col-md-4">
-                <label for="empMiddleName" class="form-label">Middle Name</label>
-                <input type="text" class="form-control text-capitalize" id="empMiddleName" name="empMiddleName" value="<?php echo htmlspecialchars($empMiddleName); ?>">
-              </div>
-              <div class="col-md-4">
-                <label for="empLastName" class="form-label">Last Name <span class="text-danger">*</span></label>
-                <input type="text" class="form-control text-capitalize" id="empLastName" name="empLastName" required value="<?php echo htmlspecialchars($empLastName); ?>">
-              </div>
-            </div>
 
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="dob" class="form-label">Date of Birth</label>
-                <input type="date" class="form-control" id="dob" name="dob" value="<?php echo htmlspecialchars($dob); ?>">
-              </div>
-              <div class="col-md-6">
-                <label for="gender" class="form-label">Gender <span class="text-danger">*</span></label>
-                <select class="form-select" id="gender" name="gender" required>
-                  <option value="" disabled <?php echo empty($gender) ? 'selected' : ''; ?>>Select a Gender</option>
-                  <option value="M" <?php echo ($gender === 'M') ? 'selected' : ''; ?>>Male</option>
-                  <option value="F" <?php echo ($gender === 'F') ? 'selected' : ''; ?>>Female</option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="empPhone" class="form-label">Personal Phone <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="empPhone" name="empPhone" required 
-                       pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign" 
-                       value="<?php echo htmlspecialchars($empPhone); ?>">
-              </div>
-              <div class="col-md-6">
-                <label for="office_phone" class="form-label">Office Phone</label>
-                <input type="text" class="form-control" id="office_phone" name="office_phone" 
-                       pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign" 
-                       value="<?php echo htmlspecialchars($officePhone); ?>">
-              </div>
-            </div>
-            
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="empEmail" class="form-label">Personal Email <span class="text-danger">*</span></label>
-                <input type="email" class="form-control" id="empEmail" name="empEmail" required value="<?php echo htmlspecialchars($empEmail); ?>">
-              </div>
-              <div class="col-md-6">
-                <label for="office_email" class="form-label">Office Email</label>
-                <input type="email" class="form-control" id="office_email" name="office_email" value="<?php echo htmlspecialchars($officeEmail); ?>">
-              </div>
-            </div>
-            
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="empHireDate" class="form-label">Hire Date <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" id="empHireDate" name="empHireDate" required 
-                       value="<?php echo date('Y-m-d'); ?>" readonly
-                       title="Hire date is automatically set to today's date">
-              </div>
-              <div class="col-md-6">
-                <label for="empJoinDate" class="form-label">Join Date (Start Working)</label>
-                <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" 
-                       value="<?php echo $empJoinDate; ?>" 
-                       min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
-                       max="<?php echo date('Y-m-d', strtotime('15 days')); ?>"
-                       title="Date when employee actually started working (can be updated later)">
-              </div>
-            </div>
-
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="work_start_time" class="form-label">Work Start Time</label>
-                <input type="time" class="form-control" id="work_start_time" name="work_start_time" value="<?php echo htmlspecialchars($_GET['work_start_time'] ?? '09:00'); ?>">
-              </div>
-              <div class="col-md-6">
-                <label for="work_end_time" class="form-label">Work End Time</label>
-                <input type="time" class="form-control" id="work_end_time" name="work_end_time" value="<?php echo htmlspecialchars($_GET['work_end_time'] ?? '18:00'); ?>">
-              </div>
-            </div>
-            
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="designation" class="form-label">Designation <span class="text-danger">*</span></label>
-                <select class="form-select" id="designation" name="designation" required>
-                  <option value="" disabled <?php echo empty($designationId) ? 'selected' : ''; ?>>Select a Designation</option>
-                  <?php 
-                    $designationQuery = "SELECT id, title FROM designations ORDER BY title";
-                    $stmt = $pdo->query($designationQuery);
-                    while ($row = $stmt->fetch()) {
-                      $selected = ($row['id'] == $designationId) ? 'selected' : ''; 
-                      echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
-                    }
-                  ?>
-                </select>
-              </div>
-            </div>
-
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="role" class="form-label">Role <span class="text-danger">*</span></label>
-                <select class="form-select" id="role" name="role" required>
-                  <option value="" disabled <?php echo empty($role) ? 'selected' : ''; ?>>Select a Role</option>
-                  <?php 
-                    $roleQuery = "SELECT id, name FROM roles ORDER BY name"; // Assuming you have a 'roles' table
-                    $stmtRole = $pdo->query($roleQuery);
-                    while ($rowRole = $stmtRole->fetch()) {
-                      $selectedRole = ($rowRole['id'] == $role) ? 'selected' : ''; 
-                      echo "<option value='{$rowRole['id']}' $selectedRole>{$rowRole['name']}</option>";
-                    }
-                  ?>
-                </select>
-              </div>
-              <div class="col-md-6">
-                <label for="supervisor" class="form-label">Direct Supervisor</label>
-                <select class="form-select" id="supervisor" name="supervisor_id">
-                  <option value="">-- No Supervisor --</option>
-                  <?php 
-                    $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
-                                       FROM employees 
-                                       WHERE exit_date IS NULL AND login_access = 1 
-                                       ORDER BY first_name, last_name";
-                    $stmtSupervisor = $pdo->query($supervisorQuery);
-                    while ($rowSupervisor = $stmtSupervisor->fetch()) {
-                      $selectedSupervisor = ($rowSupervisor['emp_id'] == $supervisor_id) ? 'selected' : '';
-                      echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
-                    }
-                  ?>
-                </select>
-              </div>
-            </div>
-
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label for="department" class="form-label">Department</label>
-                <select class="form-select" id="department" name="department_id">
-                  <option value="">-- Select Department --</option>
-                  <?php 
-                    $departmentQuery = "SELECT id, name FROM departments ORDER BY name";
-                    $stmtDepartment = $pdo->query($departmentQuery);
-                    while ($rowDepartment = $stmtDepartment->fetch()) {
-                      $selectedDepartment = ($rowDepartment['id'] == $department_id) ? 'selected' : '';
-                      echo "<option value='{$rowDepartment['id']}' $selectedDepartment>{$rowDepartment['name']}</option>";
-                    }
-                  ?>
-                </select>
-              </div>
-              <div class="col-md-6">
-                <label for="login_access" class="form-label">Login Access <span class="text-danger">*</span></label>
-                <select class="form-select" id="login_access" name="login_access" required>
-                  <option value="" disabled <?php echo empty($loginAccess) ? 'selected' : ''; ?>>Select Login Access</option>
-                  <option value="1" <?php echo ($loginAccess === '1') ? 'selected' : ''; ?>>Granted</option>
-                  <option value="0" <?php echo ($loginAccess === '0') ? 'selected' : ''; ?>>Denied</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <label class="form-label">Web Check-In/Checkout</label>
-                <div class="form-check form-switch mt-2">
-                  <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo $allowWebAttendancePrefill ? 'checked' : ''; ?>>
-                  <label class="form-check-label" for="allow_web_attendance">Allow</label>
+              <div class="tab-pane fade" id="tab-academic" role="tabpanel" aria-labelledby="academic-tab">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                  <div>
+                    <h5 class="fw-semibold mb-1">Academic Information</h5>
+                    <p class="text-muted small mb-0">Maintain a history of the employee's education.</p>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-academic">
+                    <i class="fas fa-plus me-1"></i>Add Record
+                  </button>
                 </div>
-                <small class="text-muted">Leave disabled for employees who must rely on biometric devices only.</small>
+                <div id="academicEntries" class="d-flex flex-column gap-3">
+                  <?php
+                    $academicRows = [[]];
+                    foreach ($academicRows as $record) {
+                      include __DIR__ . '/partials/academic-row.php';
+                    }
+                  ?>
+                </div>
+                <template id="academicRowTemplate">
+                  <?php $record = []; include __DIR__ . '/partials/academic-row.php'; ?>
+                </template>
+              </div>
+
+              <div class="tab-pane fade" id="tab-experience" role="tabpanel" aria-labelledby="experience-tab">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                  <div>
+                    <h5 class="fw-semibold mb-1">Experience History</h5>
+                    <p class="text-muted small mb-0">Track prior assignments for better onboarding.</p>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-experience">
+                    <i class="fas fa-plus me-1"></i>Add Experience
+                  </button>
+                </div>
+                <div id="experienceEntries" class="d-flex flex-column gap-3">
+                  <?php
+                    $experienceRows = [[]];
+                    foreach ($experienceRows as $record) {
+                      include __DIR__ . '/partials/experience-row.php';
+                    }
+                  ?>
+                </div>
+                <template id="experienceRowTemplate">
+                  <?php $record = []; include __DIR__ . '/partials/experience-row.php'; ?>
+                </template>
+              </div>
+
+              <div class="tab-pane fade" id="tab-assignment" role="tabpanel" aria-labelledby="assignment-tab">
+                <h5 class="fw-semibold mb-3">Assigned Details</h5>
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <div class="d-flex justify-content-between align-items-center">
+                      <label for="machId" class="form-label mb-0">Machine ID</label>
+                      <div class="form-check form-check-inline m-0 small">
+                        <input class="form-check-input" type="checkbox" id="machIdNotApplicable" name="mach_id_not_applicable" value="1" <?php echo $machIdNotApplicablePrefill ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="machIdNotApplicable">Not Applicable</label>
+                      </div>
+                    </div>
+                    <input type="text" class="form-control mt-1" id="machId" name="machId" value="<?php echo htmlspecialchars($machId); ?>" autofocus>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="empBranchId" class="form-label">Branch <span class="text-danger">*</span></label>
+                    <select class="form-select" id="empBranchId" name="empBranchId" required>
+                      <option value="" disabled <?php echo empty($empBranchId) ? 'selected' : ''; ?>>Select a Branch</option>
+                      <?php 
+                        if ($pdo instanceof PDO) {
+                          $branchQuery = "SELECT DISTINCT id, name FROM branches";
+                          $stmt = $pdo->query($branchQuery);
+                          while ($row = $stmt->fetch()) {
+                            $selected = ($row['id'] == $empBranchId) ? 'selected' : '';
+                            echo "<option value='{$row['id']}' $selected>{$row['name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
+                        }
+                      ?>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="empHireDate" class="form-label">Hire Date <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="empHireDate" name="empHireDate" required 
+                           value="<?php echo htmlspecialchars($empHireDate ?: date('Y-m-d')); ?>" readonly
+                           title="Hire date is automatically set to today's date">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="empJoinDate" class="form-label">Join Date (Start Working)</label>
+                    <input type="date" class="form-control" id="empJoinDate" name="empJoinDate" 
+                           value="<?php echo htmlspecialchars($empJoinDate); ?>" 
+                           min="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" 
+                           max="<?php echo date('Y-m-d', strtotime('15 days')); ?>"
+                           title="Date when employee actually started working (can be updated later)">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="work_start_time" class="form-label">Work Start Time</label>
+                    <input type="time" class="form-control" id="work_start_time" name="work_start_time" value="<?php echo htmlspecialchars($_GET['work_start_time'] ?? '09:00'); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="work_end_time" class="form-label">Work End Time</label>
+                    <input type="time" class="form-control" id="work_end_time" name="work_end_time" value="<?php echo htmlspecialchars($_GET['work_end_time'] ?? '18:00'); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="office_phone" class="form-label">Office Phone</label>
+                    <input type="text" class="form-control" id="office_phone" name="office_phone"
+                           pattern="^\+?[0-9]*$" title="Phone number can contain only numbers and the + sign"
+                           value="<?php echo htmlspecialchars($officePhone); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="office_email" class="form-label">Office Email</label>
+                    <input type="email" class="form-control" id="office_email" name="office_email" value="<?php echo htmlspecialchars($officeEmail); ?>">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="designationId" class="form-label">Designation <span class="text-danger">*</span></label>
+                    <select class="form-select" id="designationId" name="designationId" required>
+                      <option value="" disabled <?php echo empty($designationId) ? 'selected' : ''; ?>>Select a Designation</option>
+                      <?php 
+                        if ($pdo instanceof PDO) {
+                          $designationQuery = "SELECT id, title FROM designations ORDER BY title";
+                          $stmt = $pdo->query($designationQuery);
+                          while ($row = $stmt->fetch()) {
+                            $selected = ($row['id'] == $designationId) ? 'selected' : '';
+                            echo "<option value='{$row['id']}' $selected>{$row['title']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
+                        }
+                      ?>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="role" class="form-label">Role <span class="text-danger">*</span></label>
+                    <select class="form-select" id="role" name="role" required>
+                      <option value="" disabled <?php echo empty($role) ? 'selected' : ''; ?>>Select a Role</option>
+                      <?php 
+                        if ($pdo instanceof PDO) {
+                          $roleQuery = "SELECT id, name FROM roles ORDER BY name";
+                          $stmtRole = $pdo->query($roleQuery);
+                          while ($rowRole = $stmtRole->fetch()) {
+                            $selectedRole = ($rowRole['id'] == $role) ? 'selected' : '';
+                            echo "<option value='{$rowRole['id']}' $selectedRole>{$rowRole['name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
+                        }
+                      ?>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="supervisor" class="form-label">Direct Supervisor</label>
+                    <select class="form-select" id="supervisor" name="supervisor_id">
+                      <option value="">-- No Supervisor --</option>
+                      <?php 
+                        if ($pdo instanceof PDO) {
+                          $supervisorQuery = "SELECT emp_id, CONCAT(first_name, ' ', last_name, ' (', emp_id, ')') as supervisor_name 
+                                             FROM employees 
+                                             WHERE exit_date IS NULL AND login_access = 1 
+                                             ORDER BY first_name, last_name";
+                          $stmtSupervisor = $pdo->query($supervisorQuery);
+                          while ($rowSupervisor = $stmtSupervisor->fetch()) {
+                            $selectedSupervisor = ($rowSupervisor['emp_id'] == $supervisor_id) ? 'selected' : '';
+                            echo "<option value='{$rowSupervisor['emp_id']}' $selectedSupervisor>{$rowSupervisor['supervisor_name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
+                        }
+                      ?>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="department" class="form-label">Department</label>
+                    <select class="form-select" id="department" name="department_id">
+                      <option value="">-- Select Department --</option>
+                      <?php 
+                        if ($pdo instanceof PDO) {
+                          $departmentQuery = "SELECT id, name FROM departments ORDER BY name";
+                          $stmtDepartment = $pdo->query($departmentQuery);
+                          while ($rowDepartment = $stmtDepartment->fetch()) {
+                            $selectedDepartment = ($rowDepartment['id'] == $department_id) ? 'selected' : '';
+                            echo "<option value='{$rowDepartment['id']}' $selectedDepartment>{$rowDepartment['name']}</option>";
+                          }
+                        } else {
+                          echo '<option value="" disabled>Connection unavailable</option>';
+                        }
+                      ?>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="login_access" class="form-label">Login Access <span class="text-danger">*</span></label>
+                    <select class="form-select" id="login_access" name="login_access" required>
+                      <option value="" disabled <?php echo $loginAccess === '' ? 'selected' : ''; ?>>Select Login Access</option>
+                      <option value="1" <?php echo ($loginAccess === '1') ? 'selected' : ''; ?>>Granted</option>
+                      <option value="0" <?php echo ($loginAccess === '0') ? 'selected' : ''; ?>>Denied</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between">
+                      <label class="form-label mb-0">Web Check-In/Checkout</label>
+                      <div class="form-check form-switch m-0">
+                        <input class="form-check-input" type="checkbox" id="allow_web_attendance" name="allow_web_attendance" value="1" <?php echo $allowWebAttendancePrefill ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="allow_web_attendance">Allow</label>
+                      </div>
+                    </div>
+                    <small class="text-muted d-block mt-1">Leave disabled for employees who must rely on biometric devices only.</small>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          
+
           <div class="col-md-4">
             <div class="text-center mb-3">
               <div class="position-relative d-inline-block">
@@ -469,8 +971,290 @@ require_once __DIR__ . '/../../includes/header.php';
 </div>
 
 <!-- Image Crop Modal -->
+<style>
+#cropModal .modal-dialog {
+  max-width: min(1024px, calc(100vw - 2rem));
+}
+#cropModal .modal-content {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: #1b1d25;
+  color: #f2f2f2;
+}
+#cropModal .modal-header,
+#cropModal .modal-footer {
+  border-color: rgba(255,255,255,0.08);
+}
+#cropModal .img-container {
+  width: 100%;
+  min-height: 460px;
+  max-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d0f16;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+#cropModal .img-container img {
+  max-width: 100%;
+  max-height: 100%;
+}
+#cropModal .img-controls {
+  display: flex;
+  flex-direction: column;
+}
+#cropModal .control-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(15,17,25,0.92), rgba(13,15,22,0.85));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+}
+#cropModal .control-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.15rem;
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(15,17,25,0.92), rgba(13,15,22,0.85));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+}
+#cropModal .control-panel .control-row {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}
+#cropModal .control-row.control-row--primary {
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+#cropModal .control-row--primary .control-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 180px;
+}
+#cropModal .control-row--primary .control-cluster .control-pair {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: center;
+}
+#cropModal .control-row--primary .control-cluster--left .control-pair {
+  justify-content: flex-start;
+}
+#cropModal .control-row--primary .control-cluster--right .control-pair {
+  justify-content: flex-end;
+}
+#cropModal .control-row--primary .control-btn.control-btn-primary {
+  min-width: 120px;
+  align-self: center;
+}
+@media (max-width: 768px) {
+  #cropModal .control-row.control-row--primary {
+    flex-direction: column;
+  }
+  #cropModal .control-row--primary .control-cluster,
+  #cropModal .control-row--primary .control-pair {
+    align-items: center;
+    justify-content: center !important;
+  }
+  #cropModal .control-row--primary .control-btn.control-btn-primary {
+    width: 100%;
+    margin: 0;
+  }
+}
+#cropModal .control-row.control-row--secondary {
+  background: linear-gradient(135deg, rgba(15,17,25,0.75), rgba(13,15,22,0.65));
+  border-style: dashed;
+  border-color: rgba(255,255,255,0.12);
+}
+#cropModal .control-row.control-row--slider {
+  border-radius: 22px;
+  padding: 0.5rem;
+}
+#cropModal .control-row--slider .control-btn {
+  min-width: 72px;
+  height: 46px;
+}
+#cropModal .control-btn {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #f7f7f7;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+#cropModal .control-btn.control-btn-icon {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+#cropModal .control-btn:hover {
+  border-color: rgba(138,92,246,0.65);
+  background: rgba(138,92,246,0.08);
+}
+#cropModal .control-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.6);
+  margin-right: 0.35rem;
+}
+#cropModal .rotation-scale {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  --rotation-shift: 0px;
+  --tick-unit: 14px;
+  --sequence-width: calc(var(--tick-unit) * 10);
+  --half-sequence: calc(var(--tick-unit) * 5);
+  --long-height: 24px;
+  --mid-height: 18px;
+  --short-height: 11px;
+  /* backdrop-filter: blur(12px); */
+  /* overflow: hidden; */
+}
+#cropModal .rotation-scale .rotation-ruler {
+  position: relative;
+  width: 100%;
+  height: 34px;
+  overflow: hidden;
+}
+#cropModal .rotation-scale .rotation-ruler::before {
+  content: '';
+  position: absolute;
+  inset: 6px 4%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0) 100%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+#cropModal .rotation-scale .tick-track {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 50%;
+  height: var(--long-height);
+  transform: translateY(-50%);
+  pointer-events: none;
+  background-repeat: repeat-x, repeat-x, repeat-x;
+  background-image:
+    linear-gradient(90deg, rgba(255,255,255,0.85) 0 2px, transparent 2px),
+    linear-gradient(90deg, rgba(255,255,255,0.65) 0 2px, transparent 2px),
+    linear-gradient(90deg, rgba(255,255,255,0.45) 0 2px, transparent 2px);
+  background-size:
+    var(--sequence-width) var(--long-height),
+    var(--sequence-width) var(--mid-height),
+    var(--tick-unit) var(--short-height);
+  background-position:
+    calc(50% + var(--rotation-shift)) center,
+    calc(50% + var(--rotation-shift) + var(--half-sequence)) center,
+    calc(50% + var(--rotation-shift)) center;
+  opacity: 0.85;
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 2px;
+  background: rgba(255,255,255,0.4);
+  transform: translateY(-50%);
+  z-index: 0;
+  box-shadow: 0 0 8px rgba(255,255,255,0.2);
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-mid {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 2px;
+  background: rgba(255,255,255,0.95);
+  transform: translateX(-50%);
+  box-shadow: 0 0 14px rgba(255,255,255,0.35);
+  z-index: 1;
+}
+#cropModal .rotation-scale .rotation-ruler .ruler-base {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 6px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.35), rgba(255,255,255,0));
+  opacity: 0.7;
+  z-index: 0;
+}
+#cropModal .rotation-scale input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  appearance: none;
+  background: transparent;
+  z-index: 2;
+  cursor: pointer;
+}
+#cropModal .rotation-scale input[type="range"]:focus {
+  outline: none;
+}
+#cropModal .rotation-scale input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+#cropModal .rotation-scale input[type="range"]::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+#cropModal .rotation-scale input[type="range"]::-webkit-slider-runnable-track,
+#cropModal .rotation-scale input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: transparent;
+}
+#cropModal .rotation-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.85);
+  min-width: 54px;
+  text-align: center;
+  position: absolute;
+  top: -1.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#cropModal #cropWarning {
+  flex: 1;
+}
+</style>
 <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="cropModalLabel">Crop Image</h5>
@@ -480,10 +1264,48 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="img-container">
           <img id="imageToCrop" src="" alt="Image to Crop" style="max-width: 100%;">
         </div>
+        <div class="img-controls">
+          <div class="control-panel" role="group" aria-label="Crop controls">
+            <div class="control-row control-row--slider" role="group" aria-label="Rotation fine control">
+              <button type="button" class="control-btn" id="nudgeRotateLeft" title="Rotate left 5°">↺ 5°</button>
+              <div class="rotation-scale" aria-hidden="false">
+                <span class="rotation-value" id="rotationValue">0°</span>
+                <div class="rotation-ruler" aria-hidden="true">
+                  <span class="tick-track" aria-hidden="true"></span>
+                  <span class="ruler-line" aria-hidden="true"></span>
+                  <span class="ruler-mid" aria-hidden="true"></span>
+                  <span class="ruler-base" aria-hidden="true"></span>
+                  <input type="range" id="rotateSlider" min="-180" max="180" step="1" value="0" aria-label="Rotation" />
+                </div>
+              </div>
+              <button type="button" class="control-btn" id="nudgeRotateRight" title="Rotate right 5°">↻ 5°</button>
+            </div>
+            <div class="control-row control-row--primary" role="toolbar" aria-label="Primary crop toolbar">
+                <div class="control-pair" role="group" aria-label="90 degree rotation">
+                  <button type="button" class="control-btn control-btn-icon" id="rotateLeft" title="Rotate left 90°">⟲</button>
+                  <button type="button" class="control-btn control-btn-icon" id="rotateRight" title="Rotate right 90°">⟳</button>
+                </div>
+                <div class="control-pair" role="group" aria-label="Zoom controls">
+                  <button type="button" class="control-btn control-btn-icon" id="zoomOut" title="Zoom out">🔍−</button>
+                  <button type="button" class="control-btn control-btn-icon" id="zoomIn" title="Zoom in">🔍+</button>
+                </div>
+              <button type="button" class="control-btn control-btn-primary" id="resetCrop" title="Reset crop">Reset</button>
+                <div class="control-pair" role="group" aria-label="Fit and aspect">
+                  <button type="button" class="control-btn" id="fitCrop" title="Fit to frame">⤢</button>
+                  <button type="button" class="control-btn" id="oneToOne" title="1:1 Aspect Ratio">1 : 1</button>
+                </div>
+                <div class="control-pair" role="group" aria-label="Flip controls">
+                  <button type="button" class="control-btn" id="flipHorizontal" title="Flip horizontally">⇋</button>
+                  <button type="button" class="control-btn" id="flipVertical" title="Flip vertically">⇅</button>
+                </div>
+              </div>
+          </div>
+            <div id="cropWarning" class="text-danger small" style="display:none;">Invalid image (allowed: png/jpeg/webp, max 5MB)</div>
+          </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="cropButton">Crop & Save</button>
+        <button type="button" class="btn btn-primary" id="cropButton" disabled>Crop & Save</button>
       </div>
     </div>
   </div>
@@ -495,11 +1317,182 @@ require_once __DIR__ . '/../../includes/header.php';
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
 
 <script>
+// Disable Web Check-In unless login access is granted
+(() => {
+  const loginSelect = document.getElementById('login_access');
+  const webToggle = document.getElementById('allow_web_attendance');
+  if (!loginSelect || !webToggle) return;
+  const sync = () => {
+    const granted = loginSelect.value === '1';
+    webToggle.disabled = !granted;
+    if (!granted) {
+      webToggle.checked = false;
+    }
+  };
+  loginSelect.addEventListener('change', sync);
+  sync();
+})();
+
 let cropper;
+let cropperResizeTimeout;
+let flipX = 1;
+let flipY = 1;
+let rotationAngle = 0;
+
+const rotationSlider = document.getElementById('rotateSlider');
+const rotationValue = document.getElementById('rotationValue');
+const rotationScale = document.querySelector('#cropModal .rotation-scale');
+
+const setRotationShift = (angle) => {
+  if (!rotationScale) {
+    return;
+  }
+  // Recompute tick sizing so 3 long-ticks map to one side (180°) -> 6 long ticks across full track
+  const trackPct = 0.92; // left:4% right:4% earlier in CSS
+  const trackWidth = rotationScale.clientWidth * trackPct;
+  // We want 6 long ticks across full width -> each long spacing is trackWidth / 6
+  const longSpacing = Math.max(28, trackWidth / 6); // enforce a minimum so ticks stay visible
+  const tickUnit = longSpacing / 10; // pattern consists of 10 units: long + 4 short + mid + 4 short
+  rotationScale.style.setProperty('--tick-unit', `${tickUnit}px`);
+  rotationScale.style.setProperty('--sequence-width', `${longSpacing}px`);
+  rotationScale.style.setProperty('--half-sequence', `${longSpacing / 2}px`);
+
+  // Compute travel limited by sequence and container for a stable visual range
+  const maxBySeq = longSpacing / 2;
+  const maxByContainer = rotationScale.clientWidth * 0.4;
+  const travel = Math.min(maxBySeq, maxByContainer);
+  let clamped = Math.max(-180, Math.min(180, angle));
+  let shift = (clamped / 180) * travel;
+  // Ensure we never exceed visual travel bounds
+  shift = Math.max(-travel, Math.min(travel, shift));
+  rotationScale.style.setProperty('--rotation-shift', `${shift}px`);
+};
+
+const setRotationDisplay = (angle) => {
+  // Always work with a normalized/clamped value for display and visuals
+  const clamped = normalizeAngle(Number(angle));
+  if (rotationSlider) {
+    rotationSlider.value = clamped;
+  }
+  if (rotationValue) {
+    rotationValue.textContent = `${clamped}°`;
+  }
+  setRotationShift(clamped);
+  // Disable/enable nudge buttons at limits
+  const leftBtn = document.getElementById('nudgeRotateLeft');
+  const rightBtn = document.getElementById('nudgeRotateRight');
+  if (leftBtn) leftBtn.disabled = angle <= -180;
+  if (rightBtn) rightBtn.disabled = angle >= 180;
+};
+
+const normalizeAngle = (angle) => {
+  if (Number.isNaN(angle)) {
+    return 0;
+  }
+  return Math.max(-180, Math.min(180, angle));
+};
+
+const updateRotation = (angle) => {
+  rotationAngle = normalizeAngle(angle);
+  setRotationDisplay(rotationAngle);
+  if (!cropper) {
+    return;
+  }
+  cropper.rotateTo(rotationAngle);
+};
+
+const enforceAspectRatio = () => {
+  if (!cropper) {
+    return;
+  }
+  cropper.setAspectRatio(1);
+};
+
+setRotationDisplay(rotationAngle);
+setRotationShift(rotationAngle);
+window.addEventListener('resize', () => setRotationShift(rotationAngle));
+
+const bindCropperControls = () => {
+  const bind = (id, handler) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.onclick = handler;
+    }
+  };
+
+  const safe = (fn) => () => {
+    if (!cropper) {
+      return;
+    }
+    fn();
+  };
+
+  bind('rotateLeft', safe(() => updateRotation(rotationAngle - 90)));
+  bind('rotateRight', safe(() => updateRotation(rotationAngle + 90)));
+  bind('zoomIn', safe(() => cropper.zoom(0.12)));
+  bind('zoomOut', safe(() => cropper.zoom(-0.12)));
+  bind('flipHorizontal', safe(() => {
+    flipX = -flipX;
+    cropper.scaleX(flipX);
+  }));
+  bind('flipVertical', safe(() => {
+    flipY = -flipY;
+    cropper.scaleY(flipY);
+  }));
+  bind('fitCrop', safe(() => {
+    const canvasData = cropper.getCanvasData();
+    if (!canvasData.width || !canvasData.height) {
+      return;
+    }
+    const size = Math.min(canvasData.width, canvasData.height);
+    cropper.setCropBoxData({
+      left: canvasData.left + (canvasData.width - size) / 2,
+      top: canvasData.top + (canvasData.height - size) / 2,
+      width: size,
+      height: size
+    });
+  }));
+  bind('resetCrop', safe(() => {
+    cropper.reset();
+    flipX = 1;
+    flipY = 1;
+    rotationAngle = 0;
+    updateRotation(0);
+    enforceAspectRatio();
+  }));
+  bind('nudgeRotateLeft', safe(() => updateRotation(rotationAngle - 5)));
+  bind('nudgeRotateRight', safe(() => updateRotation(rotationAngle + 5)));
+  if (rotationSlider) {
+    // Always listen to the slider input/change and update rotation visually.
+    const onSliderChange = (e) => {
+      const raw = parseInt(e.target.value, 10);
+      const val = Number.isNaN(raw) ? 0 : raw;
+      const clamped = normalizeAngle(val);
+      // Ensure the native slider reflects the clamped value (prevents odd behavior in some browsers)
+      e.target.value = clamped;
+      // Update visual/logic regardless of cropper presence.
+      updateRotation(clamped);
+    };
+    rotationSlider.addEventListener('input', onSliderChange);
+    rotationSlider.addEventListener('change', onSliderChange);
+  }
+};
+
+bindCropperControls();
 
 function previewImage(event) {
   const file = event.target.files[0];
-  if (file) {
+    if (file) {
+      // Validate size / type
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      const allowed = ['image/jpeg','image/png','image/webp'];
+      const warningEl = document.getElementById('cropWarning');
+      if (!allowed.includes(file.type) || file.size > maxSize) {
+        if (warningEl) { warningEl.style.display = 'inline'; }
+        alert('Image must be PNG/JPEG/WEBP and <= 5MB');
+        return;
+      }
+      if (warningEl) { warningEl.style.display = 'none'; }
     const reader = new FileReader();
     reader.onload = function(e) {
       document.getElementById('imageToCrop').src = e.target.result;
@@ -514,14 +1507,28 @@ function previewImage(event) {
       // Initialize cropper
       cropper = new Cropper(document.getElementById('imageToCrop'), {
         aspectRatio: 1,
-        viewMode: 1,
-        autoCropArea: 1,
+        viewMode: 2,
+        autoCropArea: 0.85,
         responsive: true,
         guides: true,
-        highlight: true,
+        highlight: false,
+        background: false,
         cropBoxMovable: true,
-        cropBoxResizable: true
+        cropBoxResizable: true,
+        minCropBoxWidth: 220,
+        minCropBoxHeight: 220,
+        minContainerWidth: 600,
+        minContainerHeight: 430
       });
+      flipX = 1;
+      flipY = 1;
+      rotationAngle = 0;
+      cropper.scaleX(flipX);
+      cropper.scaleY(flipY);
+      updateRotation(0);
+      enforceAspectRatio();
+      // Enable controls
+      document.getElementById('cropButton').disabled = false;
     }
     reader.readAsDataURL(file);
   }
@@ -529,14 +1536,16 @@ function previewImage(event) {
 
 document.getElementById('cropButton').addEventListener('click', function() {
   if (cropper) {
-    const canvas = cropper.getCroppedCanvas({
-      width: 400,
-      height: 400
-    });
-    
+    // Disable crop button while processing
+    const cb = document.getElementById('cropButton');
+    cb.disabled = true;
+    const canvas = cropper.getCroppedCanvas({ width: 400, height: 400 });
+
+    // Export JPEG for smaller size (quality 0.85)
     canvas.toBlob(function(blob) {
       const reader = new FileReader();
       reader.onload = function(e) {
+        // Ensure dataURL is a jpeg to match blob
         document.getElementById('croppedImage').value = e.target.result;
         document.getElementById('photoPreview').src = e.target.result;
         const cropModal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
@@ -545,11 +1554,124 @@ document.getElementById('cropButton').addEventListener('click', function() {
         // Destroy cropper
         cropper.destroy();
         cropper = null;
+        rotationAngle = 0;
+        setRotationDisplay(0);
+        if (cb) cb.disabled = false;
       }
       reader.readAsDataURL(blob);
-    });
+    }, 'image/jpeg', 0.85);
   }
 });
+
+window.addEventListener('resize', () => {
+  if (!cropper) {
+    return;
+  }
+  clearTimeout(cropperResizeTimeout);
+  cropperResizeTimeout = setTimeout(() => {
+    if (!cropper) {
+      return;
+    }
+    const currentData = cropper.getData();
+    cropper.reset();
+    cropper.setData(currentData);
+  }, 150);
+});
+</script>
+<script>
+(function () {
+  const academicContainer = document.getElementById('academicEntries');
+  const academicTemplate = document.getElementById('academicRowTemplate');
+  const experienceContainer = document.getElementById('experienceEntries');
+  const experienceTemplate = document.getElementById('experienceRowTemplate');
+
+  const addAcademicButton = document.querySelector('[data-action="add-academic"]');
+  const addExperienceButton = document.querySelector('[data-action="add-experience"]');
+
+  const cloneTemplate = (template) => {
+    if (!template || !template.content.firstElementChild) {
+      return null;
+    }
+    return template.content.firstElementChild.cloneNode(true);
+  };
+
+  const appendRepeatable = (container, template) => {
+    if (!container) {
+      return null;
+    }
+    const node = cloneTemplate(template);
+    if (node) {
+      container.appendChild(node);
+    }
+    return node;
+  };
+
+  const getExperienceRepeatables = (scope) => {
+    if (!scope) {
+      return [];
+    }
+    if (scope.classList && scope.classList.contains('profile-repeatable') && scope.dataset.repeatable === 'experience') {
+      return [scope];
+    }
+    return scope.querySelectorAll ? scope.querySelectorAll('.profile-repeatable[data-repeatable="experience"]') : [];
+  };
+
+  const bindExperienceSwitches = (scope) => {
+    const repeatables = getExperienceRepeatables(scope);
+    repeatables.forEach((entry) => {
+      const checkbox = entry.querySelector('.experience-current-checkbox');
+      const hiddenField = entry.querySelector('.experience-current-hidden');
+      const endDateField = entry.querySelector('.experience-end-date');
+      if (!checkbox || !hiddenField) {
+        return;
+      }
+
+      const syncState = () => {
+        hiddenField.value = checkbox.checked ? '1' : '0';
+        if (endDateField) {
+          if (checkbox.checked) {
+            endDateField.value = '';
+            endDateField.setAttribute('disabled', 'disabled');
+          } else {
+            endDateField.removeAttribute('disabled');
+          }
+        }
+      };
+
+      checkbox.removeEventListener('change', checkbox._experienceStateHandler || (() => {}));
+      checkbox._experienceStateHandler = syncState;
+      checkbox.addEventListener('change', syncState);
+      syncState();
+    });
+  };
+
+  const removeRepeatable = (trigger) => {
+    const wrapper = trigger.closest('.profile-repeatable');
+    if (wrapper) {
+      wrapper.remove();
+    }
+  };
+
+  addAcademicButton?.addEventListener('click', () => {
+    appendRepeatable(academicContainer, academicTemplate);
+  });
+
+  addExperienceButton?.addEventListener('click', () => {
+    const node = appendRepeatable(experienceContainer, experienceTemplate);
+    if (node) {
+      bindExperienceSwitches(node);
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-action="remove-repeatable"]');
+    if (trigger) {
+      removeRepeatable(trigger);
+    }
+  });
+
+  bindExperienceSwitches(document);
+})();
 </script>
 <script>
 (function(){
@@ -588,6 +1710,329 @@ document.getElementById('cropButton').addEventListener('click', function() {
     document.addEventListener('DOMContentLoaded', initMachIdToggle);
   } else {
     initMachIdToggle();
+  }
+})();
+</script>
+<script>
+(function(){
+  const fieldPairs = [
+    ['permanent_address', 'current_address'],
+    ['permanent_city', 'current_city'],
+    ['permanent_district', 'current_district'],
+    ['permanent_state', 'current_state'],
+    ['permanent_postal_code', 'current_postal_code'],
+    ['permanent_country', 'current_country']
+  ];
+
+  const lockField = (field) => {
+    if(!field || field.type === 'hidden'){
+      return;
+    }
+    if(field.tagName === 'SELECT'){
+      field.setAttribute('disabled', 'disabled');
+    } else {
+      field.setAttribute('readonly', 'readonly');
+    }
+  };
+
+  const unlockField = (field) => {
+    if(!field || field.type === 'hidden'){
+      return;
+    }
+    if(field.tagName === 'SELECT'){
+      field.removeAttribute('disabled');
+    } else {
+      field.removeAttribute('readonly');
+    }
+  };
+
+  const triggerUpdate = (field) => {
+    if(!field){
+      return;
+    }
+    const eventName = field.tagName === 'SELECT' ? 'change' : 'input';
+    field.dispatchEvent(new Event(eventName, { bubbles: true }));
+  };
+
+  function initAddressCopy(){
+    const toggle = document.getElementById('copyPermanentAddress');
+    if(!toggle){
+      return;
+    }
+
+    const getElement = (id) => document.getElementById(id);
+
+    const syncTargets = () => {
+      if(!toggle.checked){
+        fieldPairs.forEach(([_, targetId]) => {
+          const target = getElement(targetId);
+          if(!target){
+            return;
+          }
+          if(Object.prototype.hasOwnProperty.call(target.dataset, 'permanentCache')){
+            target.value = target.dataset.permanentCache;
+            delete target.dataset.permanentCache;
+          }
+          unlockField(target);
+          triggerUpdate(target);
+        });
+        return;
+      }
+
+      fieldPairs.forEach(([sourceId, targetId]) => {
+        const source = getElement(sourceId);
+        const target = getElement(targetId);
+        if(!source || !target){
+          return;
+        }
+        if(!Object.prototype.hasOwnProperty.call(target.dataset, 'permanentCache')){
+          target.dataset.permanentCache = target.value;
+        }
+        target.value = source.value;
+        lockField(target);
+        triggerUpdate(target);
+      });
+    };
+
+    const bindSourceListeners = () => {
+      fieldPairs.forEach(([sourceId, targetId]) => {
+        const source = getElement(sourceId);
+        const target = getElement(targetId);
+        if(!source || !target){
+          return;
+        }
+        const handler = () => {
+          if(toggle.checked){
+            target.value = source.value;
+            triggerUpdate(target);
+          }
+        };
+        const eventName = source.tagName === 'SELECT' ? 'change' : 'input';
+        source.addEventListener(eventName, handler);
+      });
+    };
+
+    toggle.addEventListener('change', syncTargets);
+    bindSourceListeners();
+
+    const autoEnable = fieldPairs.every(([sourceId, targetId]) => {
+      const source = getElement(sourceId);
+      const target = getElement(targetId);
+      if(!source || !target){
+        return false;
+      }
+      return source.value && source.value === target.value;
+    });
+
+    if(autoEnable){
+      toggle.checked = true;
+    }
+
+    syncTargets();
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initAddressCopy);
+  } else {
+    initAddressCopy();
+  }
+})();
+</script>
+<script>
+(function(){
+  function initDistrictProvinceAutoFill(){
+    const configs = [
+      { selectId: 'permanent_district', hiddenId: 'permanent_state', displayId: 'permanent_state', postalHiddenId: 'permanent_postal_code', postalDisplayId: 'permanent_postal_code' },
+      { selectId: 'current_district', hiddenId: 'current_state', displayId: 'current_state', postalHiddenId: 'current_postal_code', postalDisplayId: 'current_postal_code' }
+    ];
+
+    const setDisplay = (el, val) => {
+      if(!el) return;
+      if('value' in el){
+        el.value = val;
+      } else {
+        el.textContent = val || '';
+      }
+    };
+
+    const sync = (config, forceClear = false) => {
+      const select = document.getElementById(config.selectId);
+      const hidden = document.getElementById(config.hiddenId);
+      const display = document.getElementById(config.displayId);
+      const postalHidden = config.postalHiddenId ? document.getElementById(config.postalHiddenId) : null;
+      const postalDisplay = config.postalDisplayId ? document.getElementById(config.postalDisplayId) : null;
+      if(!select || !hidden || !display){
+        return;
+      }
+
+      const option = select.options[select.selectedIndex];
+      if(option && option.value){
+        const province = option.getAttribute('data-province') || '';
+        hidden.value = province;
+        setDisplay(display, province);
+        const postalCode = option.getAttribute('data-postal') || '';
+        if(postalHidden){ postalHidden.value = postalCode; }
+        if(postalDisplay){ setDisplay(postalDisplay, postalCode); }
+      } else if(forceClear) {
+        hidden.value = '';
+        setDisplay(display, '');
+        if(postalHidden){ postalHidden.value = ''; }
+        if(postalDisplay){ setDisplay(postalDisplay, ''); }
+      } else {
+        setDisplay(display, hidden.value || '');
+        if(postalDisplay && postalHidden){ setDisplay(postalDisplay, postalHidden.value || ''); }
+      }
+    };
+
+    configs.forEach((config) => {
+      const select = document.getElementById(config.selectId);
+      if(!select){
+        return;
+      }
+      select.addEventListener('change', () => sync(config, true));
+      sync(config, false);
+    });
+
+    // When country is other than Nepal we want to disable district auto-fill
+    const watchCountry = (countryId, config) => {
+      const countryEl = document.getElementById(countryId);
+      let districtEl = document.getElementById(config.selectId);
+      const stateEl = document.getElementById(config.displayId);
+      const postalEl = document.getElementById(config.postalDisplayId);
+      if(!countryEl || !districtEl) return;
+
+      const apply = () => {
+        const val = (countryEl.value || '').toString().trim().toLowerCase();
+        const isNepal = val === 'nepal' || val === '';
+        if(!isNepal){
+          // disable district selection and allow entering state/postal manually
+          districtEl.setAttribute('disabled','disabled');
+          // clear any placeholder text like 'Select District' that may have been set earlier
+          if(stateEl){
+            stateEl.removeAttribute('readonly');
+            stateEl.value = '';
+            if(stateEl.placeholder === 'Select District'){ stateEl.placeholder = ''; }
+          }
+          if(postalEl){
+            postalEl.removeAttribute('readonly');
+            postalEl.value = '';
+            if(postalEl.placeholder === 'Postal Code'){ postalEl.placeholder = ''; }
+          }
+          // clear district selection as it's not applicable
+          // If district is a select, replace it with a text input (user will type the district)
+          if (districtEl.tagName && districtEl.tagName.toLowerCase() === 'select') {
+            // Save options and the selected option's value/province/postal so we can restore later
+            const optionsHtml = districtEl.innerHTML || '';
+            const selectedValue = districtEl.value || '';
+            const selectedOption = districtEl.options[districtEl.selectedIndex] || null;
+            const selectedProvince = selectedOption ? (selectedOption.getAttribute('data-province') || '') : '';
+            const selectedPostal = selectedOption ? (selectedOption.getAttribute('data-postal') || '') : '';
+            const wrapper = districtEl.parentNode;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control';
+            input.id = districtEl.id;
+            input.name = districtEl.name;
+            input.placeholder = 'District';
+            input.value = '';
+            if (optionsHtml) input.dataset.options = optionsHtml;
+            if (selectedValue) input.dataset.selected = selectedValue;
+            if (selectedProvince) input.dataset.selectedProvince = selectedProvince;
+            if (selectedPostal) input.dataset.selectedPostal = selectedPostal;
+            // save currently selected value so it can be restored when switching back to Nepal
+            if (districtEl.value) input.dataset.selected = districtEl.value;
+            wrapper.replaceChild(input, districtEl);
+            districtEl = document.getElementById(config.selectId);
+          } else {
+            districtEl.value = '';
+          }
+        } else {
+          // enable district and re-sync from district option
+          // If district field is a plain input (manual), restore original select using saved options if present
+          if (districtEl.tagName && districtEl.tagName.toLowerCase() !== 'select') {
+            const wrapper = districtEl.parentNode;
+            const select = document.createElement('select');
+            select.className = 'form-select';
+            select.id = districtEl.id;
+            select.name = districtEl.name;
+            // If previous options were saved on the input, restore them
+            const optionsHtml = districtEl.dataset.options || '';
+            const savedSelected = districtEl.dataset.selected || '';
+            const savedProvince = districtEl.dataset.selectedProvince || '';
+            const savedPostal = districtEl.dataset.selectedPostal || '';
+            if (optionsHtml) {
+              select.innerHTML = optionsHtml;
+              if (savedSelected) {
+                try { select.value = savedSelected; } catch(e) { /* ignore if value not found */ }
+                // If setting value didn't match any option, insert it so it remains selected
+                if (select.selectedIndex === -1) {
+                  const missingOpt = document.createElement('option');
+                  missingOpt.value = savedSelected;
+                  missingOpt.textContent = savedSelected;
+                  if (savedProvince) missingOpt.setAttribute('data-province', savedProvince);
+                  if (savedPostal) missingOpt.setAttribute('data-postal', savedPostal);
+                  missingOpt.selected = true;
+                  select.appendChild(missingOpt);
+                }
+              }
+            } else {
+              // fallback: add a blank placeholder
+              select.innerHTML = '<option value="">Select District</option>';
+            }
+            wrapper.replaceChild(select, districtEl);
+            districtEl = document.getElementById(config.selectId);
+            // attach the change listener (same as initial initialization)
+            districtEl.addEventListener('change', () => sync(config, true));
+          }
+            districtEl.removeAttribute('disabled');
+            // when returning to Nepal, lock state/postal again and ensure they're populated
+            if (stateEl) stateEl.setAttribute('readonly', 'readonly');
+            if (postalEl) postalEl.setAttribute('readonly', 'readonly');
+            // ensure the restored selection updates province/postal fields immediately
+            sync(config, true);
+        }
+      };
+
+      countryEl.addEventListener('change', apply);
+      apply();
+    };
+
+    watchCountry('permanent_country', configs[0]);
+    watchCountry('current_country', configs[1]);
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initDistrictProvinceAutoFill);
+  } else {
+    initDistrictProvinceAutoFill();
+  }
+})();
+</script>
+<script>
+(function(){
+  function initSpouseVisibility(){
+    const maritalSelect = document.getElementById('marital_status');
+    const spouseRow = document.getElementById('spouseFieldWrapper');
+    if(!maritalSelect || !spouseRow){
+      return;
+    }
+
+    const toggleVisibility = () => {
+      if(maritalSelect.value === 'married'){
+        spouseRow.classList.remove('d-none');
+      } else {
+        spouseRow.classList.add('d-none');
+      }
+    };
+
+    maritalSelect.addEventListener('change', toggleVisibility);
+    toggleVisibility();
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initSpouseVisibility);
+  } else {
+    initSpouseVisibility();
   }
 })();
 </script>

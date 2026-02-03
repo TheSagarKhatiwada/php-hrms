@@ -122,24 +122,14 @@ include '../../includes/header.php';
 
 <!-- Main content -->
 <div class="container-fluid p-4">    <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
         <div>
             <h1 class="fs-2 fw-bold mb-1"><i class="fas fa-list me-2"></i>Leave Requests</h1>
         </div>
-        <div class="d-flex gap-2">
-            <a href="index.php" class="btn btn-outline-success">
-                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-            </a>
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
-                <i class="fas fa-plus me-1"></i>New Request
-            </button>
-            <a href="reports.php" class="btn btn-outline-info">
-                <i class="fas fa-chart-bar me-1"></i>Reports
-            </a>
-            <a href="types.php" class="btn btn-outline-secondary">
-                <i class="fas fa-cog me-1"></i>Manage Types
-            </a>
-        </div>
+        <?php
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
     </div>
 
     <?php if (isset($_SESSION['success_message'])): ?>

@@ -78,8 +78,15 @@ if (!function_exists('notify_user')) {
     function notify_system($title, $message, $type = 'info', $notifyAdmins = true) {
         global $pdo;
         
-        // Log the notification
-        error_log("[System Notification] $type: $title - $message");        // If we should notify admins
+        // Log the notification to the application logs directory to avoid polluting output
+        $logDir = __DIR__ . '/../logs';
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0755, true);
+        }
+        $logFile = $logDir . '/system_notifications.log';
+        $logEntry = sprintf('[%s] [System Notification] %s: %s - %s%s', date('c'), strtoupper($type), $title, $message, PHP_EOL);
+        error_log($logEntry, 3, $logFile);
+        // If we should notify admins
         if ($notifyAdmins) {
             try {
                 // Get all admin emp_ids 

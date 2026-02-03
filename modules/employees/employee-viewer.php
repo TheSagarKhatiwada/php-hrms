@@ -1,10 +1,43 @@
 <?php
-$page = 'employee';
-include '../../includes/header.php';
-include '../../includes/db_connection.php';
-
-// Include hierarchy helpers
+require_once '../../includes/session_config.php';
+require_once '../../includes/utilities.php';
+require_once '../../includes/configuration.php';
+require_once '../../includes/db_connection.php';
 require_once '../../includes/hierarchy_helpers.php';
+
+$page = 'employee';
+
+$canManageEmployees = is_admin() || has_permission('manage_employees');
+$hasAllBranchAccessPermission = $canManageEmployees || has_permission('access_all_branch_employee');
+$canViewEmployees = $hasAllBranchAccessPermission || has_permission('view_employees');
+
+if (!$canViewEmployees) {
+  header('Location: ../../dashboard.php');
+  exit();
+}
+
+$limitToUserBranch = !$hasAllBranchAccessPermission;
+$viewerBranchContext = ['legacy' => null, 'numeric' => null];
+
+if ($limitToUserBranch && isset($_SESSION['user_id'])) {
+  try {
+    $branchLookup = $pdo->prepare("SELECT branch, branch_id FROM employees WHERE emp_id = :emp_id LIMIT 1");
+    $branchLookup->execute([':emp_id' => $_SESSION['user_id']]);
+    $branchRow = $branchLookup->fetch(PDO::FETCH_ASSOC);
+    if ($branchRow) {
+      $viewerBranchContext = hrms_resolve_branch_assignment($branchRow['branch'] ?? null, $branchRow['branch_id'] ?? null);
+    }
+  } catch (PDOException $e) {
+    // Leave branch context empty so access remains restricted if lookup fails
+  }
+}
+
+$empId = $_GET['empId'] ?? '';
+
+if (empty($empId)) {
+  header("Location: employees.php");
+  exit();
+}
 
 // Handle password reset request
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password']) && isset($_POST['confirm_password']) && isset($_POST['emp_id'])) {
@@ -28,13 +61,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password']) && iss
     }
 }
 
-// Get empId from the query parameter
-$empId = $_GET['empId'] ?? '';
+// Reuse $empId from query parameter
 $transferHistory = [];
+$academicRecords = [];
+$experienceRecords = [];
 
 // Fetch employee details from the database
 if ($empId) {
-    $stmt = $pdo->prepare("SELECT e.*, b.name AS branch_name, d.title AS designation_title, r.name AS role_name, dept.name AS department_name
+  $stmt = $pdo->prepare("SELECT e.*, b.name AS branch_name, d.title AS designation_title, r.name AS role_name, dept.name AS department_name
                          FROM employees e 
                          INNER JOIN branches b ON e.branch_id = b.id 
                          LEFT JOIN designations d ON e.designation_id = d.id 
@@ -47,6 +81,17 @@ if ($empId) {
     if (!$employee) {
         echo "<p>Employee not found.</p>";
         exit();
+    }
+
+    $employeeBranchContext = hrms_resolve_branch_assignment($employee['branch'] ?? null, $employee['branch_id'] ?? null);
+    $isViewingSelf = isset($_SESSION['user_id']) && $_SESSION['user_id'] === $employee['emp_id'];
+    if ($limitToUserBranch && !$isViewingSelf) {
+      $hasAccess = hrms_employee_matches_branch($viewerBranchContext, $employeeBranchContext);
+      if (!$hasAccess) {
+        $_SESSION['error'] = "You don't have permission to view that employee.";
+        header('Location: employees.php');
+        exit();
+      }
     }
 
     // Fetch assigned assets for the employee
@@ -83,6 +128,30 @@ if ($empId) {
       $transferHistory = [];
     }
 
+    try {
+      $academicStmt = $pdo->prepare("SELECT degree_level, institution, field_of_study, graduation_year, grade, remarks
+        FROM employee_academic_records
+        WHERE employee_id = :emp_id
+        ORDER BY graduation_year DESC, id DESC");
+      $academicStmt->execute([':emp_id' => $employee['emp_id']]);
+      $academicRecords = $academicStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+      error_log('Academic history fetch failed: ' . $e->getMessage());
+      $academicRecords = [];
+    }
+
+    try {
+      $experienceStmt = $pdo->prepare("SELECT organization, job_title, start_date, end_date, responsibilities, achievements, currently_working
+        FROM employee_experience_records
+        WHERE employee_id = :emp_id
+        ORDER BY start_date DESC, id DESC");
+      $experienceStmt->execute([':emp_id' => $employee['emp_id']]);
+      $experienceRecords = $experienceStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+      error_log('Experience history fetch failed: ' . $e->getMessage());
+      $experienceRecords = [];
+    }
+
     // Check if employee image is empty and set default image
     if (empty($employee['user_image'])) {
         $employee['user_image'] = $home . 'resources/userimg/default-image.jpg';
@@ -97,6 +166,8 @@ if ($empId) {
     header("Location: employees.php");
     exit();  // Make sure to stop the script after redirection
 }
+
+include '../../includes/header.php';
 
 // Calculate birthday countdown
 $dob_date = new DateTime($employee['date_of_birth']);
@@ -402,9 +473,11 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
       <a href="edit-employee.php?id=<?php echo htmlspecialchars($employee['emp_id']); ?>" class="btn btn-primary me-2">
         <i class="fas fa-edit me-2"></i> Edit Employee
       </a>
+      <?php if (!empty($employee['login_access'])): ?>
       <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
         <i class="fas fa-key me-2"></i> Reset Password
       </button>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -433,7 +506,7 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
               <b>Branch</b> <span><?php echo htmlspecialchars($employee['branch_name']); ?></span>
             </li>
             <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-              <b>Joined Date</b> <span><?php echo date('d M Y', strtotime($employee['join_date'])); ?></span>
+              <b>Joined Date</b> <span><?php echo hrms_format_preferred_date($employee['join_date'], 'd M Y'); ?></span>
             </li>
             <?php if (isset($employee['login_access'])): ?>
             <li class="list-group-item d-flex justify-content-between align-items-center px-0">
@@ -531,10 +604,10 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
                       <div class="profile-info-item">
                         <strong>Gender:</strong>
                         <p class="mb-0"><?php 
-                          $gender = isset($employee['gender']) ? $employee['gender'] : '';
-                          if ($gender == 'M') {
+                          $gender = strtolower($employee['gender'] ?? '');
+                          if (in_array($gender, ['m', 'male'], true)) {
                             echo 'Male';
-                          } elseif ($gender == 'F') {
+                          } elseif (in_array($gender, ['f', 'female'], true)) {
                             echo 'Female';
                           } else {
                             echo 'Not specified';
@@ -546,7 +619,7 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
                         <p class="mb-0">
                           <?php 
                           if ($employee['date_of_birth']) {
-                            echo date('d F Y', strtotime($employee['date_of_birth'])); 
+                            echo hrms_format_preferred_date($employee['date_of_birth'], 'd F Y'); 
                           ?>
                           <span class="special-badge birthday-badge">
                             <i class="fas fa-hourglass-half me-1"></i> <?php echo $birthdayCountdown; ?>
@@ -609,7 +682,7 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
                 <div>
                   <i class="fas fa-user bg-primary"></i>
                   <div class="timeline-item">
-                    <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y', strtotime($employee['join_date'])); ?></span>
+                    <span class="time"><i class="far fa-clock"></i> <?php echo hrms_format_preferred_date($employee['join_date'], 'd F Y'); ?></span>
                     <h3 class="timeline-header">Joined as <?php echo htmlspecialchars($employee['designation_title'] ?: 'Not Assigned'); ?></h3>
                     <div class="timeline-body">
                       Joined <?php echo htmlspecialchars($employee['branch_name']); ?> branch.
@@ -619,15 +692,102 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
                 <div>
                   <i class="fas <?php echo empty($employee['exit_date']) ? 'fa-check bg-success' : 'fa-times-circle bg-danger'; ?>"></i>
                   <div class="timeline-item">
-                    <span class="time"><i class="far fa-clock"></i> <?php echo empty($employee['exit_date']) ? 'Now' : date('d F Y', strtotime($employee['exit_date'])); ?></span>
+                    <span class="time"><i class="far fa-clock"></i> <?php echo empty($employee['exit_date']) ? 'Now' : hrms_format_preferred_date($employee['exit_date'], 'd F Y'); ?></span>
                     <h3 class="timeline-header">Current Status</h3>
                     <div class="timeline-body">
-                      <?php echo empty($employee['exit_date']) ? 'Currently active employee' : 'Exited the company on ' . date('d F Y', strtotime($employee['exit_date'])); ?>
+                      <?php echo empty($employee['exit_date']) ? 'Currently active employee' : 'Exited the company on ' . hrms_format_preferred_date($employee['exit_date'], 'd F Y'); ?>
                     </div>
                   </div>
                 </div>
                 <div>
                   <i class="far fa-clock bg-gray"></i>
+                </div>
+              </div>
+
+              <div class="row mt-4 g-4">
+                <div class="col-md-6">
+                  <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                      <h5 class="card-title m-0"><i class="fas fa-graduation-cap me-2"></i>Academic History</h5>
+                      <span class="badge <?php echo !empty($academicRecords) ? 'bg-primary' : 'bg-secondary'; ?>">
+                        <?php echo !empty($academicRecords) ? count($academicRecords) . ' record(s)' : 'Not provided'; ?>
+                      </span>
+                    </div>
+                    <div class="card-body">
+                      <?php if (!empty($academicRecords)): ?>
+                        <div class="list-group list-group-flush">
+                          <?php foreach ($academicRecords as $record): ?>
+                            <div class="list-group-item px-0">
+                              <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                  <h6 class="mb-1"><?php echo htmlspecialchars($record['degree_level'] ?: 'Degree'); ?></h6>
+                                  <p class="mb-1 text-muted"><?php echo htmlspecialchars($record['institution'] ?: 'Institution'); ?></p>
+                                </div>
+                                <?php if (!empty($record['graduation_year'])): ?>
+                                  <span class="badge bg-light text-dark">Class of <?php echo htmlspecialchars($record['graduation_year']); ?></span>
+                                <?php endif; ?>
+                              </div>
+                              <?php if (!empty($record['field_of_study'])): ?>
+                                <p class="mb-1"><strong>Field:</strong> <?php echo htmlspecialchars($record['field_of_study']); ?></p>
+                              <?php endif; ?>
+                              <?php if (!empty($record['grade'])): ?>
+                                <p class="mb-1"><strong>Grade:</strong> <?php echo htmlspecialchars($record['grade']); ?></p>
+                              <?php endif; ?>
+                              <?php if (!empty($record['remarks'])): ?>
+                                <p class="mb-0 text-muted"><em><?php echo htmlspecialchars($record['remarks']); ?></em></p>
+                              <?php endif; ?>
+                            </div>
+                          <?php endforeach; ?>
+                        </div>
+                      <?php else: ?>
+                        <p class="text-muted mb-0">No academic records have been captured for this employee yet.</p>
+                      <?php endif; ?>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                      <h5 class="card-title m-0"><i class="fas fa-briefcase me-2"></i>Experience History</h5>
+                      <span class="badge <?php echo !empty($experienceRecords) ? 'bg-primary' : 'bg-secondary'; ?>">
+                        <?php echo !empty($experienceRecords) ? count($experienceRecords) . ' assignment(s)' : 'Not provided'; ?>
+                      </span>
+                    </div>
+                    <div class="card-body">
+                      <?php if (!empty($experienceRecords)): ?>
+                        <div class="list-group list-group-flush">
+                          <?php foreach ($experienceRecords as $record): ?>
+                            <div class="list-group-item px-0">
+                              <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                  <h6 class="mb-1"><?php echo htmlspecialchars($record['job_title'] ?: 'Role'); ?></h6>
+                                  <p class="mb-1 text-muted"><?php echo htmlspecialchars($record['organization'] ?: 'Organization'); ?></p>
+                                </div>
+                                <span class="badge <?php echo !empty($record['currently_working']) ? 'bg-success' : 'bg-light text-dark'; ?>">
+                                  <?php echo !empty($record['currently_working']) ? 'Current' : 'Past'; ?>
+                                </span>
+                              </div>
+                              <p class="mb-1 small text-muted">
+                                <?php
+                                  $start = !empty($record['start_date']) ? date('d M Y', strtotime($record['start_date'])) : 'Unknown';
+                                  $end = (!empty($record['currently_working']) || empty($record['end_date'])) ? 'Present' : date('d M Y', strtotime($record['end_date']));
+                                  echo $start . ' - ' . $end;
+                                ?>
+                              </p>
+                              <?php if (!empty($record['responsibilities'])): ?>
+                                <p class="mb-1"><strong>Responsibilities:</strong> <?php echo nl2br(htmlspecialchars($record['responsibilities'])); ?></p>
+                              <?php endif; ?>
+                              <?php if (!empty($record['achievements'])): ?>
+                                <p class="mb-0"><strong>Achievements:</strong> <?php echo nl2br(htmlspecialchars($record['achievements'])); ?></p>
+                              <?php endif; ?>
+                            </div>
+                          <?php endforeach; ?>
+                        </div>
+                      <?php else: ?>
+                        <p class="text-muted mb-0">No prior experience entries have been provided.</p>
+                      <?php endif; ?>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -740,7 +900,7 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
                               <div class="hierarchy-level">L<?php echo $index + 1; ?></div>
                               <div class="ms-3">
                                 <strong><?php echo htmlspecialchars($pathEmployee['full_name']); ?></strong><br>
-                                <small class="text-muted"><?php echo htmlspecialchars($pathEmployee['designation'] ?: 'No Designation'); ?></small>
+                                <small class="text-muted"><?php echo htmlspecialchars($pathEmployee['designation_id'] ?: 'No Designation'); ?></small>
                               </div>
                             </div>
                           <?php endforeach; ?>
@@ -889,36 +1049,139 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
                 <div class="time-label">
                   <span class="bg-info">Activity History</span>
                 </div>
-                <div>
-                  <i class="fas fa-user-plus bg-primary"></i>
-                  <div class="timeline-item">
-                    <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y', strtotime($employee['join_date'])); ?></span>
-                    <h3 class="timeline-header">Account Created</h3>
-                    <div class="timeline-body">
-                      Employee added to the system.
+                <?php 
+                // Fetch activity logs
+                try {
+                    $activityStmt = $pdo->prepare("SELECT * FROM activity_log WHERE user_id = :emp_id ORDER BY created_at DESC LIMIT 20");
+                    $activityStmt->execute([':emp_id' => $empId]);
+                    $activities = $activityStmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    if (!empty($activities)) {
+                        foreach ($activities as $activity) {
+                            $activityTime = strtotime($activity['created_at']);
+                            $activityType = strtolower($activity['action']);
+                            
+                            // Determine icon and color based on activity type
+                            if ($activityType === 'login') {
+                                $icon = 'fas fa-sign-in-alt';
+                                $bgColor = 'bg-success';
+                                $header = 'User Login';
+                            } elseif ($activityType === 'logout') {
+                                $icon = 'fas fa-sign-out-alt';
+                                $bgColor = 'bg-warning';
+                                $header = 'User Logout';
+                            } else {
+                                $icon = 'fas fa-info-circle';
+                                $bgColor = 'bg-info';
+                                $header = ucfirst($activityType);
+                            }
+                            ?>
+                            <div>
+                              <i class="<?php echo $icon; ?> <?php echo $bgColor; ?>"></i>
+                              <div class="timeline-item">
+                                <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y H:i:s', $activityTime); ?></span>
+                                <h3 class="timeline-header"><?php echo htmlspecialchars($header); ?></h3>
+                                <div class="timeline-body">
+                                  <div class="small">
+                                    <strong>IP Address:</strong> <?php echo htmlspecialchars($activity['ip_address'] ?? 'Unknown'); ?><br>
+                                    <?php if (!empty($activity['details'])): ?>
+                                      <strong>Details:</strong> <?php 
+                                        $details = $activity['details'];
+                                        // Parse browser info from details
+                                        if (strpos($details, 'Browser:') !== false) {
+                                          $ua = str_replace('Browser: ', '', $details);
+                                          echo '<br><strong>Device:</strong> ';
+                                          if (strpos($ua, 'Chrome') !== false) echo 'Chrome';
+                                          elseif (strpos($ua, 'Firefox') !== false) echo 'Firefox';
+                                          elseif (strpos($ua, 'Safari') !== false) echo 'Safari';
+                                          elseif (strpos($ua, 'Edge') !== false) echo 'Edge';
+                                          else echo 'Unknown Browser';
+                                          
+                                          if (strpos($ua, 'Mobile') !== false || strpos($ua, 'Android') !== false) echo ' (Mobile)';
+                                          elseif (strpos($ua, 'Windows') !== false) echo ' (Windows)';
+                                          elseif (strpos($ua, 'Mac') !== false) echo ' (Mac)';
+                                          elseif (strpos($ua, 'Linux') !== false) echo ' (Linux)';
+                                        } else {
+                                          echo htmlspecialchars($details);
+                                        }
+                                      ?>
+                                    <?php endif; ?>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <?php
+                        }
+                    } else {
+                        // No activity logs found, show default timeline
+                        ?>
+                        <div>
+                          <i class="fas fa-user-plus bg-primary"></i>
+                          <div class="timeline-item">
+                            <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y', strtotime($employee['join_date'])); ?></span>
+                            <h3 class="timeline-header">Account Created</h3>
+                            <div class="timeline-body">
+                              <p>Employee record created and added to the system.</p>
+                              <div class="small text-muted mt-2">
+                                <strong>Branch:</strong> <?php echo htmlspecialchars($employee['branch_name'] ?? 'N/A'); ?><br>
+                                <strong>Department:</strong> <?php echo htmlspecialchars($employee['department_name'] ?? 'N/A'); ?><br>
+                                <strong>Designation:</strong> <?php echo htmlspecialchars($employee['designation_title'] ?? 'N/A'); ?>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <?php
+                        if (!empty($employee['updated_at'])) {
+                            $updatedTime = strtotime($employee['updated_at']);
+                            ?>
+                            <div>
+                              <i class="fas fa-edit bg-warning"></i>
+                              <div class="timeline-item">
+                                <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y H:i:s', $updatedTime); ?></span>
+                                <h3 class="timeline-header">Last Update</h3>
+                                <div class="timeline-body">
+                                  Employee record was last modified.
+                                </div>
+                              </div>
+                            </div>
+                            <?php
+                        }
+                    }
+                } catch (PDOException $e) {
+                    // Table doesn't exist, show default timeline
+                    ?>
+                    <div class="alert alert-info">
+                      <i class="fas fa-info-circle me-2"></i>
+                      Activity logging table not found. Creating table is required to track user activities.
                     </div>
-                  </div>
-                </div>
-                <div>
-                  <i class="fas fa-sign-in-alt bg-success"></i>
-                  <div class="timeline-item">
-                    <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y', strtotime($employee['join_date'])); ?></span>
-                    <h3 class="timeline-header">First Login</h3>
-                    <div class="timeline-body">
-                      Employee logged into the system for the first time.
+                    <div>
+                      <i class="fas fa-user-plus bg-primary"></i>
+                      <div class="timeline-item">
+                        <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y', strtotime($employee['join_date'])); ?></span>
+                        <h3 class="timeline-header">Account Created</h3>
+                        <div class="timeline-body">
+                          <p>Employee record created and added to the system.</p>
+                          <div class="small text-muted mt-2">
+                            <strong>Branch:</strong> <?php echo htmlspecialchars($employee['branch_name'] ?? 'N/A'); ?><br>
+                            <strong>Department:</strong> <?php echo htmlspecialchars($employee['department_name'] ?? 'N/A'); ?><br>
+                            <strong>Designation:</strong> <?php echo htmlspecialchars($employee['designation_title'] ?? 'N/A'); ?>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                    <?php
+                }
+                ?>
                 <?php if ($employee['exit_date']): ?>
                 <div>
-                  <i class="fas fa-sign-out-alt bg-danger"></i>
+                  <i class="fas fa-user-times bg-danger"></i>
                   <div class="timeline-item">
                     <span class="time"><i class="far fa-clock"></i> <?php echo date('d F Y', strtotime($employee['exit_date'])); ?></span>
                     <h3 class="timeline-header">Employment Ended</h3>
                     <div class="timeline-body">
                       Employee exited the company.
                       <?php if ($employee['exit_note']): ?>
-                        <p><strong>Note:</strong> <?php echo htmlspecialchars($employee['exit_note']); ?></p>
+                        <p class="mt-2"><strong>Exit Note:</strong> <?php echo htmlspecialchars($employee['exit_note']); ?></p>
                       <?php endif; ?>
                     </div>
                   </div>

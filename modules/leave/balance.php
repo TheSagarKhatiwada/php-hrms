@@ -101,7 +101,7 @@ include '../../includes/header.php';
 <!-- Main content -->
 <div class="container-fluid p-4">
     <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
         <div>
             <h1 class="fs-2 fw-bold mb-1"><i class="fas fa-chart-pie me-2"></i>Leave Balance</h1>
             <nav aria-label="breadcrumb">
@@ -111,26 +111,12 @@ include '../../includes/header.php';
                     <li class="breadcrumb-item active" aria-current="page">Leave Balance</li>
                 </ol>
             </nav>
-        </div>        <div class="d-flex gap-2">
-            <?php if (!$is_admin_user): ?>
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
-                    <i class="fas fa-plus me-1"></i>Apply Leave
-                </button>
-                <a href="my-requests.php" class="btn btn-outline-success">
-                    <i class="fas fa-list me-1"></i>My Requests
-                </a>
-            <?php else: ?>
-                <a href="requests.php" class="btn btn-outline-success">
-                    <i class="fas fa-list me-1"></i>All Requests
-                </a>
-                <a href="reports.php" class="btn btn-outline-secondary">
-                    <i class="fas fa-chart-bar me-1"></i>Reports
-                </a>
-            <?php endif; ?>
-            <a href="calendar.php" class="btn btn-outline-info">
-                <i class="fas fa-calendar me-1"></i>Calendar View
-            </a>
         </div>
+        <?php
+            $isAdmin = $is_admin_user ?? $isAdmin ?? (function_exists('is_admin') ? is_admin() : false);
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
     </div>
     
     <!-- Filters -->

@@ -87,13 +87,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Password is correct
         // Set session variables
         $_SESSION['user_id'] = $user['emp_id'];
-        $_SESSION['designation'] = $user['designation'];
+        $_SESSION['designation'] = $user['designation_id'];
         $_SESSION['fullName'] = $user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name'];
         $_SESSION['userImage'] = $user['user_image'];
         // Check which role field exists in the database and use it
         $_SESSION['user_role'] = isset($user['role']) ? $user['role'] : (isset($user['role_id']) ? $user['role_id'] : '0');
         $_SESSION['user_role_id'] = isset($user['role_id']) ? $user['role_id'] : (isset($user['role']) ? $user['role'] : '0'); // Add this for consistency
         $_SESSION['login_access'] = $user['login_access'];
+
+        // Log the login activity
+        try {
+            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+            $details = 'Browser: ' . $userAgent;
+            $logStmt = $pdo->prepare("INSERT INTO activity_log (user_id, action, details, ip_address, created_at) VALUES (:user_id, 'login', :details, :ip, NOW())");
+            $logStmt->execute([
+                ':user_id' => $user['emp_id'],
+                ':details' => $details,
+                ':ip' => $_SERVER['REMOTE_ADDR'] ?? 'Unknown'
+            ]);
+        } catch (PDOException $e) {
+            // Silently fail if logging fails
+            error_log('Activity log error: ' . $e->getMessage());
+        }
 
         // Check login access
         if ($user['login_access'] == '0') {

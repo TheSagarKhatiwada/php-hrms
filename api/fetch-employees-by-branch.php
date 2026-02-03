@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 require_once '../includes/session_config.php';
 require_once '../includes/db_connection.php';
+require_once '../includes/utilities.php';
 require_once '../includes/csrf_protection.php';
 
 if (!isset($_SESSION['user_id'])) {
@@ -24,8 +25,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $branch = $_POST['branch'] ?? '';
 $reportType = $_POST['report_type'] ?? '';
+$reportType = $reportType ?: 'daily';
 $dateStr = $_POST['date'] ?? '';
 $rangeStr = $_POST['range'] ?? '';
+
+$isAdmin = function_exists('is_admin') ? is_admin() : false;
+$canViewDailyReports = $isAdmin || has_permission('view_attendance_reports_daily');
+$canViewPeriodicReports = $isAdmin || has_permission('view_attendance_reports_periodic');
+$canViewTimesheetReports = $isAdmin || has_permission('view_attendance_reports_timesheet');
+$allowedReportTypes = [];
+if($canViewDailyReports){ $allowedReportTypes[] = 'daily'; }
+if($canViewPeriodicReports){ $allowedReportTypes[] = 'periodic'; }
+if($canViewTimesheetReports){ $allowedReportTypes[] = 'timesheet'; }
+if(empty($allowedReportTypes) || !in_array($reportType, $allowedReportTypes, true)){
+  http_response_code(403);
+  echo json_encode(['status' => 'error', 'message' => 'You are not allowed to load employees for this report type.']);
+  exit;
+}
+
+if($branch === '*' || strtolower((string)$branch) === 'all'){ $branch = ''; }
+if($branch !== '' && !ctype_digit((string)$branch)){
+  http_response_code(400);
+  echo json_encode(['status' => 'error', 'message' => 'Invalid branch identifier']);
+  exit;
+}
+
+$canViewAllBranchAttendance = $isAdmin || has_permission('view_all_branch_attendance');
+if(!$canViewAllBranchAttendance){
+  $viewerBranch = hrms_get_user_branch_context($pdo, $_SESSION['user_id']);
+  $assignedBranch = null;
+  if($viewerBranch['legacy'] !== null){ $assignedBranch = (string)$viewerBranch['legacy']; }
+  elseif($viewerBranch['numeric'] !== null){ $assignedBranch = (string)$viewerBranch['numeric']; }
+  if($assignedBranch === null){
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'Branch access is not configured for your account.']);
+    exit;
+  }
+  if($branch === ''){
+    $branch = $assignedBranch;
+  } elseif((string)$branch !== (string)$assignedBranch){
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'You are not allowed to access this branch.']);
+    exit;
+  }
+}
 
 // Helper: accept DD/MM/YYYY or YYYY-MM-DD and normalize to YYYY-MM-DD
 function parse_dmy($s){

@@ -732,6 +732,10 @@ $backups = $backup->listBackups();
 </div>
 
 <script>
+const applyDigitsIfBs = (value) => (window.hrmsUseBsDates && typeof window.hrmsToNepaliDigits === 'function')
+    ? window.hrmsToNepaliDigits(value)
+    : value;
+
 let currentOperation = null;
 let progressInterval = null;
 let operationStartTime = null;
@@ -759,7 +763,7 @@ function showProgress(title, subtitle) {
     document.getElementById('progressSubtext').textContent = subtitle;
     document.getElementById('progressDetails').textContent = '';
     document.getElementById('progressStep').textContent = 'Step 1';
-    document.getElementById('progressTime').textContent = 'Elapsed: 0s';
+    document.getElementById('progressTime').textContent = applyDigitsIfBs('Elapsed: 0s');
     
     // Reset progress bar
     const progressBar = document.getElementById('progressBar');
@@ -788,7 +792,7 @@ function updateProgress(percentage, step, details) {
     // Update elapsed time
     if (operationStartTime) {
         const elapsed = Math.round((Date.now() - operationStartTime) / 1000);
-        document.getElementById('progressTime').textContent = `Elapsed: ${elapsed}s`;
+        document.getElementById('progressTime').textContent = applyDigitsIfBs(`Elapsed: ${elapsed}s`);
     }
 }
 
@@ -1058,10 +1062,10 @@ function updateBackupTable(backups) {
                     <span class="font-monospace">${escapeHtml(backup.filename)}</span>
                 </div>
             </td>
-            <td>${new Date(backup.date).toLocaleDateString('en-US', {
+            <td>${applyDigitsIfBs(new Date(backup.date).toLocaleDateString('en-US', {
                 year: 'numeric', month: 'short', day: 'numeric',
                 hour: 'numeric', minute: '2-digit'
-            })}</td>
+            }))}</td>
             <td>
                 <span class="badge bg-light text-dark">${formatBytes(backup.size)}</span>
             </td>
@@ -1093,7 +1097,7 @@ function updateBackupTable(backups) {
 function updateStatistics(backups) {
     document.getElementById('total-backups').textContent = backups.length;
     document.getElementById('latest-backup').textContent = backups.length > 0 ? 
-        new Date(backups[0].date).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : 
+        applyDigitsIfBs(new Date(backups[0].date).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})) : 
         'None';
     
     const totalSize = backups.reduce((sum, backup) => sum + backup.size, 0);

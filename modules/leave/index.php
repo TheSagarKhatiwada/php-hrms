@@ -85,7 +85,7 @@ try {
             FROM leave_requests lr
             JOIN leave_types lt ON lr.leave_type_id = lt.id
             JOIN employees e ON lr.employee_id = e.emp_id
-            LEFT JOIN designations d ON e.designation = d.id
+            LEFT JOIN designations d ON e.designation_id = d.id
             LEFT JOIN branches b ON e.branch = b.id
             ORDER BY lr.applied_date DESC
             LIMIT 10
@@ -168,31 +168,32 @@ try {
 // Include header
 $home = '../../';
 require_once '../../includes/header.php';
+
 ?>
 
 <!-- Main content -->
 <div class="container-fluid p-4">    <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between flex-wrap gap-3 align-items-center mb-3">
         <div>
             <h1 class="fs-2 mb-1"><i class="fas fa-calendar-alt me-2"></i>Leave Dashboard</h1>
+            <p class="text-muted mb-0">Quick access to every leave and holiday workflow</p>
         </div>
-        <div class="d-flex gap-2">
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#applyLeaveModal">
-                <i class="fas fa-plus me-1"></i>Request Leave
-            </button>
-            <a href="<?= $isAdmin ? 'requests.php' : 'my-requests.php' ?>" class="btn btn-outline-success">
-                <i class="fas fa-list me-1"></i><?= $isAdmin ? 'All Requests' : 'My Requests' ?>
-            </a>
-            <a href="balance.php" class="btn btn-outline-info">
-                <i class="fas fa-chart-bar me-1"></i>Leave Balance
-            </a>
-            <?php if ($isAdmin): ?>
-            <a href="types.php" class="btn btn-outline-secondary">
-                <i class="fas fa-cog me-1"></i>Manage Types
-            </a>
-            <?php endif; ?>
-        </div>
-    </div>    <!-- Stats Cards -->
+        <?php
+            $isAdmin = $isAdmin ?? (function_exists('is_admin') ? is_admin() : false);
+            $leaveToolbarShowDashboardButton = false;
+            $leaveToolbarPrimaryLinks = [[
+                'url' => 'holidays.php',
+                'label' => 'Holidays',
+                'icon' => 'fas fa-umbrella-beach',
+                'classes' => 'btn btn-outline-warning',
+                'page' => 'holidays.php',
+            ]];
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
+    </div>
+
+    <!-- Stats Cards -->
     <div class="row g-4 mb-4">
         <?php if ($isAdmin): ?>
         <div class="col-md-6 col-lg-3">

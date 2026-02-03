@@ -68,7 +68,7 @@ class AssetService
         $bindings = [];
 
         if ($search !== '') {
-            $conditions[] = '(a.AssetName LIKE :search OR a.AssetSerial LIKE :search OR c.CategoryName LIKE :search)';
+            $conditions[] = '(a.AssetName LIKE :search OR a.AssetSerial LIKE :search OR a.ProductSerial LIKE :search OR c.CategoryName LIKE :search)';
             $bindings[':search'] = '%' . $search . '%';
         }
 
@@ -144,10 +144,10 @@ class AssetService
 
             $stmt = $this->pdo->prepare('INSERT INTO fixedassets (
                 AssetName, CategoryID, PurchaseDate, PurchaseCost, WarrantyEndDate,
-                AssetCondition, AssetLocation, AssetsDescription, Status, AssetImage, AssetSerial
+                AssetCondition, AssetLocation, AssetsDescription, Status, AssetImage, AssetSerial, ProductSerial
             ) VALUES (
                 :name, :category, :purchaseDate, :purchaseCost, :warrantyEnd,
-                :condition, :location, :description, :status, :imagePath, :serial
+                :condition, :location, :description, :status, :imagePath, :serial, :productSerial
             )');
 
             $stmt->execute([
@@ -162,6 +162,7 @@ class AssetService
                 ':status' => $data['Status'],
                 ':imagePath' => $imagePath ?? '',
                 ':serial' => $serial,
+                ':productSerial' => $data['ProductSerial'] ?? null,
             ]);
 
             $assetId = (int)$this->pdo->lastInsertId();
@@ -207,6 +208,7 @@ class AssetService
             'AssetsDescription' => $data['AssetsDescription'] ?? $existing['AssetsDescription'],
             'Status' => $data['Status'] ?? $existing['Status'],
             'AssetImage' => $imagePath,
+            'ProductSerial' => array_key_exists('ProductSerial', $data) ? $data['ProductSerial'] : ($existing['ProductSerial'] ?? null),
         ];
 
         // Ensure serial exists
@@ -226,7 +228,8 @@ class AssetService
             AssetsDescription = :description,
             Status = :status,
             AssetImage = :imagePath,
-            AssetSerial = :serial
+            AssetSerial = :serial,
+            ProductSerial = :productSerial
             WHERE AssetID = :assetId');
 
         $stmt->execute([
@@ -241,6 +244,7 @@ class AssetService
             ':status' => $fields['Status'],
             ':imagePath' => $imagePath ?? '',
             ':serial' => $serial,
+            ':productSerial' => $fields['ProductSerial'],
             ':assetId' => $assetId,
         ]);
 
@@ -380,10 +384,10 @@ class AssetService
 
         $condition = $payload['assetCondition'] ?? $payload['AssetCondition'] ?? null;
         if ($condition !== null || $requireAll) {
-            $allowed = ['New', 'Good', 'Fair', 'Poor'];
+            $allowed = ['Excellent', 'Good', 'Fair', 'Poor'];
             $condition = $condition ? ucfirst(strtolower($condition)) : null;
             if ($requireAll && !in_array($condition, $allowed, true)) {
-                $condition = 'New';
+                $condition = 'Good';
             }
             if ($condition !== null) {
                 $data['AssetCondition'] = in_array($condition, $allowed, true) ? $condition : 'Good';
@@ -399,6 +403,13 @@ class AssetService
             if ($location !== null) {
                 $data['AssetLocation'] = $location;
             }
+        }
+
+        $productSerial = $payload['productSerial'] ?? $payload['ProductSerial'] ?? null;
+        if ($productSerial !== null) {
+            $data['ProductSerial'] = trim((string)$productSerial);
+        } elseif ($requireAll) {
+            $data['ProductSerial'] = null;
         }
 
         $description = $payload['description'] ?? $payload['AssetsDescription'] ?? null;

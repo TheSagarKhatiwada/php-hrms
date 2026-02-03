@@ -6,6 +6,7 @@ ob_start();
 require_once '../../includes/session_config.php';
 require_once '../../includes/utilities.php';
 require_once '../../includes/csrf_protection.php';
+require_once __DIR__ . '/../../includes/db_connection.php';
 
 // Fix session role if not set but user_role exists
 if (!isset($_SESSION['role']) && isset($_SESSION['user_role'])) {
@@ -21,12 +22,33 @@ if (defined('ENVIRONMENT') && ENVIRONMENT === 'development') {
 
 $page = 'employees';
 
-// Check if user has admin access
-if (!is_admin()) {
-    header('Location: ../../dashboard.php');
-    exit();
+// Permission gate
+$canManageAllEmployees = is_admin() || has_permission('manage_employees');
+$hasAllBranchAccessPermission = $canManageAllEmployees || has_permission('access_all_branch_employee');
+$canViewEmployees = $hasAllBranchAccessPermission || has_permission('view_employees');
+$limitToUserBranch = !$hasAllBranchAccessPermission;
+$canViewBranchColumn = $hasAllBranchAccessPermission;
+$canManageBranchAssignments = $canManageAllEmployees || has_permission('manage_branch_assignments');
+$canViewExitedEmployees = $canManageAllEmployees || has_permission('view_exited_employees');
+$viewerBranchContext = ['legacy' => null, 'numeric' => null];
+
+if (!$canViewEmployees) {
+  header('Location: ../../dashboard.php');
+  exit();
 }
-include '../../includes/db_connection.php';
+$restrictBranchPermission = $limitToUserBranch;
+if ($restrictBranchPermission && isset($_SESSION['user_id'])) {
+  try {
+    $branchLookup = $pdo->prepare("SELECT branch, branch_id FROM employees WHERE emp_id = :emp_id LIMIT 1");
+    $branchLookup->execute([':emp_id' => $_SESSION['user_id']]);
+    $branchRow = $branchLookup->fetch(PDO::FETCH_ASSOC);
+    if ($branchRow) {
+      $viewerBranchContext = hrms_resolve_branch_assignment($branchRow['branch'] ?? null, $branchRow['branch_id'] ?? null);
+    }
+  } catch (PDOException $e) {
+    // Leave branch context empty to fall back to safest behavior (no access)
+  }
+}
 $csrf_token = generate_csrf_token();
 
 // Handle exit date and note update
@@ -88,12 +110,29 @@ try {
   // NOTE: Using e.branch and e.designation (legacy column names) instead of branch_id/designation_id
   // Other modules reference these columns, so align here to actually fetch employees.
   // Use LEFT JOIN for branches too so employees without a branch still appear.
-  $stmt = $pdo->prepare("SELECT e.*, b.name, d.title AS designation_title 
+      $query = "SELECT e.*, b.name, d.title AS designation_title 
           FROM employees e 
           LEFT JOIN branches b ON e.branch = b.id 
-          LEFT JOIN designations d ON e.designation_id = d.id 
-          ORDER BY e.join_date DESC");
-    $stmt->execute();
+          LEFT JOIN designations d ON e.designation_id = d.id";
+      $params = [];
+      $whereClauses = [];
+      if ($limitToUserBranch) {
+        $branchFilterSql = hrms_build_branch_filter_sql($viewerBranchContext, $params, 'e.branch', 'e.branch_id');
+        if ($branchFilterSql === '') {
+          $whereClauses[] = '1 = 0';
+        } else {
+          $whereClauses[] = $branchFilterSql;
+        }
+      }
+      if (!$canViewExitedEmployees) {
+        $whereClauses[] = "(e.exit_date IS NULL OR e.exit_date = '')";
+      }
+      if (!empty($whereClauses)) {
+        $query .= ' WHERE ' . implode(' AND ', $whereClauses);
+      }
+    $query .= " ORDER BY e.join_date DESC";
+    $stmt = $pdo->prepare($query);
+    $stmt->execute($params);
     $employees = $stmt->fetchAll();
 
     $branchesStmt = $pdo->query("SELECT id, name FROM branches ORDER BY name ASC");
@@ -151,9 +190,11 @@ require_once __DIR__ . '/../../includes/header.php';
           <button type="button" id="refreshEmployees" class="btn btn-outline-primary" onclick="forceRefresh()">
             <i class="fas fa-sync-alt"></i> Refresh
           </button>
+          <?php if ($canManageAllEmployees): ?>
           <a href="add-employee.php" class="btn btn-primary">
             <i class="fas fa-user-plus me-2"></i> Add Employee
           </a>
+          <?php endif; ?>
         </div>
       </div>
       
@@ -165,9 +206,11 @@ require_once __DIR__ . '/../../includes/header.php';
               <div id="employee-controls" class="d-flex align-items-center flex-wrap p-2 rounded small gap-2">
               <div id="dt-length-holder" class="d-flex align-items-center"></div>
               <div class="ms-auto d-flex align-items-center gap-2" id="right-control-cluster">
+                <?php if ($canViewExitedEmployees): ?>
                 <button id="toggleExited" type="button" class="btn btn-outline-secondary btn-sm" data-show="0">
                   <i class="fas fa-user-slash me-1"></i> Show Exited
                 </button>
+                <?php endif; ?>
                 <div id="dt-search-holder"></div>
               </div>
             </div>
@@ -177,7 +220,9 @@ require_once __DIR__ . '/../../includes/header.php';
                   <th class="text-center">ID</th>
                   <th>Employee</th>
                   <th>Contact Info</th>
+                  <?php if ($canViewBranchColumn): ?>
                   <th>Branch</th>
+                  <?php endif; ?>
                   <th class="text-center">Joining Date</th>
                   <th class="text-center">Status</th>
                   <th class="text-center">Actions</th>
@@ -190,7 +235,11 @@ require_once __DIR__ . '/../../includes/header.php';
                     echo "<!-- DEBUG: Found " . count($employees) . " employees -->";
                 }
                 
-                foreach ($employees as $employee): ?>
+                foreach ($employees as $employee):
+                  if (!$canViewExitedEmployees && !empty($employee['exit_date'])) {
+                    continue;
+                  }
+                ?>
                 <tr class="<?php echo $employee['exit_date'] ? 'exited-row' : ''; ?>">
                   <td class="text-center align-middle"><?php echo htmlspecialchars($employee['emp_id']); ?></td>
                   <td>
@@ -224,16 +273,19 @@ require_once __DIR__ . '/../../includes/header.php';
                     <div><i class="fas fa-envelope me-1 text-muted small"></i> <?php echo htmlspecialchars($employee['office_email'] ? $employee['office_email'] : 'N/A'); ?></div>
                     <div><i class="fas fa-phone me-1 text-muted small"></i> <?php echo htmlspecialchars($employee['office_phone'] ? $employee['office_phone'] : 'N/A'); ?></div>
                   </td>
+                  <?php if ($canViewBranchColumn): ?>
                   <td><?php echo htmlspecialchars($employee['name']); ?></td>
-                  <td class="text-center align-middle"><?php echo date('Y-m-d', strtotime($employee['join_date'])); ?></td>
+                  <?php endif; ?>
+                  <td class="text-center align-middle"><?php echo hrms_format_preferred_date($employee['join_date'], 'Y-m-d'); ?></td>
                   <td class="text-center align-middle">
                     <?php if ($employee['exit_date']): ?>
-                      <span class="badge bg-danger">Exited on</span></br><?php echo date('M d, Y', strtotime($employee['exit_date'])); ?>
+                      <span class="badge bg-danger">Exited on</span></br><?php echo hrms_format_preferred_date($employee['exit_date'], 'M d, Y'); ?>
                     <?php else: ?>
                       <span class="badge bg-success">Active</span>
                     <?php endif; ?>
                   </td>
                   <td class="text-center align-middle">
+                    <?php if ($canManageAllEmployees): ?>
                     <div class="dropdown">
                       <a href="#" class="text-secondary" role="button" id="dropdownMenuButton<?php echo $employee['emp_id']; ?>" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fas fa-ellipsis-v"></i>
@@ -249,7 +301,7 @@ require_once __DIR__ . '/../../includes/header.php';
                             <i class="fas fa-edit me-2"></i> Edit
                           </a>
                         </li>
-                        <?php if (!$employee['exit_date']): ?>
+                        <?php if (!$employee['exit_date'] && $canManageBranchAssignments): ?>
                         <li>
                           <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferEmployeeModal"
                              data-emp-id="<?php echo htmlspecialchars($employee['emp_id']); ?>"
@@ -281,6 +333,11 @@ require_once __DIR__ . '/../../includes/header.php';
                         </li>
                       </ul>
                     </div>
+                    <?php else: ?>
+                    <a class="btn btn-outline-primary btn-sm" href="employee-viewer.php?empId=<?php echo $employee['emp_id']; ?>">
+                      <i class="fas fa-eye me-1"></i> View
+                    </a>
+                    <?php endif; ?>
                   </td>
                 </tr>
                 <?php endforeach; ?>
@@ -374,6 +431,7 @@ require_once __DIR__ . '/../../includes/header.php';
   </div>
 </div>
 
+<?php if ($canManageBranchAssignments): ?>
 <!-- Transfer Employee Modal -->
 <div class="modal fade" id="transferEmployeeModal" tabindex="-1" aria-labelledby="transferEmployeeModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -462,12 +520,14 @@ require_once __DIR__ . '/../../includes/header.php';
     </div>
   </div>
 </div>
+<?php endif; ?>
 
 <!-- Include the main footer (which closes content-wrapper, main-wrapper, etc.) -->
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>
 
 <!-- Page specific script -->
 <script>
+const joinDateSortIndex = <?php echo $canViewBranchColumn ? 4 : 3; ?>;
 // Force refresh function to reload page with cache-busting parameter
 const forceRefresh = () => {
   const timestamp = new Date().getTime();
@@ -485,7 +545,7 @@ document.addEventListener('DOMContentLoaded', function() {
     responsive: true,
     lengthChange: true,
     autoWidth: false,
-    order: [[4, 'desc']], // Sort by join date
+    order: [[joinDateSortIndex, 'desc']], // Sort by join date
     pageLength: 10,
     language: {
       paginate: {

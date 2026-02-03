@@ -235,7 +235,21 @@ function updateTaskProgress($pdo, $taskId, $employeeId, $progress, $status = nul
             addTaskHistory($pdo, $taskId, $employeeId, 'status_changed', 
                           $task['status'], $status);
             
-            // Notify task assignor if status changed to completed
+            // Send notification when status changes
+            require_once __DIR__ . '/../../includes/task_notification_helper.php';
+            try {
+                // Notify task creator of status change
+                sendTaskStatusUpdateNotification($pdo, $taskId, $status, $employeeId);
+                
+                // If completed, send completion notification
+                if ($status === 'completed') {
+                    sendTaskCompletionNotification($pdo, $taskId);
+                }
+            } catch (Exception $notif_error) {
+                error_log("Warning: Failed to send task status notification: " . $notif_error->getMessage());
+            }
+            
+            // Legacy notification system (keeping for backward compatibility)
             if ($status === 'completed' && $task['assigned_by'] != $employeeId) {
                 require_once __DIR__ . '/../../includes/notification_helpers.php';
                 notify_employee($task['assigned_by'], 'task_completed', [

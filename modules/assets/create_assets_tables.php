@@ -61,6 +61,7 @@ try {
               `AssetName` varchar(200) NOT NULL,
               `CategoryID` int(11) NOT NULL,
               `AssetSerial` varchar(50) NOT NULL,
+              `ProductSerial` varchar(100) DEFAULT NULL,
               `PurchaseDate` date NOT NULL,
               `PurchaseCost` decimal(10,2) NOT NULL,
               `WarrantyEndDate` date DEFAULT NULL,

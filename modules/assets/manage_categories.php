@@ -120,9 +120,48 @@ try {
   <!-- Page header -->
   <div class="d-flex justify-content-between align-items-center mb-4">
       <h1 class="fs-2 fw-bold mb-1">Asset Categories</h1>
-      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-        <i class="fas fa-plus me-2"></i> Add Category
-      </button>
+      <?php
+        $assetToolbarInline = true;
+        $assetToolbarButtons = [
+          [
+            'type' => 'button',
+            'label' => 'Add Category',
+            'icon' => 'fas fa-plus',
+            'classes' => 'btn btn-primary',
+            'attributes' => [
+              'type' => 'button',
+              'data-bs-toggle' => 'modal',
+              'data-bs-target' => '#addCategoryModal'
+            ]
+          ],
+          [
+            'type' => 'link',
+            'label' => 'Fix Assets',
+            'icon' => 'fas fa-boxes',
+            'href' => 'manage_assets.php',
+            'classes' => 'btn btn-outline-primary'
+          ],
+          [
+            'type' => 'dropdown',
+            'label' => 'More',
+            'icon' => 'fas fa-ellipsis-h',
+            'classes' => 'btn btn-outline-secondary',
+            'items' => [
+              [
+                'label' => 'Assignments',
+                'icon' => 'fas fa-people-carry',
+                'href' => 'manage_assignments.php'
+              ],
+              [
+                'label' => 'Maintenance',
+                'icon' => 'fas fa-tools',
+                'href' => 'manage_maintenance.php'
+              ]
+            ]
+          ]
+        ];
+      ?>
+      <?php include __DIR__ . '/partials/assets_nav.php'; ?>
   </div>
   
   <!-- Categories Table Card -->
@@ -151,46 +190,37 @@ try {
                   ?>
                 </td>
                 <td class="text-center">
-                  <span class="badge bg-info rounded-pill px-3 py-2">
+                  <span class="badge bg-light text-dark border rounded-pill px-3 py-2 fw-semibold">
                     <?php echo $category['asset_count']; ?>
                   </span>
                 </td>
                 <td class="text-center">
-                  <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                      <i class="fas fa-ellipsis-v"></i>
+                  <div class="d-flex align-items-center justify-content-center gap-2">
+                    <button class="btn btn-sm btn-link text-secondary px-1 py-1 view-category"
+                            data-id="<?php echo $category['CategoryID']; ?>"
+                            data-code="<?php echo htmlspecialchars($category['CategoryShortCode']); ?>"
+                            data-name="<?php echo htmlspecialchars($category['CategoryName']); ?>"
+                            data-description="<?php echo htmlspecialchars($category['Description']); ?>"
+                            data-asset-count="<?php echo $category['asset_count']; ?>"
+                            title="View" aria-label="View">
+                      <i class="fas fa-eye"></i>
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                      <li>
-                        <button class="dropdown-item view-category" 
-                                data-id="<?php echo $category['CategoryID']; ?>"
-                                data-code="<?php echo htmlspecialchars($category['CategoryShortCode']); ?>"
-                                data-name="<?php echo htmlspecialchars($category['CategoryName']); ?>"
-                                data-description="<?php echo htmlspecialchars($category['Description']); ?>"
-                                data-asset-count="<?php echo $category['asset_count']; ?>">
-                          <i class="fas fa-eye me-2"></i> View
-                        </button>
-                      </li>
-                      <li>
-                        <button class="dropdown-item edit-category" 
-                                data-id="<?php echo $category['CategoryID']; ?>"
-                                data-code="<?php echo htmlspecialchars($category['CategoryShortCode']); ?>"
-                                data-name="<?php echo htmlspecialchars($category['CategoryName']); ?>"
-                                data-description="<?php echo htmlspecialchars($category['Description']); ?>">
-                          <i class="fas fa-edit me-2"></i> Edit
-                        </button>
-                      </li>
-                      <?php if ($category['asset_count'] == 0): ?>
-                      <li><hr class="dropdown-divider"></li>
-                      <li>
-                        <button class="dropdown-item text-danger delete-category" 
-                                data-id="<?php echo $category['CategoryID']; ?>"
-                                data-name="<?php echo htmlspecialchars($category['CategoryName']); ?>">
-                          <i class="fas fa-trash me-2"></i> Delete
-                        </button>
-                      </li>
-                      <?php endif; ?>
-                    </ul>
+                        <button class="btn btn-sm btn-link text-secondary px-1 py-1 edit-category"
+                            data-id="<?php echo $category['CategoryID']; ?>"
+                            data-code="<?php echo htmlspecialchars($category['CategoryShortCode']); ?>"
+                            data-name="<?php echo htmlspecialchars($category['CategoryName']); ?>"
+                            data-description="<?php echo htmlspecialchars($category['Description']); ?>"
+                          title="Update" aria-label="Update">
+                      <i class="fas fa-edit"></i>
+                    </button>
+                    <?php if ($category['asset_count'] == 0): ?>
+                      <button class="btn btn-sm btn-link text-danger px-1 py-1 delete-category"
+                              data-id="<?php echo $category['CategoryID']; ?>"
+                              data-name="<?php echo htmlspecialchars($category['CategoryName']); ?>"
+                              title="Delete" aria-label="Delete">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    <?php endif; ?>
                   </div>
                 </td>
               </tr>

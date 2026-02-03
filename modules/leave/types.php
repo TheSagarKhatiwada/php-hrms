@@ -112,21 +112,26 @@ include '../../includes/header.php';
 <!-- Main content -->
 <div class="container-fluid p-4">
     <!-- Page header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
         <div>
             <h1 class="fs-2 fw-bold mb-1"><i class="fas fa-cog me-2"></i>Leave Types</h1>
         </div>
-        <div class="d-flex gap-2">
-            <a href="index.php" class="btn btn-outline-success">
-                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-            </a>
-            <a href="requests.php" class="btn btn-outline-info">
-                <i class="fas fa-list me-1"></i>All Requests
-            </a>
-            <a href="reports.php" class="btn btn-outline-secondary">
-                <i class="fas fa-chart-bar me-1"></i>Reports
-            </a>
-        </div>
+        <?php
+            $leaveToolbarIsAdmin = true;
+            $leaveToolbarAddButton = [
+                'type' => 'link',
+                'label' => 'Add Leave Type',
+                'icon' => 'fas fa-plus',
+                'classes' => 'btn btn-primary',
+                'url' => '#addLeaveTypeForm',
+                'attributes' => [
+                    'onclick' => "const form=document.getElementById('addLeaveTypeForm'); if(form){ form.scrollIntoView({behavior:'smooth'});} return false;",
+                ],
+                'page' => 'types.php',
+            ];
+            $leaveToolbarInline = true;
+            include __DIR__ . '/partials/action-toolbar.php';
+        ?>
     </div>
 
     <?php if (isset($_SESSION['success_message'])): ?>

@@ -11,19 +11,65 @@ include '../../includes/header.php';
 
 <!-- Main content -->
 <div class="container-fluid p-4">
+  <?php if (!empty($_SESSION['success'])): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+      <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  <?php endif; ?>
+  <?php if (!empty($_SESSION['error'])): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+      <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  <?php endif; ?>
   <!-- Page header -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
       <h1 class="fs-2 fw-bold mb-1">Fixed Assets</h1>
     </div>
-    <div>
-      <a href="manage_categories.php?addModal=open" class="btn btn-outline-secondary">
-        <i class="fas fa-plus me-2"></i> Add Category
-      </a>
-      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAssetModal">
-        <i class="fas fa-plus me-2"></i> Add Asset
-      </button>
-    </div>
+    <?php
+      $assetToolbarInline = true;
+      $assetToolbarButtons = [
+        [
+          'type' => 'button',
+          'label' => 'Add Asset',
+          'icon' => 'fas fa-plus',
+          'classes' => 'btn btn-primary',
+          'attributes' => [
+            'type' => 'button',
+            'data-bs-toggle' => 'modal',
+            'data-bs-target' => '#addAssetModal'
+          ]
+        ],
+        [
+          'type' => 'link',
+          'label' => 'Categories',
+          'icon' => 'fas fa-tags',
+          'href' => 'manage_categories.php',
+          'classes' => 'btn btn-outline-secondary'
+        ],
+        [
+          'type' => 'dropdown',
+          'label' => 'More',
+          'icon' => 'fas fa-ellipsis-h',
+          'classes' => 'btn btn-outline-secondary',
+          'items' => [
+            [
+              'label' => 'Assignments',
+              'icon' => 'fas fa-people-carry',
+              'href' => 'manage_assignments.php'
+            ],
+            [
+              'label' => 'Maintenance',
+              'icon' => 'fas fa-tools',
+              'href' => 'manage_maintenance.php'
+            ]
+          ]
+        ]
+      ];
+    ?>
+    <?php include __DIR__ . '/partials/assets_nav.php'; ?>
   </div>
 
   <div class="card mb-4 shadow-sm">
@@ -32,7 +78,7 @@ include '../../includes/header.php';
         <div class="col-lg-4 col-md-6">
           <label for="searchFilter" class="form-label">Search</label>
           <div class="input-group">
-            <input type="text" class="form-control" id="searchFilter" placeholder="Search by name, serial or remarks">
+            <input type="text" class="form-control" id="searchFilter" placeholder="Search by name, asset serial, product serial or remarks">
             <button class="btn btn-outline-secondary" type="button" id="clearSearch">
               <i class="fas fa-times"></i>
             </button>
@@ -113,6 +159,10 @@ document.addEventListener('DOMContentLoaded', function() {
     ? window.escapeHtml
     : escapeHtmlFallback;
 
+  const applyDigitsIfBs = (value) => (window.hrmsUseBsDates && typeof window.hrmsToNepaliDigits === 'function')
+    ? window.hrmsToNepaliDigits(value)
+    : value;
+
   const formatDate = (value) => {
     if (!value) {
       return '-';
@@ -124,13 +174,13 @@ document.addEventListener('DOMContentLoaded', function() {
       const [year, month, day] = parts.map((part) => parseInt(part, 10));
       if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
         const date = new Date(Date.UTC(year, month - 1, day));
-        return date.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+        return applyDigitsIfBs(date.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }));
       }
     }
 
     const parsedDate = new Date(value);
     if (!Number.isNaN(parsedDate.getTime())) {
-      return parsedDate.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+      return applyDigitsIfBs(parsedDate.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }));
     }
 
     return value;
@@ -152,13 +202,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-    return date.toLocaleString('en-GB', {
+    return applyDigitsIfBs(date.toLocaleString('en-GB', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
-    });
+    }));
   };
   const statusClass = (status) => {
     switch (status) {
@@ -280,38 +330,51 @@ document.addEventListener('DOMContentLoaded', function() {
         render: (data, type, row) => {
           const deleted = isRowDeleted(row);
           const menuItems = deleted
-            ? `
-              <button type="button" class="dropdown-item view-asset">
-                <i class="fas fa-eye me-2"></i> View
-              </button>
-              <button type="button" class="dropdown-item restore-asset">
-                <i class="fas fa-undo me-2"></i> Restore
-              </button>
-            `
+            ? ''
             : `
-              <button type="button" class="dropdown-item view-asset">
-                <i class="fas fa-eye me-2"></i> View
-              </button>
               <button type="button" class="dropdown-item edit-asset">
-                <i class="fas fa-edit me-2"></i> Edit
+                <i class="fas fa-edit me-2"></i> Update
               </button>
               <button type="button" class="dropdown-item delete-asset">
                 <i class="fas fa-trash me-2 text-danger"></i> Delete
               </button>
-              <div class="dropdown-divider"></div>
-              <button type="button" class="dropdown-item print-sticker">
-                <i class="fas fa-print me-2"></i> Print Sticker
-              </button>
             `;
 
+          const inlineButtons = deleted
+            ? `
+                <button type="button" class="btn btn-sm btn-link text-secondary px-1 py-1 view-asset" title="View" aria-label="View">
+                  <i class="fas fa-eye"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-link text-secondary px-1 py-1 restore-asset" title="Restore" aria-label="Restore">
+                  <i class="fas fa-undo"></i>
+                </button>
+              `
+            : `
+                <button type="button" class="btn btn-sm btn-link text-secondary px-1 py-1 view-asset" title="View" aria-label="View">
+                  <i class="fas fa-eye"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-link text-secondary px-1 py-1 print-sticker" title="Print sticker" aria-label="Print sticker">
+                  <i class="fas fa-print"></i>
+                </button>
+              `;
+
+          const kebabMenu = menuItems
+            ? `
+                <div class="dropdown">
+                  <a href="#" class="btn btn-sm btn-link text-secondary px-1 py-1" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
+                    <i class="fas fa-ellipsis-v"></i>
+                  </a>
+                  <div class="dropdown-menu dropdown-menu-end">
+                    ${menuItems}
+                  </div>
+                </div>
+              `
+            : '';
+
           return `
-            <div class="dropdown">
-              <a href="#" class="text-secondary" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-ellipsis-v"></i>
-              </a>
-              <div class="dropdown-menu dropdown-menu-end">
-                ${menuItems}
-              </div>
+            <div class="d-flex align-items-center justify-content-center gap-2">
+              ${inlineButtons}
+              ${kebabMenu}
             </div>
           `;
         }
@@ -503,6 +566,7 @@ document.addEventListener('DOMContentLoaded', function() {
     $('#viewAssetName').text(assetData.AssetName || 'N/A');
     $('#viewCategory').text(assetData.CategoryName || 'N/A');
     $('#viewSerial').text(assetData.AssetSerial || 'N/A');
+    $('#viewProductSerial').text(assetData.ProductSerial || 'N/A');
     $('#viewPurchaseDate').text(formatDate(assetData.PurchaseDate));
     $('#viewPurchaseCost').text(formatCurrency(assetData.PurchaseCost));
     $('#viewWarrantyEnd').text(formatDate(assetData.WarrantyEndDate));
@@ -542,6 +606,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     $('#editAssetId').val(assetData.AssetID);
     $('#editAssetName').val(assetData.AssetName);
+    $('#editProductSerial').val(assetData.ProductSerial || '');
     $('#editCategoryId').val(assetData.CategoryID);
     $('#editPurchaseDate').val(toInputDate(assetData.PurchaseDate));
     $('#editPurchaseCost').val(assetData.PurchaseCost);
@@ -625,12 +690,13 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    if (!assetData.AssetName || !assetData.AssetSerial) {
-      alert('Asset data incomplete. Unable to print sticker.');
+    if (!assetData.AssetID) {
+      alert('Asset ID missing. Unable to print sticker.');
       return;
     }
 
-    printSticker(assetData.AssetName, assetData.AssetSerial);
+    // Open in a new tab within the same browser window
+    window.open(`print_sticker.php?id=${assetData.AssetID}`, '_blank');
   });
 });
 </script>
@@ -667,6 +733,10 @@ document.addEventListener('DOMContentLoaded', function() {
               <div class="mb-3">
                 <label for="assetName" class="form-label">Asset Name</label>
                 <input type="text" class="form-control" id="assetName" name="assetName" required>
+              </div>
+              <div class="mb-3">
+                <label for="productSerial" class="form-label">Product Serial No. (Optional)</label>
+                <input type="text" class="form-control" id="productSerial" name="productSerial" placeholder="Vendor serial (if any)">
               </div>
               <div class="mb-3">
                 <label for="categoryId" class="form-label">Category</label>
@@ -707,7 +777,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   <div class="mb-3">
                     <label for="assetCondition" class="form-label">Condition</label>
                     <select class="form-select" id="assetCondition" name="assetCondition" required>
-                      <option value="New">New</option>
+                      <option value="Excellent">Excellent</option>
                       <option value="Good">Good</option>
                       <option value="Fair">Fair</option>
                       <option value="Poor">Poor</option>
@@ -773,6 +843,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <input type="text" class="form-control" id="editAssetName" name="assetName" required>
                   </div>
                   <div class="mb-3">
+                    <label for="editProductSerial" class="form-label">Product Serial No. (Optional)</label>
+                    <input type="text" class="form-control" id="editProductSerial" name="productSerial" placeholder="Vendor serial (if any)">
+                  </div>
+                  <div class="mb-3">
                     <label for="editCategoryId" class="form-label">Category</label>
                     <select class="form-select" id="editCategoryId" name="categoryId" required>
                       <option value="">Select Category</option>
@@ -803,7 +877,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   <div class="mb-3">
                     <label for="editAssetCondition" class="form-label">Condition</label>
                     <select class="form-select" id="editAssetCondition" name="assetCondition" required>
-                      <option value="New">New</option>
+                      <option value="Excellent">Excellent</option>
                       <option value="Good">Good</option>
                       <option value="Fair">Fair</option>
                       <option value="Poor">Poor</option>
@@ -867,6 +941,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="mb-3">
                   <label class="fw-bold">Serial Number:</label>
                   <p id="viewSerial"></p>
+                </div>
+                <div class="mb-3">
+                  <label class="fw-bold">Product Serial No.:</label>
+                  <p id="viewProductSerial"></p>
                 </div>
                 <div class="mb-3">
                   <label class="fw-bold">Purchase Date:</label>
@@ -981,226 +1059,8 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
 </div>
 
-<!-- Print Sticker Modal -->
-<div class="modal fade" id="printStickerModal" tabindex="-1" aria-labelledby="printStickerModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="printStickerModalLabel">Print Asset Sticker</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div id="stickerContent" class="text-center">
-          <h4 id="stickerAssetName"></h4>
-          <svg id="barcode"></svg>
-          <span id="stickerSerialNumber" style="display: none;"></span>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-link text-primary" onclick="downloadSticker()" title="Download Sticker">
-          <i class="fas fa-download fa-lg"></i>
-        </button>
-        <button type="button" class="btn btn-link text-primary print-action-button" title="Print Sticker">
-          <i class="fas fa-print fa-lg"></i>
-        </button>
-        <button type="button" class="btn btn-link text-secondary" data-bs-dismiss="modal" title="Close">
-          <i class="fas fa-times fa-lg"></i>
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Add JsBarcode library -->
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-
 <!-- Add the assets-db.js script -->
 <script src="resources/js/assets-db.js"></script>
-
-<!-- Add download and print sticker functions -->
-<script>
-  // Function to download sticker as image
-  function downloadSticker() {
-    const stickerContent = document.getElementById('stickerContent');
-    const assetName = document.getElementById('stickerAssetName').textContent;
-    
-    html2canvas(stickerContent, {
-      scale: 3, // Higher scale for better quality
-      backgroundColor: '#ffffff'
-    }).then(canvas => {
-      const link = document.createElement('a');
-      link.download = 'asset-sticker-' + assetName + '.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    });
-  }
-  
-  // Function to print sticker (accepts arguments)
-  function printSticker(assetName, serialNumber) {
-    if (!assetName || !serialNumber) {
-      console.error("printSticker Error: Missing required parameters");
-      alert("Error: Could not generate sticker. Missing asset information.");
-      return;
-    }
-
-    // Create a more reliable print window
-    const printWindow = window.open('', '_blank', 'width=500,height=500');
-    
-    if (!printWindow) {
-      alert("Popup blocked! Please allow popups for this site to print stickers.");
-      return;
-    }
-    
-    // Create a complete HTML document for the print window
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Asset Sticker: ${assetName}</title>
-        <style>
-          @page { size: 90mm 50mm; margin: 5mm; }
-          body { 
-            font-family: Arial, sans-serif; 
-            margin: 0; 
-            padding: 10px; 
-            text-align: center;
-            background: white;
-          }
-          .sticker { 
-            width: 300px; 
-            padding: 20px; 
-            border: 1px dashed #ccc; 
-            border-radius: 5px;
-            margin: 0 auto; 
-            background: white;
-          }
-          .sticker h2 { 
-            margin: 0 0 15px 0; 
-            font-size: 18px; 
-            font-weight: bold; 
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-          .logo {
-            font-size: 11px;
-            color: #666;
-            margin-top: 5px;
-          }
-          .barcode-container {
-            margin: 15px 0;
-          }
-          .buttons { 
-            margin-top: 30px; 
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-          }
-          .btn { 
-            padding: 8px 16px; 
-            cursor: pointer; 
-            border: none; 
-            border-radius: 4px; 
-            font-weight: bold;
-            transition: all 0.2s ease;
-          }
-          .btn-primary { 
-            background-color: #007bff; 
-            color: white; 
-          }
-          .btn-primary:hover {
-            background-color: #0069d9;
-          }
-          .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-          }
-          .btn-secondary:hover {
-            background-color: #5a6268;
-          }
-          @media print {
-            @page { size: 90mm 50mm; margin: 0; }
-            body { 
-              margin: 0; 
-              padding: 0; 
-            }
-            .buttons { 
-              display: none; 
-            }
-            .sticker { 
-              border: none; 
-              width: 100%;
-              height: 100%;
-              padding: 0;
-              display: flex;
-              flex-direction: column;
-              justify-content: center;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="sticker">
-          <h2>${assetName}</h2>
-          <div class="barcode-container">
-            <svg id="printBarcode"></svg>
-          </div>
-          <div class="logo">Prime Express HRMS</div>
-        </div>
-        <div class="buttons">
-          <button class="btn btn-primary" onclick="window.print();">Print Sticker</button>
-          <button class="btn btn-secondary" onclick="window.close();">Close</button>
-        </div>
-        
-        <!-- Load barcode library -->
-        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\\/script>
-        
-        <script>
-          // Generate barcode when page is loaded
-          document.addEventListener('DOMContentLoaded', function() {
-            try {
-              JsBarcode("#printBarcode", "${serialNumber}", {
-                format: "CODE128",
-                lineColor: "#000",
-                width: 2,
-                height: 70,
-                displayValue: true,
-                fontSize: 16,
-                margin: 5,
-                background: "white"
-              });
-              
-              // Auto-print on some browsers
-              if (navigator.userAgent.indexOf('Chrome') > -1) {
-                setTimeout(function() {
-                  window.print();
-                }, 500);
-              }
-            } catch (e) {
-              console.error("Error generating barcode:", e);
-              document.querySelector('.barcode-container').innerHTML = 
-                '<p style="color:red;">Error generating barcode. Invalid data format.</p>';
-            }
-          });
-        <\\/script>
-      </body>
-      </html>
-    `;
-    
-    // Write content to the window and trigger print
-    printWindow.document.open();
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    
-    // Focus the window to bring it to front
-    printWindow.focus();
-  }
-</script>
-
-<!-- Add html2canvas library for image export -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <style>
 .asset-image-container {

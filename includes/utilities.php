@@ -9,6 +9,245 @@ require_once __DIR__ . '/notification_helpers.php';
 // Include session_config.php for session functions
 require_once __DIR__ . '/session_config.php';
 
+if (!function_exists('hrms_menu_permissions_catalog')) {
+function hrms_menu_permissions_catalog() {
+    static $catalog = null;
+    if ($catalog !== null) {
+        return $catalog;
+    }
+
+    $configPath = dirname(__DIR__) . '/config/menu_permissions.php';
+    if (file_exists($configPath)) {
+        $catalog = require $configPath;
+    } else {
+        $catalog = ['sections' => []];
+    }
+
+    return $catalog;
+}
+}
+
+if (!function_exists('hrms_flatten_permission_catalog')) {
+function hrms_flatten_permission_catalog() {
+    $catalog = hrms_menu_permissions_catalog();
+    $flattened = [];
+
+    foreach ($catalog['sections'] as $sectionKey => $section) {
+        $children = $section['children'] ?? [];
+        foreach ($children as $child) {
+            $childKey = $child['key'] ?? null;
+            $permissions = $child['permissions'] ?? [];
+            foreach ($permissions as $permission) {
+                $code = $permission['code'] ?? null;
+                if (!$code) {
+                    continue;
+                }
+                $flattened[$code] = [
+                    'section' => $sectionKey,
+                    'menu' => $childKey,
+                    'label' => $permission['label'] ?? $code,
+                    'type' => $permission['type'] ?? 'view',
+                    'description' => $permission['description'] ?? '',
+                    'default_roles' => $permission['default_roles'] ?? [],
+                ];
+            }
+        }
+    }
+
+    return $flattened;
+}
+}
+
+if (!function_exists('hrms_sync_permissions_from_catalog')) {
+function hrms_sync_permissions_from_catalog() {
+    static $synced = false;
+    if ($synced) {
+        return;
+    }
+
+    $flattened = hrms_flatten_permission_catalog();
+    if (empty($flattened)) {
+        $synced = true;
+        return;
+    }
+
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        require_once __DIR__ . '/date_conversion.php';
+        require_once __DIR__ . '/date_preferences.php';
+        require_once __DIR__ . '/date_preferences.php';
+        global $pdo;
+        if (!$pdo) {
+            return;
+        }
+
+        $columnsInfo = $pdo->query('SHOW COLUMNS FROM permissions')->fetchAll(PDO::FETCH_ASSOC);
+        $hasCategory = false;
+        foreach ($columnsInfo as $col) {
+            if (($col['Field'] ?? '') === 'category') {
+                $hasCategory = true;
+                break;
+            }
+        }
+
+        $insertSql = 'INSERT IGNORE INTO permissions (name, description' . ($hasCategory ? ', category' : '') . ') VALUES (:name, :description' . ($hasCategory ? ', :category' : '') . ')';
+        $insertPermission = $pdo->prepare($insertSql);
+        $selectPermissionId = $pdo->prepare('SELECT id FROM permissions WHERE name = :name LIMIT 1');
+
+        $permissionIdCache = [];
+
+        foreach ($flattened as $code => $meta) {
+            if (isset($permissionIdCache[$code])) {
+                $permissionId = $permissionIdCache[$code];
+            } else {
+                $selectPermissionId->execute([':name' => $code]);
+                $permissionId = (int)$selectPermissionId->fetchColumn();
+            }
+
+            if ($permissionId <= 0) {
+                $params = [
+                    ':name' => $code,
+                    ':description' => $meta['description'] ?? $code,
+                ];
+                if ($hasCategory) {
+                    $params[':category'] = 'menu';
+                }
+                $insertPermission->execute($params);
+
+                $selectPermissionId->execute([':name' => $code]);
+                $permissionId = (int)$selectPermissionId->fetchColumn();
+            }
+
+            if ($permissionId <= 0) {
+                continue;
+            }
+
+            $permissionIdCache[$code] = $permissionId;
+        }
+
+        $synced = true;
+    } catch (PDOException $e) {
+        // Swallow errors silently to avoid breaking UI
+        $synced = true;
+    }
+}
+}
+
+if (!function_exists('hrms_seed_role_permissions_from_defaults')) {
+function hrms_seed_role_permissions_from_defaults($roleId = null) {
+    $flattened = hrms_flatten_permission_catalog();
+    if (empty($flattened)) {
+        return;
+    }
+
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        if (!$pdo) {
+            return;
+        }
+
+        $columnsInfo = $pdo->query('SHOW COLUMNS FROM permissions')->fetchAll(PDO::FETCH_ASSOC);
+        $hasCategory = false;
+        foreach ($columnsInfo as $col) {
+            if (($col['Field'] ?? '') === 'category') {
+                $hasCategory = true;
+                break;
+            }
+        }
+
+        $selectPermissionId = $pdo->prepare('SELECT id FROM permissions WHERE name = :name LIMIT 1');
+        $selectRolePermission = $pdo->prepare('SELECT 1 FROM role_permissions WHERE role_id = :role_id AND permission_id = :perm_id LIMIT 1');
+        $insertRolePermission = $pdo->prepare('INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (:role_id, :permission_id)');
+
+        // Build role map
+        $roles = [];
+        $roleNames = [];
+        try {
+            $roleStmt = $pdo->query('SELECT id, name FROM roles');
+            foreach ($roleStmt->fetchAll(PDO::FETCH_ASSOC) as $roleRow) {
+                $id = (int)($roleRow['id'] ?? 0);
+                if ($id <= 0) continue;
+                $roles[] = $id;
+                $nameKey = strtolower(trim((string)($roleRow['name'] ?? '')));
+                if ($nameKey !== '') {
+                    $roleNames[$nameKey] = $id;
+                }
+            }
+        } catch (PDOException $e) {
+            $roles = [];
+            $roleNames = [];
+        }
+
+        $targetRoles = [];
+        if ($roleId !== null) {
+            $targetRoles = [(int)$roleId];
+        } else {
+            $targetRoles = $roles;
+        }
+
+        foreach ($flattened as $code => $meta) {
+            $defaultRoles = $meta['default_roles'] ?? [];
+            if (empty($defaultRoles)) {
+                continue;
+            }
+
+            // Resolve permission id
+            $selectPermissionId->execute([':name' => $code]);
+            $permissionId = (int)$selectPermissionId->fetchColumn();
+            if ($permissionId <= 0) {
+                continue;
+            }
+
+            // Determine which roles should get this permission
+            $seedRoles = [];
+            foreach ($defaultRoles as $target) {
+                if ($target === '*' || strtolower((string)$target) === 'all') {
+                    $seedRoles = $roles;
+                    break;
+                }
+                if (is_numeric($target)) {
+                    $seedRoles[] = (int)$target;
+                    continue;
+                }
+                $key = strtolower(trim((string)$target));
+                if ($key !== '' && isset($roleNames[$key])) {
+                    $seedRoles[] = $roleNames[$key];
+                }
+            }
+
+            $seedRoles = array_values(array_unique(array_filter($seedRoles)));
+            if (empty($seedRoles)) {
+                continue;
+            }
+
+            // If seeding a specific role, filter to it
+            if (!empty($targetRoles)) {
+                $seedRoles = array_values(array_intersect($seedRoles, $targetRoles));
+            }
+
+            if (empty($seedRoles)) {
+                continue;
+            }
+
+            foreach ($seedRoles as $rid) {
+                // Only insert if not already present
+                $selectRolePermission->execute([':role_id' => $rid, ':perm_id' => $permissionId]);
+                if ($selectRolePermission->fetchColumn()) {
+                    continue;
+                }
+                $insertRolePermission->execute([
+                    ':role_id' => $rid,
+                    ':permission_id' => $permissionId,
+                ]);
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+}
+}
+
 /**
  * Format a date for display
  * 
@@ -154,8 +393,42 @@ function redirect_with_message($location, $message_type, $message) {
  * @return bool True if user has admin role, false otherwise
  */
 function is_admin() {
-    // Check if user is logged in and has admin role (role == '1')
-    return isset($_SESSION['user_id']) && isset($_SESSION['user_role']) && $_SESSION['user_role'] == '1';
+    if (!isset($_SESSION['user_id'])) {
+        return false;
+    }
+
+    $unrestrictedIds = hrms_get_unrestricted_role_ids();
+
+    $candidateIds = [];
+    if (isset($_SESSION['user_role_id']) && is_numeric($_SESSION['user_role_id'])) {
+        $candidateIds[] = (int)$_SESSION['user_role_id'];
+    }
+    if (isset($_SESSION['user_role']) && is_numeric($_SESSION['user_role'])) {
+        $candidateIds[] = (int)$_SESSION['user_role'];
+    }
+
+    foreach ($candidateIds as $candidateId) {
+        if (in_array($candidateId, $unrestrictedIds, true)) {
+            return true;
+        }
+    }
+
+    $candidateNames = [];
+    if (isset($_SESSION['user_role']) && !is_numeric($_SESSION['user_role'])) {
+        $candidateNames[] = strtolower(trim((string)$_SESSION['user_role']));
+    }
+    if (isset($_SESSION['user_role_name']) && is_string($_SESSION['user_role_name'])) {
+        $candidateNames[] = strtolower(trim($_SESSION['user_role_name']));
+    }
+
+    $unrestrictedNames = ['super admin', 'super_admin', 'superadmin', 'super administrator', 'administrator', 'admin'];
+    foreach ($candidateNames as $name) {
+        if ($name !== '' && in_array($name, $unrestrictedNames, true)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -174,6 +447,58 @@ function is_logged_in() {
  */
 function get_user_role() {
     return isset($_SESSION['user_role']) ? $_SESSION['user_role'] : null;
+}
+
+if (!function_exists('hrms_get_unrestricted_role_ids')) {
+function hrms_get_unrestricted_role_ids() {
+    static $cachedIds = null;
+    if (is_array($cachedIds)) {
+        return $cachedIds;
+    }
+
+    $ids = [];
+
+    $configPath = dirname(__DIR__) . '/config/access_control.php';
+    if (file_exists($configPath)) {
+        $config = include $configPath;
+        if (is_array($config) && isset($config['unrestricted_role_ids'])) {
+            foreach ((array)$config['unrestricted_role_ids'] as $configId) {
+                if (is_numeric($configId)) {
+                    $ids[] = (int)$configId;
+                }
+            }
+        }
+    }
+
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        if ($pdo instanceof PDO) {
+            $stmt = $pdo->prepare(
+                "SELECT id FROM roles WHERE LOWER(name) IN ('super admin','super_admin','superadmin','super administrator','administrator','admin')"
+            );
+            $stmt->execute();
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $dbId) {
+                if (is_numeric($dbId)) {
+                    $ids[] = (int)$dbId;
+                }
+            }
+        }
+    } catch (PDOException $e) {
+        // Ignore discovery failures; fall back to defaults below
+    }
+
+    if (empty($ids)) {
+        $ids[] = 1;
+    }
+
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static function ($value) {
+        return $value > 0;
+    })));
+
+    $cachedIds = $ids;
+    return $cachedIds;
+}
 }
 
 if (!function_exists('hrms_get_role_permissions')) {
@@ -205,7 +530,8 @@ function hrms_get_role_permissions($forceRefresh = false) {
         require_once __DIR__ . '/db_connection.php';
         global $pdo;
 
-        $sql = "SELECT p.code 
+        // permissions table stores short codes in the `name` column (e.g. view_attendance)
+        $sql = "SELECT p.name 
                 FROM role_permissions rp 
                 JOIN permissions p ON rp.permission_id = p.id 
                 WHERE rp.role_id = :role_id";
@@ -231,6 +557,90 @@ function hrms_get_role_permissions($forceRefresh = false) {
 }
 }
 
+if (!function_exists('hrms_get_permissions_for_role')) {
+function hrms_get_permissions_for_role($roleId) {
+    $roleId = (int)$roleId;
+    if ($roleId <= 0) {
+        return [];
+    }
+
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+
+        $stmt = $pdo->prepare(
+            'SELECT p.name FROM role_permissions rp JOIN permissions p ON rp.permission_id = p.id WHERE rp.role_id = :role_id'
+        );
+        $stmt->bindParam(':role_id', $roleId, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } catch (PDOException $e) {
+        error_log('Failed to load role permissions: ' . $e->getMessage());
+    }
+
+    return [];
+}
+}
+
+if (!function_exists('hrms_get_user_permission_overrides')) {
+function hrms_get_user_permission_overrides($userId, $forceRefresh = false) {
+    // Returns array ['permission_code' => allowed_int(0|1)]
+    static $cache = [];
+    $userId = (int)$userId;
+    if ($userId <= 0) return [];
+    // Prefer the in-process cache
+    if (!$forceRefresh && isset($cache[$userId])) return $cache[$userId];
+
+    // If session cache exists and is newer than DB marker, use it (avoids extra query)
+    if (!$forceRefresh && isset($_SESSION['user_permission_cache']) && isset($_SESSION['user_permission_cache'][$userId])) {
+        $sess = $_SESSION['user_permission_cache'][$userId];
+        $sessLoaded = isset($sess['loaded_at']) ? (int)$sess['loaded_at'] : 0;
+        try {
+            require_once __DIR__ . '/db_connection.php';
+            global $pdo;
+            $tsStmt = $pdo->prepare('SELECT UNIX_TIMESTAMP(permissions_updated_at) FROM employees WHERE emp_id = ? LIMIT 1');
+            $tsStmt->execute([$userId]);
+            $dbTs = (int)$tsStmt->fetchColumn();
+            // If session loaded_at is later or equal to DB timestamp, trust session cache
+            if ($sessLoaded >= $dbTs) {
+                $cache[$userId] = $sess['overrides'] ?? [];
+                return $cache[$userId];
+            }
+        } catch (PDOException $e) {
+            // ignore and fall back to fresh DB load
+        }
+    }
+
+    $result = [];
+    try {
+        require_once __DIR__ . '/db_connection.php';
+        global $pdo;
+        // Load per-user overrides - permission's short code is in `permissions.name`
+        $sql = "SELECT p.name, up.allowed FROM user_permissions up JOIN permissions p ON up.permission_id = p.id WHERE up.user_id = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$userId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $r) {
+            $code = $r['name'] ?? null;
+            if ($code !== null) {
+                $result[$code] = (int)$r['allowed'];
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('Failed to load user permission overrides: ' . $e->getMessage());
+    }
+
+    $cache[$userId] = $result;
+    // Also store in session cache so future requests can avoid an extra DB timestamp check
+    if (!isset($_SESSION['user_permission_cache'])) $_SESSION['user_permission_cache'] = [];
+    $_SESSION['user_permission_cache'][$userId] = [
+        'overrides' => $result,
+        'loaded_at' => time(),
+    ];
+    return $result;
+}
+}
+
 /**
  * Check if the current user has a specific permission
  * 
@@ -238,15 +648,16 @@ function hrms_get_role_permissions($forceRefresh = false) {
  * @return bool True if user has permission, false otherwise
  */
 function has_permission($permission_code) {
+    // Admins always have permission
     if (is_admin()) {
         return true;
     }
 
+    // If not logged in, no permissions
     if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_role_id'])) {
         return false;
     }
-
-    $permissions = hrms_get_role_permissions();
+    $permissions = get_user_permissions();
     return in_array($permission_code, $permissions, true);
 }
 
@@ -260,8 +671,11 @@ function has_any_permission(array $permission_codes) {
     if (is_admin()) {
         return true;
     }
+    if (empty($permission_codes)) {
+        return true;
+    }
 
-    $permissions = hrms_get_role_permissions();
+    $permissions = get_user_permissions();
     foreach ($permission_codes as $code) {
         if (in_array($code, $permissions, true)) {
             return true;
@@ -282,7 +696,7 @@ function has_all_permissions(array $permission_codes) {
         return true;
     }
 
-    $permissions = hrms_get_role_permissions();
+    $permissions = get_user_permissions();
     foreach ($permission_codes as $code) {
         if (!in_array($code, $permissions, true)) {
             return false;
@@ -292,18 +706,289 @@ function has_all_permissions(array $permission_codes) {
     return true;
 }
 
+if (!function_exists('hrms_normalize_branch_value')) {
+function hrms_normalize_branch_value($value) {
+    if ($value === null) {
+        return null;
+    }
+    $normalized = trim((string)$value);
+    return $normalized === '' ? null : $normalized;
+}
+}
+
+if (!function_exists('hrms_resolve_branch_assignment')) {
+function hrms_resolve_branch_assignment($legacyValue, $branchIdValue) {
+    $legacy = hrms_normalize_branch_value($legacyValue);
+    $numeric = null;
+
+    if ($legacy !== null && ctype_digit($legacy)) {
+        $numeric = (int)$legacy;
+    }
+
+    if ($legacy === null) {
+        $candidate = hrms_normalize_branch_value($branchIdValue);
+        if ($candidate !== null && ctype_digit($candidate)) {
+            $numeric = (int)$candidate;
+            $legacy = (string)$numeric;
+        }
+    }
+
+    return [
+        'legacy' => $legacy,
+        'numeric' => $numeric,
+    ];
+}
+}
+
+if (!function_exists('hrms_build_branch_filter_sql')) {
+function hrms_build_branch_filter_sql(array $branchContext, array &$params, $legacyColumn = 'branch', $numericColumn = 'branch_id') {
+    $legacyValue = $branchContext['legacy'] ?? null;
+    $numericValue = array_key_exists('numeric', $branchContext) ? $branchContext['numeric'] : null;
+
+    if ($legacyValue !== null) {
+        $clauses = [];
+        $legacyParam = ':branchLegacyFilter';
+        $clauses[] = "$legacyColumn = $legacyParam";
+        $params[$legacyParam] = $legacyValue;
+
+        if ($numericValue !== null) {
+            $numericParam = ':branchLegacyNumericFilter';
+            $clauses[] = "(($legacyColumn IS NULL OR $legacyColumn = '') AND $numericColumn = $numericParam)";
+            $params[$numericParam] = $numericValue;
+        }
+
+        return '(' . implode(' OR ', $clauses) . ')';
+    }
+
+    if ($numericValue !== null) {
+        $numericParam = ':branchNumericOnlyFilter';
+        $params[$numericParam] = $numericValue;
+        return "(($legacyColumn IS NULL OR $legacyColumn = '') AND $numericColumn = $numericParam)";
+    }
+
+    return '';
+}
+}
+
+if (!function_exists('hrms_employee_matches_branch')) {
+function hrms_employee_matches_branch(array $viewerContext, array $employeeContext) {
+    $viewerLegacy = $viewerContext['legacy'] ?? null;
+    $viewerNumeric = array_key_exists('numeric', $viewerContext) ? $viewerContext['numeric'] : null;
+    $employeeLegacy = $employeeContext['legacy'] ?? null;
+    $employeeNumeric = array_key_exists('numeric', $employeeContext) ? $employeeContext['numeric'] : null;
+
+    if ($viewerLegacy !== null && $employeeLegacy !== null) {
+        return $viewerLegacy === $employeeLegacy;
+    }
+
+    if ($viewerLegacy !== null && $employeeLegacy === null && $employeeNumeric !== null && ctype_digit($viewerLegacy)) {
+        return (int)$viewerLegacy === $employeeNumeric;
+    }
+
+    if ($viewerLegacy === null && $viewerNumeric !== null && $employeeLegacy !== null && ctype_digit($employeeLegacy)) {
+        return $viewerNumeric === (int)$employeeLegacy;
+    }
+
+    if ($viewerNumeric !== null && $employeeNumeric !== null) {
+        return $viewerNumeric === $employeeNumeric;
+    }
+
+    return false;
+}
+}
+
+if (!function_exists('hrms_get_user_branch_context')) {
+function hrms_get_user_branch_context($pdo, $userId) {
+    $context = ['legacy' => null, 'numeric' => null, 'name' => null];
+    if (!$pdo || !$userId) {
+        return $context;
+    }
+
+    try {
+        $stmt = $pdo->prepare('SELECT e.branch, e.branch_id, b.name FROM employees e LEFT JOIN branches b ON e.branch = b.id WHERE e.emp_id = :emp_id LIMIT 1');
+        $stmt->execute([':emp_id' => $userId]);
+        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $resolved = hrms_resolve_branch_assignment($row['branch'] ?? null, $row['branch_id'] ?? null);
+            $resolved['name'] = $row['name'] ?? null;
+            return $resolved;
+        }
+    } catch (PDOException $e) {
+        // Fall back to empty context when lookup fails
+    }
+
+    return $context;
+}
+}
+
 /**
  * Get all permissions for the current user
  * 
  * @return array Array of permission codes the user has
  */
-function get_user_permissions() {
+function get_user_permissions($forceRefresh = false) {
+    // Effective permissions = role permissions + user grants - user revokes
     if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_role_id'])) {
         return [];
     }
 
-    return hrms_get_role_permissions();
+    $userId = (int)$_SESSION['user_id'];
+
+    static $cachedUserId = null;
+    static $cachedPermissions = null;
+
+    if (!$forceRefresh && $cachedUserId === $userId && $cachedPermissions !== null) {
+        return $cachedPermissions;
+    }
+
+    // Start with role permissions
+    $effective = hrms_get_role_permissions($forceRefresh);
+    // Pull in user overrides
+    $overrides = hrms_get_user_permission_overrides($userId, $forceRefresh);
+    foreach ($overrides as $code => $allowed) {
+        if ((int)$allowed === 1) {
+            // grant
+            if (!in_array($code, $effective, true)) {
+                $effective[] = $code;
+            }
+        } else {
+            // revoke if present
+            $idx = array_search($code, $effective, true);
+            if ($idx !== false) {
+                unset($effective[$idx]);
+            }
+        }
+    }
+
+    // Re-index array
+    $effective = array_values(array_unique($effective));
+    $cachedPermissions = $effective;
+    $cachedUserId = $userId;
+
+    return $effective;
 }
+
+/**
+ * Convert ISO 3166-1 alpha-2 code to a flag emoji
+ * @param string $iso2 Two-letter country code
+ * @return string Emoji flag or empty string
+ */
+function country_flag_from_iso2($iso2) {
+    if (empty($iso2) || !is_string($iso2)) return '';
+    $iso = strtoupper(trim($iso2));
+    if (strlen($iso) !== 2 || !ctype_alpha($iso)) return '';
+
+    $a = ord($iso[0]) - ord('A');
+    $b = ord($iso[1]) - ord('A');
+    if ($a < 0 || $a > 25 || $b < 0 || $b > 25) return '';
+
+    $first = 0x1F1E6 + $a;
+    $second = 0x1F1E6 + $b;
+
+    // Prefer mb_chr for codepoint -> UTF-8 conversion when available
+    if (function_exists('mb_chr')) {
+        return mb_chr($first, 'UTF-8') . mb_chr($second, 'UTF-8');
+    }
+
+    // Fallback to numeric entity decoding
+    return html_entity_decode('&#' . $first . ';' . '&#' . $second . ';', ENT_NOQUOTES, 'UTF-8');
+}
+
+/**
+ * Best-effort flag by country name fallback mapping
+ * @param string $name Country display name
+ * @return string Emoji or empty string
+ */
+function country_flag_from_name_fallback($name) {
+    if (empty($name) || !is_string($name)) return '';
+    $n = strtolower(trim($name));
+    $map = [
+        'nepal' => '🇳🇵',
+        'india' => '🇮🇳',
+        'united states' => '🇺🇸',
+        'united states of america' => '🇺🇸',
+        'united kingdom' => '🇬🇧',
+        'uk' => '🇬🇧',
+        'canada' => '🇨🇦',
+        'australia' => '🇦🇺',
+        'china' => '🇨🇳',
+        'germany' => '🇩🇪',
+        'france' => '🇫🇷',
+        'pakistan' => '🇵🇰',
+        'bangladesh' => '🇧🇩',
+        'japan' => '🇯🇵',
+        'united arab emirates' => '🇦🇪'
+    ];
+
+    // Exact match
+    if (isset($map[$n])) {
+        return $map[$n];
+    }
+
+    // Try contains
+    foreach ($map as $key => $emoji) {
+        if (strpos($n, $key) !== false) {
+            return $emoji;
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Resolve an emoji flag for a country row or name.
+ * Accepts array item (from DB) or raw string name/iso2.
+ * @param mixed $country Array or string
+ * @return string Emoji flag or empty
+ */
+// country flag resolution helper removed — flags are no longer rendered via helpers here
+
+// flash messages helper: provide set/get helpers so calling code (redirect_with_message etc.) works
+if (!function_exists('set_flash_message')) {
+    /**
+     * Add a flash message to the user's session
+     * @param string $type message type (success|error|warning|info)
+     * @param string $message message text
+     * @return void
+     */
+    function set_flash_message($type, $message) {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            @session_start();
+        }
+        if (!isset($_SESSION['flash_messages']) || !is_array($_SESSION['flash_messages'])) {
+            $_SESSION['flash_messages'] = [];
+        }
+        $_SESSION['flash_messages'][] = [
+            'type' => (string)$type,
+            'message' => (string)$message,
+            'ts' => time(),
+        ];
+    }
+}
+
+if (!function_exists('get_flash_messages')) {
+    /**
+     * Fetch and clear flash messages from session
+     * @return array Array of messages
+     */
+    function get_flash_messages() {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            @session_start();
+        }
+        $result = $_SESSION['flash_messages'] ?? [];
+        unset($_SESSION['flash_messages']);
+        return $result;
+    }
+}
+
+/**
+ * Resolve a flag-icon CSS class for a country record or name.
+ * Returns the class suffix appropriate for the flag-icon plugin (e.g. 'flag-icon-np')
+ * or an empty string if not resolvable.
+ *
+ * @param mixed $country Array row or string
+ * @return string CSS class name (empty when not available)
+ */
+// flag class helper removed — flags are no longer rendered via CSS classes here
 
 /**
  * Check if a given date is a holiday
@@ -674,21 +1359,62 @@ function get_upcoming_celebrations($days = 30, $limit = 8, $branch_id = null) {
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $today = new DateTime(date('Y-m-d'));
+        $todayAd = date('Y-m-d');
+        $today = new DateTime($todayAd);
         $items = [];
+        $useBsMode = function_exists('hrms_should_use_bs_dates') && hrms_should_use_bs_dates();
+        $todayBs = $useBsMode ? get_bs_for_ad_date($todayAd) : null;
+
+        $resolveBsEventDate = function (string $adSourceDate) use ($today, $todayBs) {
+            if (!$todayBs) {
+                return null;
+            }
+            $bsInfo = get_bs_for_ad_date($adSourceDate);
+            if (!$bsInfo) {
+                return null;
+            }
+
+            $targetBsYear = (int)$todayBs['bs_year'];
+            $targetBsDate = sprintf('%04d-%02d-%02d', $targetBsYear, (int)$bsInfo['bs_month'], (int)$bsInfo['bs_day']);
+            $adInfo = get_ad_for_bs_date($targetBsDate);
+            if (!$adInfo || empty($adInfo['ad_date'])) {
+                return null;
+            }
+
+            $candidate = new DateTime($adInfo['ad_date']);
+            if ($candidate < $today) {
+                $targetBsYear++;
+                $targetBsDate = sprintf('%04d-%02d-%02d', $targetBsYear, (int)$bsInfo['bs_month'], (int)$bsInfo['bs_day']);
+                $adInfo = get_ad_for_bs_date($targetBsDate);
+                if (!$adInfo || empty($adInfo['ad_date'])) {
+                    return null;
+                }
+                $candidate = new DateTime($adInfo['ad_date']);
+            }
+
+            return $candidate->format('Y-m-d');
+        };
 
         foreach ($rows as $e) {
             // Birthday
             if (!empty($e['date_of_birth'])) {
                 $dob = DateTime::createFromFormat('Y-m-d', $e['date_of_birth']);
                 if ($dob) {
-                    $event = (clone $dob)->setDate((int)$today->format('Y'), (int)$dob->format('m'), (int)$dob->format('d'));
-                    // Handle Feb 29 on non-leap years -> Mar 1
-                    if (!checkdate((int)$dob->format('m'), (int)$dob->format('d'), (int)$today->format('Y'))) {
-                        $event = (clone $dob)->setDate((int)$today->format('Y'), 3, 1);
+                    $eventDateAd = null;
+                    if ($useBsMode) {
+                        $eventDateAd = $resolveBsEventDate($dob->format('Y-m-d'));
                     }
-                    if ($event < $today) { $event->modify('+1 year'); }
-                    $diffDays = (int)$today->diff($event)->days;
+                    if (!$eventDateAd) {
+                        $event = (clone $dob)->setDate((int)$today->format('Y'), (int)$dob->format('m'), (int)$dob->format('d'));
+                        if (!checkdate((int)$dob->format('m'), (int)$dob->format('d'), (int)$today->format('Y'))) {
+                            $event = (clone $dob)->setDate((int)$today->format('Y'), 3, 1);
+                        }
+                        if ($event < $today) { $event->modify('+1 year'); }
+                        $eventDateAd = $event->format('Y-m-d');
+                    }
+
+                    $eventDt = new DateTime($eventDateAd);
+                    $diffDays = (int)$today->diff($eventDt)->days;
                     if ($diffDays <= $days) {
                         $items[] = [
                             'emp_id' => $e['emp_id'],
@@ -697,12 +1423,12 @@ function get_upcoming_celebrations($days = 30, $limit = 8, $branch_id = null) {
                             'last_name' => $e['last_name'],
                             'designation_name' => $e['designation_name'] ?? null,
                             'user_image' => $e['user_image'] ?? null,
-                            'event_date' => $event->format('Y-m-d'),
-                            'event_day' => (int)$event->format('d'),
-                            'event_month' => (int)$event->format('m'),
+                            'event_date' => $eventDateAd,
+                            'event_day' => (int)$eventDt->format('d'),
+                            'event_month' => (int)$eventDt->format('m'),
                             'celebration_type' => 'birthday',
                             'days_until' => $diffDays,
-                            'display_date' => $event->format('F j')
+                            'display_date' => hrms_format_preferred_date($eventDateAd, 'F j')
                         ];
                     }
                 }
@@ -712,17 +1438,25 @@ function get_upcoming_celebrations($days = 30, $limit = 8, $branch_id = null) {
             if (!empty($e['join_date'])) {
                 $jd = DateTime::createFromFormat('Y-m-d', $e['join_date']);
                 if ($jd) {
-                    // Only if join year < current year
                     $curYear = (int)$today->format('Y');
                     if ((int)$jd->format('Y') < $curYear && (int)$jd->format('Y') > 1990) {
-                        $event = (clone $jd)->setDate($curYear, (int)$jd->format('m'), (int)$jd->format('d'));
-                        if (!checkdate((int)$jd->format('m'), (int)$jd->format('d'), $curYear)) {
-                            $event = (clone $jd)->setDate($curYear, 3, 1);
+                        $eventDateAd = null;
+                        if ($useBsMode) {
+                            $eventDateAd = $resolveBsEventDate($jd->format('Y-m-d'));
                         }
-                        if ($event < $today) { $event->modify('+1 year'); $curYear++; }
-                        $diffDays = (int)$today->diff($event)->days;
+                        if (!$eventDateAd) {
+                            $event = (clone $jd)->setDate($curYear, (int)$jd->format('m'), (int)$jd->format('d'));
+                            if (!checkdate((int)$jd->format('m'), (int)$jd->format('d'), $curYear)) {
+                                $event = (clone $jd)->setDate($curYear, 3, 1);
+                            }
+                            if ($event < $today) { $event->modify('+1 year'); $curYear++; }
+                            $eventDateAd = $event->format('Y-m-d');
+                        }
+
+                        $eventDt = new DateTime($eventDateAd);
+                        $diffDays = (int)$today->diff($eventDt)->days;
                         if ($diffDays <= $days) {
-                            $yearsCompleted = (int)$event->format('Y') - (int)$jd->format('Y');
+                            $yearsCompleted = (int)$eventDt->format('Y') - (int)$jd->format('Y');
                             $items[] = [
                                 'emp_id' => $e['emp_id'],
                                 'first_name' => $e['first_name'],
@@ -730,13 +1464,13 @@ function get_upcoming_celebrations($days = 30, $limit = 8, $branch_id = null) {
                                 'last_name' => $e['last_name'],
                                 'designation_name' => $e['designation_name'] ?? null,
                                 'user_image' => $e['user_image'] ?? null,
-                                'event_date' => $event->format('Y-m-d'),
-                                'event_day' => (int)$event->format('d'),
-                                'event_month' => (int)$event->format('m'),
+                                'event_date' => $eventDateAd,
+                                'event_day' => (int)$eventDt->format('d'),
+                                'event_month' => (int)$eventDt->format('m'),
                                 'celebration_type' => 'anniversary',
                                 'days_until' => $diffDays,
                                 'years_completed' => $yearsCompleted,
-                                'display_date' => $event->format('F j')
+                                'display_date' => hrms_format_preferred_date($eventDateAd, 'F j')
                             ];
                         }
                     }
@@ -753,6 +1487,135 @@ function get_upcoming_celebrations($days = 30, $limit = 8, $branch_id = null) {
     } catch (Throwable $e) {
         error_log('Get upcoming celebrations error: ' . $e->getMessage(), 3, 'error_log.txt');
         return [];
+    }
+}
+
+if (!function_exists('get_employee_celebrations_by_date_range')) {
+    /**
+     * Return celebrations keyed by date for the provided AD range.
+     */
+    function get_employee_celebrations_by_date_range(string $startDate, string $endDate, ?int $branch_id = null): array
+    {
+        try {
+            $rangeStart = DateTime::createFromFormat('Y-m-d', $startDate);
+            $rangeEnd = DateTime::createFromFormat('Y-m-d', $endDate);
+            if (!$rangeStart || !$rangeEnd) {
+                return [];
+            }
+            if ($rangeStart > $rangeEnd) {
+                [$rangeStart, $rangeEnd] = [$rangeEnd, $rangeStart];
+            }
+            $startStr = $rangeStart->format('Y-m-d');
+            $endStr = $rangeEnd->format('Y-m-d');
+            $startYear = (int)$rangeStart->format('Y');
+            $endYear = (int)$rangeEnd->format('Y');
+
+            require_once __DIR__ . '/db_connection.php';
+            global $pdo;
+
+            $params = [];
+            $where = "e.exit_date IS NULL";
+            if (!is_null($branch_id)) {
+                $where .= " AND (e.branch = :branch_id)";
+                $params[':branch_id'] = (int)$branch_id;
+            }
+
+            $sql = "SELECT e.emp_id, e.first_name, e.middle_name, e.last_name, e.date_of_birth, e.join_date,
+                           d.title AS designation_name
+                    FROM employees e
+                    LEFT JOIN designations d ON e.designation = d.id
+                    WHERE $where";
+
+            $stmt = $pdo->prepare($sql);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value, PDO::PARAM_INT);
+            }
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $resolveEventDate = static function (int $year, int $month, int $day): ?string {
+                if (checkdate($month, $day, $year)) {
+                    return sprintf('%04d-%02d-%02d', $year, $month, $day);
+                }
+                if ($month === 2 && $day === 29) {
+                    return sprintf('%04d-03-01', $year);
+                }
+                return null;
+            };
+
+            $results = [];
+            foreach ($rows as $employee) {
+                $displayName = trim(implode(' ', array_filter([
+                    $employee['first_name'] ?? null,
+                    $employee['middle_name'] ?? null,
+                    $employee['last_name'] ?? null
+                ])));
+                if ($displayName === '') {
+                    $displayName = $employee['first_name'] ?? 'Team member';
+                }
+
+                if (!empty($employee['date_of_birth'])) {
+                    $dob = DateTime::createFromFormat('Y-m-d', $employee['date_of_birth']);
+                    if ($dob) {
+                        $birthMonth = (int)$dob->format('m');
+                        $birthDay = (int)$dob->format('d');
+                        for ($year = $startYear; $year <= $endYear; $year++) {
+                            $eventDate = $resolveEventDate($year, $birthMonth, $birthDay);
+                            if (!$eventDate || $eventDate < $startStr || $eventDate > $endStr) {
+                                continue;
+                            }
+                            $results[] = [
+                                'emp_id' => $employee['emp_id'],
+                                'display_name' => $displayName,
+                                'celebration_type' => 'birthday',
+                                'event_date' => $eventDate,
+                                'designation_name' => $employee['designation_name'] ?? null,
+                                'years_completed' => null,
+                            ];
+                        }
+                    }
+                }
+
+                if (!empty($employee['join_date'])) {
+                    $joinDate = DateTime::createFromFormat('Y-m-d', $employee['join_date']);
+                    if ($joinDate) {
+                        $joinYear = (int)$joinDate->format('Y');
+                        $joinMonth = (int)$joinDate->format('m');
+                        $joinDay = (int)$joinDate->format('d');
+                        for ($year = max($startYear, $joinYear + 1); $year <= $endYear; $year++) {
+                            if ($year <= $joinYear) {
+                                continue;
+                            }
+                            $eventDate = $resolveEventDate($year, $joinMonth, $joinDay);
+                            if (!$eventDate || $eventDate < $startStr || $eventDate > $endStr) {
+                                continue;
+                            }
+                            $results[] = [
+                                'emp_id' => $employee['emp_id'],
+                                'display_name' => $displayName,
+                                'celebration_type' => 'anniversary',
+                                'event_date' => $eventDate,
+                                'designation_name' => $employee['designation_name'] ?? null,
+                                'years_completed' => $year - $joinYear,
+                            ];
+                        }
+                    }
+                }
+            }
+
+            usort($results, static function ($a, $b) {
+                $dateCompare = strcmp($a['event_date'] ?? '', $b['event_date'] ?? '');
+                if ($dateCompare !== 0) {
+                    return $dateCompare;
+                }
+                return strcmp($a['display_name'] ?? '', $b['display_name'] ?? '');
+            });
+
+            return $results;
+        } catch (Throwable $e) {
+            error_log('Get celebrations by range error: ' . $e->getMessage(), 3, 'error_log.txt');
+            return [];
+        }
     }
 }
 ?>
