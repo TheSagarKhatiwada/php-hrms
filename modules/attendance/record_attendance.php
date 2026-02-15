@@ -19,6 +19,7 @@ if (!isset($_SESSION['user_id'])) {
 
 // Include the database connection file
 require_once '../../includes/db_connection.php';
+require_once '../../includes/utilities.php';
 
 // Include settings file to get timezone configuration
 require_once '../../includes/settings.php';
@@ -54,6 +55,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         if ((int)($employee['allow_web_attendance'] ?? 0) !== 1) {
             echo json_encode(['success' => false, 'message' => 'Web clock-in/out is disabled for this account.']);
             exit();
+        }
+
+        // Enforce branch geofence if enabled
+        $geofence = hrms_get_branch_geofence_for_employee($pdo, $emp_id_string);
+        if (!empty($geofence) && (int)($geofence['geofence_enabled'] ?? 0) === 1) {
+            // Fetch the latest location for this session
+            $latestLat = null;
+            $latestLon = null;
+            try {
+                $locStmt = $pdo->prepare("SELECT latitude, longitude FROM location_logs
+                                          WHERE employee_id = :emp AND session_id = :sid
+                                          ORDER BY created_at DESC LIMIT 1");
+                $locStmt->execute([
+                    ':emp' => $emp_id_string,
+                    ':sid' => session_id()
+                ]);
+                if ($row = $locStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $latestLat = $row['latitude'];
+                    $latestLon = $row['longitude'];
+                }
+            } catch (PDOException $e) {
+                // ignore and fall back to session meta
+            }
+
+            if ($latestLat === null || $latestLon === null) {
+                $metaLoc = $_SESSION['meta']['last_location'] ?? null;
+                if (!empty($metaLoc)) {
+                    $latestLat = $metaLoc['lat'] ?? null;
+                    $latestLon = $metaLoc['lon'] ?? null;
+                }
+            }
+
+            if ($latestLat === null || $latestLon === null) {
+                echo json_encode(['success' => false, 'message' => 'Location is required to use web check-in/out.']);
+                exit();
+            }
+
+            if (!hrms_is_within_geofence($latestLat, $latestLon, $geofence)) {
+                echo json_encode(['success' => false, 'message' => 'You are outside the branch location. Web check-in/out is not allowed.']);
+                exit();
+            }
         }
         
         // Get timezone from settings

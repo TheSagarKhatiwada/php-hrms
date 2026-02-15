@@ -248,6 +248,50 @@ function hrms_seed_role_permissions_from_defaults($roleId = null) {
 }
 }
 
+if (!function_exists('hrms_haversine_distance_m')) {
+function hrms_haversine_distance_m($lat1, $lon1, $lat2, $lon2) {
+    $earthRadius = 6371000; // meters
+    $dLat = deg2rad($lat2 - $lat1);
+    $dLon = deg2rad($lon2 - $lon1);
+    $a = sin($dLat / 2) * sin($dLat / 2) +
+         cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+         sin($dLon / 2) * sin($dLon / 2);
+    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+    return $earthRadius * $c;
+}
+}
+
+if (!function_exists('hrms_get_branch_geofence_for_employee')) {
+function hrms_get_branch_geofence_for_employee(PDO $pdo, $empId) {
+    $stmt = $pdo->prepare("SELECT e.branch, b.latitude, b.longitude, b.radius_m, b.geofence_enabled
+                           FROM employees e
+                           LEFT JOIN branches b ON e.branch = b.id
+                           WHERE e.emp_id = :emp LIMIT 1");
+    $stmt->execute([':emp' => $empId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    return [
+        'branch_id' => $row['branch'],
+        'latitude' => $row['latitude'],
+        'longitude' => $row['longitude'],
+        'radius_m' => $row['radius_m'],
+        'geofence_enabled' => (int)($row['geofence_enabled'] ?? 0)
+    ];
+}
+}
+
+if (!function_exists('hrms_is_within_geofence')) {
+function hrms_is_within_geofence($lat, $lon, array $geofence) {
+    if (empty($geofence['geofence_enabled'])) return true;
+    if ($geofence['latitude'] === null || $geofence['longitude'] === null) return true;
+    if (!is_numeric($lat) || !is_numeric($lon)) return false;
+    $radius = (float)($geofence['radius_m'] ?? 0);
+    if ($radius <= 0) return true;
+    $distance = hrms_haversine_distance_m((float)$lat, (float)$lon, (float)$geofence['latitude'], (float)$geofence['longitude']);
+    return $distance <= $radius;
+}
+}
+
 /**
  * Format a date for display
  * 

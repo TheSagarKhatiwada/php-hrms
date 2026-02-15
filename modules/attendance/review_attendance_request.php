@@ -21,7 +21,8 @@ if (!validate_csrf_token($_POST['csrf_token'] ?? '')) {
 
 // 3. Check Permissions
 $canManageAttendance = (function_exists('is_admin') && is_admin()) || (function_exists('has_permission') && has_permission('manage_attendance'));
-if (!$canManageAttendance) {
+$canProcessRequests = (function_exists('has_permission') && has_permission('process_attendance_requests'));
+if (!$canManageAttendance && !$canProcessRequests) {
     set_flash_message('error', 'You do not have permission to review attendance requests.');
     header('Location: attendance.php');
     exit();

@@ -17,6 +17,7 @@ CREATE TABLE `branches` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `code` varchar(20) DEFAULT NULL,
+  `default_ssid` varchar(191) DEFAULT NULL,
   `address` text,
   `phone` varchar(20),
   `email` varchar(100),

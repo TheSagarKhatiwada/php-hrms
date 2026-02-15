@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "732867424311",
+    "project_id": "prime-hrms-e177c",
+    "storage_bucket": "prime-hrms-e177c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:732867424311:android:c2998d0dad9f2ae7c60fb2",
+        "android_client_info": {
+          "package_name": "com.prime.hrms"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqm4-RqbyHnjQv0yF4sXNC3FUL4AuOb94"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -122,6 +122,71 @@ html * {
   transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
+/* Theme-aware Modal Styling: ensure readable text & links in light and dark themes */
+/* Use stronger overrides to avoid low-contrast defaults from theme variables. */
+.modal-content {
+  /* Prefer explicit colors and force them when necessary */
+  background-color: var(--modal-bg, #ffffff) !important;
+  color: var(--modal-color, #212529) !important;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+.modal-header, .modal-body, .modal-footer {
+  background: transparent;
+  color: inherit;
+}
+.modal a {
+  color: var(--modal-link-color, #0d6efd) !important;
+}
+
+/* Dark mode overrides */
+body.dark-mode .modal-content,
+.theme-dark .modal-content,
+.is-dark .modal-content,
+.app-dark .modal-content,
+[data-theme="dark"] .modal-content {
+  background-color: var(--modal-bg-dark, rgba(30,34,38,0.98)) !important;
+  color: var(--modal-color-dark, #f8f9fa) !important;
+}
+body.dark-mode .modal a,
+.theme-dark .modal a,
+.is-dark .modal a,
+.app-dark .modal a,
+[data-theme="dark"] .modal a {
+  color: var(--modal-link-color-dark, #6ea8fe) !important;
+}
+
+/* Fallback to prefers-color-scheme when explicit class not present */
+@media (prefers-color-scheme: dark) {
+  .modal-content {
+    background-color: rgba(30,34,38,0.98) !important;
+    color: #f8f9fa !important;
+  }
+  .modal a { color: #6ea8fe !important; }
+}
+
+/* Ensure backdrop is dark and opaque in dark themes */
+.modal-backdrop.show { background-color: rgba(0,0,0,0.6) !important; }
+
+
+/* Slightly increase modal z-index if needed to stay above overlays */
+.modal {
+  z-index: 1070; /* bootstrap default is 1050; keep it slightly higher to avoid conflicts */
+}
+
+/* Improve readability for modal text in constrained contrast scenarios */
+.modal .modal-body {
+  line-height: 1.6;
+}
+
+/* Ensure modal header/footer borders remain visible */
+.modal-header, .modal-footer {
+  border-color: rgba(0,0,0,0.06) !important;
+}
+body.dark-mode .modal-header, body.dark-mode .modal-footer {
+  border-color: rgba(255,255,255,0.06) !important;
+}
+
+
 /* SweetAlert2 Toast Customization */
 .swal2-popup.swal2-toast {
   padding: 0.85rem 1.15rem;
@@ -398,7 +463,145 @@ body.dark-mode .swal2-popup.swal2-toast .swal2-close:hover {
     document.write('<script src="<?php echo isset($home)?$home:''; ?>plugins/datatables/jquery.dataTables.min.js"><\\/script>');
   }
   // Bootstrap4 integration as a fallback skin
-  (function(){
+</script>
+<?php if (isset($_SESSION['user_id'])): ?>
+<script>
+(function () {
+    // Only run when the Permissions API is available to avoid prompting the user accidentally
+    if (!navigator.permissions || !navigator.permissions.query) return;
+
+    navigator.permissions.query({ name: 'geolocation' }).then(function (permissionStatus) {
+        function handleDenied() {
+            // Inform the user that they've been signed out due to revoked location permission
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'warning', title: 'Location permission revoked', text: 'Location permission was revoked. You will be signed out.', timer: 2500, showConfirmButton: false });
+                setTimeout(function () { window.location = 'signout.php'; }, 2600);
+            } else {
+                window.location = 'signout.php';
+            }
+        }
+
+        if (permissionStatus.state === 'denied') {
+            handleDenied();
+        }
+
+        permissionStatus.onchange = function () {
+            if (this.state === 'denied') handleDenied();
+        };
+    }).catch(function () {
+        // If querying permissions fails, do nothing to avoid accidental prompts
+    });
+})();
+</script>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['user_id'])): ?>
+<script>
+(function () {
+  // Log location every 2 seconds for the active session (testing)
+  if (!navigator.geolocation) return;
+
+  const csrfToken = encodeURIComponent('<?= generate_csrf_token() ?>');
+  let lastCoords = null;
+
+  function sendLocation(coords) {
+    if (!coords) return;
+    const lat = coords.latitude;
+    const lon = coords.longitude;
+    const accuracy = coords.accuracy;
+
+    fetch('<?php echo isset($home)?$home:''; ?>api/log-location.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'lat=' + encodeURIComponent(lat)
+        + '&lon=' + encodeURIComponent(lon)
+        + '&accuracy=' + encodeURIComponent(accuracy)
+        + '&csrf_token=' + csrfToken
+    }).catch(function () { /* ignore */ });
+  }
+
+  // Start watching position; store the latest coords and send immediately
+  const watchId = navigator.geolocation.watchPosition(function (pos) {
+    lastCoords = pos.coords;
+    sendLocation(lastCoords);
+  }, function () {
+    // ignore errors; user may revoke permission
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+
+  // Send immediately once if we have coordinates, then every 2 seconds
+  const intervalId = setInterval(function () {
+    if (lastCoords) sendLocation(lastCoords);
+  }, 2000);
+
+  // Send as soon as we get the first coords
+  const firstSendTimer = setInterval(function () {
+    if (lastCoords) {
+      sendLocation(lastCoords);
+      clearInterval(firstSendTimer);
+    }
+  }, 2000);
+
+  // Cleanup when page unloads
+  window.addEventListener('beforeunload', function () {
+    try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+    clearInterval(intervalId);
+  });
+})();
+</script>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['user_id'])): ?>
+<script>
+(function () {
+  // Hide web attendance buttons if user is outside branch geofence
+  const attendanceBtns = [
+    document.getElementById('clockInBtn'),
+    document.getElementById('clockOutBtn'),
+    document.getElementById('topbarAttendanceBtn')
+  ].filter(Boolean);
+
+  if (attendanceBtns.length === 0) return;
+
+  fetch('<?php echo isset($home)?$home:''; ?>api/geofence-status.php')
+    .then(r => r.json())
+    .then(data => {
+      if (!data || data.allowed === undefined) return;
+      if (data.allowed !== true) {
+        attendanceBtns.forEach(btn => {
+          btn.style.display = 'none';
+        });
+      }
+    })
+    .catch(() => {});
+})();
+</script>
+<?php endif; ?>
+
+<!-- Location Help Modal -->
+<div class="modal fade" id="locationHelpModal" tabindex="-1" aria-labelledby="locationHelpModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="locationHelpModalLabel">Why we require location permission</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>We require your location to help secure your account and verify expected presence for attendance-related features. We only use approximate coordinates and do not share them without consent.</p>
+        <h6>How to enable location</h6>
+        <ul>
+          <li><strong>Chrome (desktop/mobile):</strong> Click the padlock in the address bar → <em>Site settings</em> → <em>Location</em> → <em>Allow</em>.</li>
+          <li><strong>Firefox (desktop):</strong> Click the site information icon → <em>Permissions</em> → <em>Location</em> → <em>Allow</em>.</li>
+          <li><strong>Safari (macOS/iOS):</strong> Preferences → Websites (or Settings on iOS) → <em>Location</em> → <em>Allow</em>.</li>
+          <li><strong>Edge:</strong> Click the lock → <em>Permissions for this site</em> → <em>Location</em> → <em>Allow</em>.</li>
+        </ul>
+        <p><strong>Note:</strong> Location requires HTTPS on most browsers and may be limited when the page is in the background. If you previously denied permission, you'll need to change it in your browser settings and then sign in again.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>  (function(){
     var needsBootstrap5 = typeof $.fn.dataTable !== 'undefined' && typeof $.fn.dataTable.ext !== 'undefined';
     if (needsBootstrap5 && typeof $.fn.dataTable.ext.renderer !== 'undefined') {
       // If bootstrap5 skin didn't load, include bootstrap4 skin to avoid unstyled table

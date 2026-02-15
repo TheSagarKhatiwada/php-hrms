@@ -224,6 +224,39 @@ $__canViewNotifications = $__isAdminUser ? true : ($__hasPermissionFunc ? has_pe
                 $stmtAllow->execute([$empIdTop]);
                 $canUseWebAttendanceTop = ((int)$stmtAllow->fetchColumn() === 1);
               }
+
+              // Geofence gating for topbar button
+              if ($canUseWebAttendanceTop) {
+                require_once __DIR__ . '/../includes/utilities.php';
+                $geofenceTop = hrms_get_branch_geofence_for_employee($pdo, $empIdTop);
+                if (!empty($geofenceTop) && (int)($geofenceTop['geofence_enabled'] ?? 0) === 1) {
+                  $metaLoc = $_SESSION['meta']['last_location'] ?? null;
+                  $lat = $metaLoc['lat'] ?? null;
+                  $lon = $metaLoc['lon'] ?? null;
+                  if ($lat === null || $lon === null) {
+                    try {
+                      $locStmt = $pdo->prepare("SELECT latitude, longitude FROM location_logs
+                                                WHERE employee_id = :emp AND session_id = :sid
+                                                ORDER BY created_at DESC LIMIT 1");
+                      $locStmt->execute([
+                        ':emp' => $empIdTop,
+                        ':sid' => session_id()
+                      ]);
+                      if ($row = $locStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $lat = $row['latitude'];
+                        $lon = $row['longitude'];
+                      }
+                    } catch (Throwable $e) {
+                      // ignore
+                    }
+                  }
+                  if ($lat === null || $lon === null) {
+                    $canUseWebAttendanceTop = false;
+                  } else {
+                    $canUseWebAttendanceTop = hrms_is_within_geofence($lat, $lon, $geofenceTop);
+                  }
+                }
+              }
             }
           } catch (Throwable $e) { /* ignore */ }
         ?>

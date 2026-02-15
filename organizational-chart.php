@@ -32,7 +32,7 @@ function getEmployeeDataForChart($pdo) {
             b.name as branch_name,
             e.user_image as imageUrl
         FROM employees e
-        LEFT JOIN designations d ON e.designation = d.id
+        LEFT JOIN designations d ON e.designation_id = d.id
         LEFT JOIN departments dept ON e.department_id = dept.id
         LEFT JOIN branches b ON e.branch = b.id
         WHERE (e.exit_date IS NULL OR e.exit_date = '0000-00-00' OR e.exit_date = '')

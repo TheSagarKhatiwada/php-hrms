@@ -104,7 +104,7 @@ if (!$migration_needed) {
           SELECT e.*, d.title as designation_title, dept.name as department_name,
               s.first_name as supervisor_first_name, s.middle_name as supervisor_middle_name, s.last_name as supervisor_last_name
         FROM employees e
-        LEFT JOIN designations d ON e.designation = d.id
+        LEFT JOIN designations d ON e.designation_id = d.id
     LEFT JOIN departments dept ON e.department_id = dept.id
     LEFT JOIN employees s ON e.supervisor_id = s.emp_id
     WHERE (e.exit_date IS NULL OR e.exit_date = '0000-00-00' OR e.exit_date = '')

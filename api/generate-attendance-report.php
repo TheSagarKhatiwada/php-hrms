@@ -371,7 +371,7 @@ if($reportType === 'daily') {
     $sqlEmployees = "SELECT e.emp_id, CONCAT(e.first_name,' ',e.middle_name,' ',e.last_name) AS employee_name, d.title AS designation, b.name AS branch, e.exit_date, e.branch AS branch_id, dept.name AS department, e.work_start_time, e.work_end_time
       FROM employees e
       LEFT JOIN branches b ON e.branch = b.id
-      LEFT JOIN designations d ON e.designation = d.id
+      LEFT JOIN designations d ON e.designation_id = d.id
       LEFT JOIN departments dept ON e.department_id = dept.id".
       ($empWhere?(' WHERE '.implode(' AND ',$empWhere)):'').' ORDER BY e.emp_id';
     $stmtEmp = $pdo->prepare($sqlEmployees); $stmtEmp->execute($empParams); $employeesData = $stmtEmp->fetchAll(PDO::FETCH_ASSOC);

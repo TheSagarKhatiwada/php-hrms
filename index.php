@@ -84,55 +84,68 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password'])) {
-        // Password is correct
-        // Set session variables
-        $_SESSION['user_id'] = $user['emp_id'];
-        $_SESSION['designation'] = $user['designation_id'];
-        $_SESSION['fullName'] = $user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name'];
-        $_SESSION['userImage'] = $user['user_image'];
-        // Check which role field exists in the database and use it
-        $_SESSION['user_role'] = isset($user['role']) ? $user['role'] : (isset($user['role_id']) ? $user['role_id'] : '0');
-        $_SESSION['user_role_id'] = isset($user['role_id']) ? $user['role_id'] : (isset($user['role']) ? $user['role'] : '0'); // Add this for consistency
-        $_SESSION['login_access'] = $user['login_access'];
+        // Password is correct - require geolocation coordinates from the client
+        $lat = isset($_POST['lat']) ? trim($_POST['lat']) : null;
+        $lon = isset($_POST['lon']) ? trim($_POST['lon']) : null;
 
-        // Log the login activity
-        try {
-            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
-            $details = 'Browser: ' . $userAgent;
-            $logStmt = $pdo->prepare("INSERT INTO activity_log (user_id, action, details, ip_address, created_at) VALUES (:user_id, 'login', :details, :ip, NOW())");
-            $logStmt->execute([
-                ':user_id' => $user['emp_id'],
-                ':details' => $details,
-                ':ip' => $_SERVER['REMOTE_ADDR'] ?? 'Unknown'
-            ]);
-        } catch (PDOException $e) {
-            // Silently fail if logging fails
-            error_log('Activity log error: ' . $e->getMessage());
-        }
-
-        // Check login access
-        if ($user['login_access'] == '0') {
-            // Clear the session since this user shouldn't be logged in
-            session_unset();
-            session_destroy();
-            // Start a fresh session to be able to show the error message
-            session_start();
-            $_SESSION['error'] = "Access Denied. Your account is currently disabled. Please contact the administrator.";
-            // Force reload of the page to clear the form
-            header('Location: index.php');
-            exit();
+        // Basic validation for coordinates
+        if (!is_numeric($lat) || !is_numeric($lon)) {
+            // Don't set session - require location access
+            $_SESSION['error'] = 'Location permission required to login. Please allow location access in your browser and try again.';
         } else {
-            // Redirect based on session or role
-            if (isset($_SESSION['redirect_to'])) {
-                $redirect_to = $_SESSION['redirect_to'];
-                unset($_SESSION['redirect_to']); // Clear the session variable
-                header("Location: " . append_sid($redirect_to));
+            // Set session variables now that we have coordinates
+            $_SESSION['user_id'] = $user['emp_id'];
+            $_SESSION['designation'] = $user['designation_id'];
+            $_SESSION['fullName'] = $user['first_name'] . ' ' . $user['middle_name'] . ' ' . $user['last_name'];
+            $_SESSION['userImage'] = $user['user_image'];
+            // Check which role field exists in the database and use it
+            $_SESSION['user_role'] = isset($user['role']) ? $user['role'] : (isset($user['role_id']) ? $user['role_id'] : '0');
+            $_SESSION['user_role_id'] = isset($user['role_id']) ? $user['role_id'] : (isset($user['role']) ? $user['role'] : '0'); // Add this for consistency
+            $_SESSION['login_access'] = $user['login_access'];
+
+            // Save last location to session meta
+            if (!isset($_SESSION['meta'])) $_SESSION['meta'] = [];
+            $_SESSION['meta']['last_location'] = ['lat' => $lat, 'lon' => $lon, 'ts' => time()];
+
+            // Log the login activity including lat/lon
+            try {
+                $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+                $details = 'Browser: ' . $userAgent . ' | coords: ' . $lat . ',' . $lon;
+                $logStmt = $pdo->prepare("INSERT INTO activity_log (user_id, action, details, ip_address, created_at) VALUES (:user_id, 'login', :details, :ip, NOW())");
+                $logStmt->execute([
+                    ':user_id' => $user['emp_id'],
+                    ':details' => $details,
+                    ':ip' => $_SERVER['REMOTE_ADDR'] ?? 'Unknown'
+                ]);
+            } catch (PDOException $e) {
+                // Silently fail if logging fails
+                error_log('Activity log error: ' . $e->getMessage());
+            }
+
+            // Check login access
+            if ($user['login_access'] == '0') {
+                // Clear the session since this user shouldn't be logged in
+                session_unset();
+                session_destroy();
+                // Start a fresh session to be able to show the error message
+                session_start();
+                $_SESSION['error'] = "Access Denied. Your account is currently disabled. Please contact the administrator.";
+                // Force reload of the page to clear the form
+                header('Location: index.php');
                 exit();
             } else {
-                // Make the redirection code consistent with the session variable
-                $dashboard = $_SESSION['user_role'] == '1' ? 'admin-dashboard.php' : 'dashboard.php';
-                header('Location: ' . append_sid($dashboard));
-                exit();
+                // Redirect based on session or role
+                if (isset($_SESSION['redirect_to'])) {
+                    $redirect_to = $_SESSION['redirect_to'];
+                    unset($_SESSION['redirect_to']); // Clear the session variable
+                    header("Location: " . append_sid($redirect_to));
+                    exit();
+                } else {
+                    // Make the redirection code consistent with the session variable
+                    $dashboard = $_SESSION['user_role'] == '1' ? 'admin-dashboard.php' : 'dashboard.php';
+                    header('Location: ' . append_sid($dashboard));
+                    exit();
+                }
             }
         }
     } else {
@@ -192,14 +205,16 @@ $is_auth_page = true;
         body {
             font-family: 'Poppins', sans-serif;
             min-height: 100vh;
-            background: linear-gradient(135deg, #f5f7fa, #e4e8f0);
+            /* Use CSS variables so theme (light/dark) can override background without hardcoding colors */
+            background: var(--login-background, linear-gradient(135deg, var(--bg-light-start, #f5f7fa), var(--bg-light-end, #e4e8f0)));
             display: flex;
             align-items: center;
             justify-content: center;
         }
         
         body.dark-mode {
-            background: linear-gradient(135deg, #212529, #343a40);
+            /* Dark theme fallback using variables */
+            background: var(--login-background-dark, linear-gradient(135deg, var(--bg-dark-start, #212529), var(--bg-dark-end, #343a40)));
             color: var(--light-color);
         }
         
@@ -347,8 +362,11 @@ $is_auth_page = true;
                 <h5 class="text-center mb-4">Sign in to your account</h5>
 
                 <!-- Login Form -->
-                <form action="index.php" method="post">
+                <form id="loginForm" action="index.php" method="post">
                     <?php echo sid_field(); // Add session ID field ?>
+                    <input type="hidden" name="lat" id="login_lat">
+                    <input type="hidden" name="lon" id="login_lon">
+
                     <div class="mb-4">
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0">
@@ -383,6 +401,9 @@ $is_auth_page = true;
                             <i class="fas fa-lock me-1"></i>Forgot password?
                         </a>
                     </div>
+                    <div class="text-center mt-2">
+                        <small class="text-muted">Location permission is required to sign in for security and attendance verification. <a href="#" data-bs-toggle="modal" data-bs-target="#locationHelpModal">Learn how to enable it</a>.</small>
+                    </div> 
                 </form>
             </div>
             <div class="card-footer bg-transparent border-0 text-center py-3">
@@ -398,6 +419,117 @@ $is_auth_page = true;
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+    // Ensure location permission is provided before submitting login
+    (function () {
+        const form = document.getElementById('loginForm');
+        const latInput = document.getElementById('login_lat');
+        const lonInput = document.getElementById('login_lon');
+
+        function requestLocationAndSubmit(e) {
+            e.preventDefault();
+
+            if (latInput.value && lonInput.value) {
+                form.submit();
+                return;
+            }
+
+            if (!navigator.geolocation) {
+                Swal.fire({ icon: 'error', title: 'Location not supported', text: 'Your browser does not support geolocation. Please enable it or use a supported browser.' });
+                return;
+            }
+
+            Swal.fire({ title: 'Requesting location permission', text: 'Please allow location access to continue', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+            navigator.geolocation.getCurrentPosition(function (pos) {
+                latInput.value = pos.coords.latitude;
+                lonInput.value = pos.coords.longitude;
+                Swal.close();
+                form.submit();
+            }, function (err) {
+                Swal.close();
+                Swal.fire({ icon: 'error', title: 'Location required', text: 'Location permission is required to sign in. Please allow location access and try again.' });
+            }, { enableHighAccuracy: true, timeout: 10000 });
+        }
+
+        if (form) {
+            form.addEventListener('submit', requestLocationAndSubmit);
+        }
+    })();
+    </script>
+
+    <!-- Location Help Modal (available on the login page) -->
+    <div class="modal fade" id="locationHelpModal" tabindex="-1" aria-labelledby="locationHelpModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="locationHelpModalLabel">Why we require location permission</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>We require your location to help secure your account and verify expected presence for attendance-related features. We only use approximate coordinates and do not share them without consent.</p>
+            <h6>How to enable location</h6>
+            <ul>
+              <li><strong>Chrome (desktop/mobile):</strong> Click the padlock in the address bar → <em>Site settings</em> → <em>Location</em> → <em>Allow</em>.</li>
+              <li><strong>Firefox (desktop):</strong> Click the site information icon → <em>Permissions</em> → <em>Location</em> → <em>Allow</em>.</li>
+              <li><strong>Safari (macOS/iOS):</strong> Preferences → Websites (or Settings on iOS) → <em>Location</em> → <em>Allow</em>.</li>
+              <li><strong>Edge:</strong> Click the lock → <em>Permissions for this site</em> → <em>Location</em> → <em>Allow</em>.</li>
+            </ul>
+            <p><strong>Note:</strong> Location requires HTTPS on most browsers and may be limited when the page is in the background. If you previously denied permission, you'll need to change it in your browser settings and then sign in again.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Small theme-aware modal CSS and runtime fallback for the login page -->
+    <style>
+      /* Keep this minimal to avoid duplicating the entire footer stylesheet */
+      .modal-content { background-color: var(--modal-bg, #ffffff) !important; color: var(--modal-color, #212529) !important; }
+      .modal a { color: var(--modal-link-color, #0d6efd) !important; }
+      @media (prefers-color-scheme: dark) { .modal-content { background-color: rgba(30,34,38,0.98) !important; color: #f8f9fa !important; } .modal a { color: #6ea8fe !important; } }
+      /* Ensure backdrop is dark enough when modal shows on dark pages */
+      .modal-backdrop.show { background-color: rgba(0,0,0,0.6) !important; }
+      /* extra class used by JS when page background is dark */
+      .modal-content.modal-dark { background-color: rgba(30,34,38,0.98) !important; color: #f8f9fa !important; }
+      .modal-content.modal-dark a { color: #6ea8fe !important; }
+    </style>
+
+    <script>
+      // Fallback: when the modal opens, determine if page background is dark and apply modal-dark class
+      (function () {
+        function isColorDark(rgbStr) {
+          try {
+            const m = rgbStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[0-9\.]+)?\)/);
+            if (!m) return false;
+            const r = parseInt(m[1],10), g = parseInt(m[2],10), b = parseInt(m[3],10);
+            // Perceived luminance
+            const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+            return lum < 140; // threshold; tweak if needed
+          } catch (e) { return false; }
+        }
+
+        const modalEl = document.getElementById('locationHelpModal');
+        if (!modalEl) return;
+
+        modalEl.addEventListener('show.bs.modal', function () {
+          // compute background color of body (or fallback to html)
+          const bg = window.getComputedStyle(document.body).backgroundColor || window.getComputedStyle(document.documentElement).backgroundColor;
+          if (isColorDark(bg)) {
+            const mc = modalEl.querySelector('.modal-content');
+            if (mc) mc.classList.add('modal-dark');
+          }
+        });
+
+        modalEl.addEventListener('hidden.bs.modal', function () {
+          const mc = modalEl.querySelector('.modal-content');
+          if (mc) mc.classList.remove('modal-dark');
+        });
+      })();
+    </script>
 
     <!-- Notification Script for Login Errors -->
     <script>
