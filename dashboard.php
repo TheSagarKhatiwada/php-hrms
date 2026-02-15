@@ -68,6 +68,42 @@ try {
 }
 
 $canUseWebAttendance = !empty($userData) && (int)($userData['allow_web_attendance'] ?? 0) === 1;
+// Geofence gating (if enabled for branch)
+if ($canUseWebAttendance && isset($_SESSION['user_id'])) {
+    try {
+        require_once __DIR__ . '/includes/utilities.php';
+        $geofence = hrms_get_branch_geofence_for_employee($pdo, $_SESSION['user_id']);
+        if (!empty($geofence) && (int)($geofence['geofence_enabled'] ?? 0) === 1) {
+            $metaLoc = $_SESSION['meta']['last_location'] ?? null;
+            $lat = $metaLoc['lat'] ?? null;
+            $lon = $metaLoc['lon'] ?? null;
+            if ($lat === null || $lon === null) {
+                try {
+                    $locStmt = $pdo->prepare("SELECT latitude, longitude FROM location_logs
+                                              WHERE employee_id = :emp AND session_id = :sid
+                                              ORDER BY created_at DESC LIMIT 1");
+                    $locStmt->execute([
+                        ':emp' => $_SESSION['user_id'],
+                        ':sid' => session_id()
+                    ]);
+                    if ($row = $locStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $lat = $row['latitude'];
+                        $lon = $row['longitude'];
+                    }
+                } catch (Throwable $e) {
+                    // ignore
+                }
+            }
+            if ($lat === null || $lon === null) {
+                $canUseWebAttendance = false;
+            } else {
+                $canUseWebAttendance = hrms_is_within_geofence($lat, $lon, $geofence);
+            }
+        }
+    } catch (Throwable $e) {
+        // fail open to avoid breaking dashboard
+    }
+}
 ?>
 
 <!-- Dashboard Styles -->

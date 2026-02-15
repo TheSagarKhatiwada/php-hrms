@@ -108,6 +108,39 @@ if ($empId) {
     $assigned_assets_stmt->execute(['employee_id' => $employee['emp_id']]); 
     $assigned_assets = $assigned_assets_stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Location logs for selected date
+    $locationDate = $_GET['loc_date'] ?? date('Y-m-d');
+    $locationDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $locationDate) ? $locationDate : date('Y-m-d');
+    $todayDate = date('Y-m-d');
+    if ($locationDate > $todayDate) {
+      $locationDate = $todayDate;
+    }
+    $location_logs = [];
+    try {
+      $locStmt = $pdo->prepare("SELECT latitude, longitude, accuracy_meters, created_at
+                    FROM location_logs
+                    WHERE employee_id = :emp
+                    AND DATE(created_at) = :log_date
+                    ORDER BY created_at ASC
+                    LIMIT 500");
+      $locStmt->execute([
+        ':emp' => $employee['emp_id'],
+        ':log_date' => $locationDate
+      ]);
+      $location_logs = $locStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (PDOException $e) {
+      $location_logs = [];
+    }
+
+    $location_log_points = array_map(function ($row) {
+      return [
+        'lat' => (float)($row['latitude'] ?? 0),
+        'lon' => (float)($row['longitude'] ?? 0),
+        'time' => $row['created_at'] ?? null,
+        'accuracy' => $row['accuracy_meters'] ?? null
+      ];
+    }, $location_logs);
+
     try {
       $transfer_stmt = $pdo->prepare("SELECT t.*, 
           fb.name AS from_branch_name,
@@ -218,6 +251,9 @@ $teamMembers = getTeamMembers($pdo, $employee['emp_id'], false); // Direct repor
 $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinates
 ?>
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@1.6.0/Control.FullScreen.css" />
+
 <style>
     /* Essential styles from profile.php */
     .profile-picture-container {
@@ -256,6 +292,44 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
     
     .profile-info-item p {
         margin-bottom: 0;
+    }
+
+    .employee-location-map {
+      height: 600px;
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .leaflet-user-avatar {
+      border-radius: 50%;
+      border: 2px solid #0d6efd;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      background-color: #ffffff;
+    }
+
+    .location-date-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .location-date-picker {
+      position: relative;
+    }
+    .location-date-picker input[type="date"] {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+    .location-date-button {
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
     }
     
     /* Fix for active tab background in dark mode */
@@ -578,6 +652,11 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
             <li class="nav-item">
               <a class="nav-link" href="#assets" data-bs-toggle="tab">
                 <i class="fas fa-laptop me-1"></i> Assigned Assets
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#location" data-bs-toggle="tab">
+                <i class="fas fa-map-marker-alt me-1"></i> Location
               </a>
             </li>
             <li class="nav-item">
@@ -1043,6 +1122,41 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
               </div>
             </div>
             <!-- /.tab-pane -->
+
+            <div class="tab-pane" id="location">
+              <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h5 class="card-title m-0"><i class="fas fa-map-marker-alt me-2"></i>Location Map - <span id="locationDateLabel"><?php echo htmlspecialchars(date('jS M, Y', strtotime($locationDate))); ?></span></h5>
+                  <form method="get" class="d-flex align-items-center">
+                    <input type="hidden" name="empId" value="<?php echo htmlspecialchars($empId); ?>">
+                    <div class="location-date-controls">
+                      <button type="button" class="btn btn-outline-secondary btn-sm location-date-button" id="locPrev" aria-label="Previous day">
+                        <i class="fas fa-chevron-left"></i>
+                      </button>
+                      <div class="location-date-picker">
+                        <button type="button" class="btn btn-outline-secondary btn-sm location-date-button" id="locCalendar" aria-label="Pick a date">
+                          <i class="fas fa-calendar-alt"></i>
+                        </button>
+                        <input type="date" id="locationDate" name="loc_date" value="<?php echo htmlspecialchars($locationDate); ?>" max="<?php echo htmlspecialchars($todayDate); ?>">
+                      </div>
+                      <button type="button" class="btn btn-outline-secondary btn-sm location-date-button" id="locNext" aria-label="Next day" <?php echo $locationDate >= $todayDate ? 'disabled' : ''; ?>>
+                        <i class="fas fa-chevron-right"></i>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+                <div class="card-body">
+                  <div id="employeeLocationMapWrapper">
+                    <?php if (!empty($location_logs)): ?>
+                      <div id="employeeLocationMap" class="employee-location-map"></div>
+                    <?php else: ?>
+                      <div class="text-muted">No location logs available for this date.</div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- /.tab-pane -->
             
             <div class="tab-pane" id="activity">
               <div class="timeline timeline-inverse">
@@ -1209,6 +1323,428 @@ $allSubordinates = getSubordinates($pdo, $employee['emp_id']); // All subordinat
 <?php 
 include '../../includes/footer.php';
 ?>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.fullscreen@1.6.0/Control.FullScreen.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  let locationLogPoints = <?php echo json_encode($location_log_points, JSON_UNESCAPED_SLASHES); ?>;
+  const userImageUrl = <?php echo json_encode(!empty($employee['user_image']) ? $employee['user_image'] : 'dist/img/default-avatar.png'); ?>;
+  const mapWrapper = document.getElementById('employeeLocationMapWrapper');
+  const mapLabel = document.getElementById('locationDateLabel');
+  const empId = <?php echo json_encode($empId); ?>;
+  let locationMap = null;
+  let mapLayerGroup = null;
+  let avatarMarker = null;
+  let lastSignature = null;
+  let hasInitialView = false;
+  let userLocateControl = null;
+  let latestUserPoint = null;
+
+  function ensureMapContainer() {
+    if (!mapWrapper) return null;
+    let mapEl = document.getElementById('employeeLocationMap');
+    if (!mapEl) {
+      mapWrapper.innerHTML = '<div id="employeeLocationMap" class="employee-location-map"></div>';
+      mapEl = document.getElementById('employeeLocationMap');
+    }
+    return mapEl;
+  }
+
+  function clearMap() {
+    if (mapLayerGroup) {
+      mapLayerGroup.clearLayers();
+    }
+    if (avatarMarker) {
+      avatarMarker.remove();
+      avatarMarker = null;
+    }
+  }
+
+  function updateUserMarker(point) {
+    if (!point || !point.lat || !point.lon) return;
+    const mapEl = ensureMapContainer();
+    if (!mapEl || typeof L === 'undefined') return;
+
+    if (!locationMap) {
+      locationMap = L.map('employeeLocationMap');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(locationMap);
+      mapLayerGroup = L.layerGroup().addTo(locationMap);
+      if (L.control && L.control.fullscreen) {
+        L.control.fullscreen({ position: 'topleft' }).addTo(locationMap);
+      }
+      if (!userLocateControl && L.control) {
+        userLocateControl = L.control({ position: 'topleft' });
+        userLocateControl.onAdd = function () {
+          const container = L.DomUtil.create('div', 'leaflet-control');
+          const button = L.DomUtil.create('a', 'leaflet-control-userloc', container);
+          button.href = '#';
+          button.title = 'Locate user';
+          button.setAttribute('aria-label', 'Locate user');
+          button.style.width = '32px';
+          button.style.height = '32px';
+          button.style.display = 'flex';
+          button.style.alignItems = 'center';
+          button.style.justifyContent = 'center';
+          button.style.background = 'transparent';
+          button.style.border = 'none';
+          button.style.marginTop = '6px';
+          button.style.boxShadow = 'none';
+
+          const img = L.DomUtil.create('img', 'leaflet-user-avatar-control', button);
+          img.src = userImageUrl;
+          img.alt = 'User location';
+          img.style.width = '30px';
+          img.style.height = '30px';
+          img.style.borderRadius = '50%';
+          img.style.border = '2px solid #0d6efd';
+          img.style.objectFit = 'cover';
+
+          L.DomEvent.on(button, 'click', function (e) {
+            L.DomEvent.stop(e);
+            if (avatarMarker) {
+              locationMap.setView(avatarMarker.getLatLng(), 16, { animate: true });
+            }
+          });
+
+          return container;
+        };
+        userLocateControl.addTo(locationMap);
+      }
+    }
+
+    const avatarIcon = L.icon({
+      iconUrl: userImageUrl,
+      iconSize: [36, 36],
+      iconAnchor: [18, 36],
+      popupAnchor: [0, -36],
+      className: 'leaflet-user-avatar'
+    });
+
+    if (avatarMarker) {
+      avatarMarker.setLatLng([point.lat, point.lon]);
+    } else {
+      avatarMarker = L.marker([point.lat, point.lon], { icon: avatarIcon })
+        .addTo(locationMap)
+        .bindPopup('Current location');
+    }
+
+    if (!hasInitialView) {
+      locationMap.setView([point.lat, point.lon], 16);
+      hasInitialView = true;
+    }
+  }
+
+  function renderLocationMap(points) {
+    const mapEl = ensureMapContainer();
+    if (!mapEl || !Array.isArray(points) || points.length === 0 || typeof L === 'undefined') {
+      if (mapWrapper) {
+        mapWrapper.innerHTML = '<div class="text-muted">No location logs available for this date.</div>';
+      }
+      if (latestUserPoint) {
+        updateUserMarker(latestUserPoint);
+      }
+      return;
+    }
+
+    const validPoints = points.filter(p => p && p.lat && p.lon);
+    if (validPoints.length === 0) {
+      if (mapWrapper) {
+        mapWrapper.innerHTML = '<div class="text-muted">No location logs available for this date.</div>';
+      }
+      return;
+    }
+
+    if (!locationMap) {
+      locationMap = L.map('employeeLocationMap');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(locationMap);
+      mapLayerGroup = L.layerGroup().addTo(locationMap);
+      if (L.control && L.control.fullscreen) {
+        L.control.fullscreen({ position: 'topleft' }).addTo(locationMap);
+      }
+      if (!userLocateControl && L.control) {
+        userLocateControl = L.control({ position: 'topleft' });
+        userLocateControl.onAdd = function () {
+          const container = L.DomUtil.create('div', 'leaflet-control');
+          const button = L.DomUtil.create('a', 'leaflet-control-userloc', container);
+          button.href = '#';
+          button.title = 'Locate user';
+          button.setAttribute('aria-label', 'Locate user');
+          button.style.width = '32px';
+          button.style.height = '32px';
+          button.style.display = 'flex';
+          button.style.alignItems = 'center';
+          button.style.justifyContent = 'center';
+          button.style.background = 'transparent';
+          button.style.border = 'none';
+          button.style.marginTop = '6px';
+          button.style.boxShadow = 'none';
+
+          const img = L.DomUtil.create('img', 'leaflet-user-avatar-control', button);
+          img.src = userImageUrl;
+          img.alt = 'User location';
+          img.style.width = '30px';
+          img.style.height = '30px';
+          img.style.borderRadius = '50%';
+          img.style.border = '2px solid #0d6efd';
+          img.style.objectFit = 'cover';
+
+          L.DomEvent.on(button, 'click', function (e) {
+            L.DomEvent.stop(e);
+            if (avatarMarker) {
+              locationMap.setView(avatarMarker.getLatLng(), 16, { animate: true });
+            }
+          });
+
+          return container;
+        };
+        userLocateControl.addTo(locationMap);
+      }
+    }
+
+    clearMap();
+
+    const latlngs = validPoints.map(p => [p.lat, p.lon]);
+    const lastPoint = validPoints[validPoints.length - 1];
+
+    function haversineMeters(a, b) {
+      const toRad = d => (d * Math.PI) / 180;
+      const R = 6371000;
+      const dLat = toRad(b[0] - a[0]);
+      const dLon = toRad(b[1] - a[1]);
+      const lat1 = toRad(a[0]);
+      const lat2 = toRad(b[0]);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+
+    const maxSegmentMeters = 2000;
+    let segments = [];
+    let current = [];
+
+    latlngs.forEach((point, index) => {
+      if (index === 0) {
+        current = [point];
+        return;
+      }
+      const prev = latlngs[index - 1];
+      const distance = haversineMeters(prev, point);
+      if (distance <= maxSegmentMeters) {
+        current.push(point);
+      } else {
+        if (current.length > 1) segments.push(current);
+        current = [point];
+      }
+    });
+    if (current.length > 1) segments.push(current);
+
+    segments.forEach(segment => {
+      const polyline = L.polyline(segment, {
+        color: '#0d6efd',
+        weight: 4,
+        opacity: 0.9,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(mapLayerGroup);
+      polyline.bringToBack();
+    });
+    if (!hasInitialView) {
+      if (lastPoint && lastPoint.lat && lastPoint.lon) {
+        locationMap.setView([lastPoint.lat, lastPoint.lon], 16);
+      } else if (latlngs.length === 1) {
+        locationMap.setView(latlngs[0], 16);
+      } else {
+        if (segments.length > 0) {
+          const bounds = L.latLngBounds(segments.flat());
+          locationMap.fitBounds(bounds, { padding: [20, 20] });
+        }
+      }
+      hasInitialView = true;
+    }
+
+    validPoints.forEach((p, idx) => {
+      const isLast = idx === validPoints.length - 1;
+      const marker = L.circleMarker([p.lat, p.lon], {
+        radius: 4,
+        color: '#0d6efd',
+        fillColor: '#0d6efd',
+        fillOpacity: 0.8
+      }).addTo(mapLayerGroup);
+
+      if (!isLast && p.time) {
+        marker.bindTooltip(p.time, { direction: 'top', opacity: 0.9 });
+      }
+    });
+
+    if (lastPoint && lastPoint.lat && lastPoint.lon) {
+      const avatarIcon = L.icon({
+        iconUrl: userImageUrl,
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+        popupAnchor: [0, -36],
+        className: 'leaflet-user-avatar'
+      });
+      avatarMarker = L.marker([lastPoint.lat, lastPoint.lon], { icon: avatarIcon })
+        .addTo(locationMap)
+        .bindPopup('Current location');
+    }
+    if (latestUserPoint && latestUserPoint.lat && latestUserPoint.lon) {
+      updateUserMarker(latestUserPoint);
+    }
+
+    setTimeout(() => locationMap.invalidateSize(), 300);
+  }
+
+  function updateMapForDate(dateValue) {
+    if (!dateValue) return;
+    const params = new URLSearchParams({ empId: empId, loc_date: dateValue, t: Date.now().toString() });
+    fetch('../../api/employee-location-logs.php?' + params.toString(), { credentials: 'same-origin', cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!data || !data.success) return;
+        if (mapLabel && data.dateLabel) {
+          mapLabel.textContent = data.dateLabel;
+        }
+        const points = Array.isArray(data.points) ? data.points : [];
+        latestUserPoint = data.latestPoint || null;
+        const lastPoint = points.length ? points[points.length - 1] : null;
+        const livePoint = latestUserPoint || lastPoint;
+        const signature = `${points.length}|${lastPoint && lastPoint.time ? lastPoint.time : ''}|${lastPoint && typeof lastPoint.lat !== 'undefined' ? lastPoint.lat : ''}|${lastPoint && typeof lastPoint.lon !== 'undefined' ? lastPoint.lon : ''}|${livePoint && livePoint.time ? livePoint.time : ''}|${livePoint && typeof livePoint.lat !== 'undefined' ? livePoint.lat : ''}|${livePoint && typeof livePoint.lon !== 'undefined' ? livePoint.lon : ''}`;
+        if (signature === lastSignature) {
+          if (latestUserPoint) {
+            updateUserMarker(latestUserPoint);
+          }
+          return;
+        }
+        lastSignature = signature;
+        locationLogPoints = points;
+        renderLocationMap(locationLogPoints);
+      })
+      .catch(() => {
+        // Ignore errors silently
+      });
+  }
+
+  if (Array.isArray(locationLogPoints)) {
+    const lastPoint = locationLogPoints.length ? locationLogPoints[locationLogPoints.length - 1] : null;
+    const livePoint = latestUserPoint || lastPoint;
+    lastSignature = `${locationLogPoints.length}|${lastPoint && lastPoint.time ? lastPoint.time : ''}|${lastPoint && typeof lastPoint.lat !== 'undefined' ? lastPoint.lat : ''}|${lastPoint && typeof lastPoint.lon !== 'undefined' ? lastPoint.lon : ''}|${livePoint && livePoint.time ? livePoint.time : ''}|${livePoint && typeof livePoint.lat !== 'undefined' ? livePoint.lat : ''}|${livePoint && typeof livePoint.lon !== 'undefined' ? livePoint.lon : ''}`;
+  }
+  renderLocationMap(locationLogPoints);
+
+  // Recalculate map when switching to Location tab
+  document.querySelectorAll('.nav-tabs .nav-link').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      if (this.getAttribute('href') === '#location') {
+        setTimeout(() => renderLocationMap(locationLogPoints), 200);
+      }
+    });
+  });
+
+  // Date controls
+  const locationDate = document.getElementById('locationDate');
+  const locPrev = document.getElementById('locPrev');
+  const locNext = document.getElementById('locNext');
+  const locCalendar = document.getElementById('locCalendar');
+  const locationTabLink = document.querySelector('.nav-tabs .nav-link[href="#location"]');
+  let autoRefreshTimer = null;
+
+  function updateNextButton() {
+    if (!locationDate || !locNext) return;
+    const maxDate = locationDate.getAttribute('max');
+    if (maxDate && locationDate.value >= maxDate) {
+      locNext.setAttribute('disabled', 'disabled');
+    } else {
+      locNext.removeAttribute('disabled');
+    }
+  }
+
+  function shiftDateBy(days) {
+    if (!locationDate) return;
+    const current = locationDate.value ? new Date(locationDate.value) : new Date();
+    current.setDate(current.getDate() + days);
+    const maxDate = locationDate.getAttribute('max');
+    if (maxDate) {
+      const max = new Date(maxDate);
+      if (current > max) return;
+    }
+    const yyyy = current.getFullYear();
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    const dd = String(current.getDate()).padStart(2, '0');
+    locationDate.value = `${yyyy}-${mm}-${dd}`;
+    updateNextButton();
+    updateMapForDate(locationDate.value);
+  }
+
+  function isLocationTabActive() {
+    const tabPane = document.getElementById('location');
+    return tabPane ? tabPane.classList.contains('active') : false;
+  }
+
+  function startAutoRefresh() {
+    if (!locationDate) return;
+    stopAutoRefresh();
+    autoRefreshTimer = setInterval(function() {
+      if (!isLocationTabActive()) return;
+      updateMapForDate(locationDate.value);
+    }, 100);
+  }
+
+  function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+    }
+  }
+
+  if (locationDate) {
+    locationDate.addEventListener('change', function() {
+      updateNextButton();
+      updateMapForDate(this.value);
+      startAutoRefresh();
+    });
+    updateNextButton();
+    startAutoRefresh();
+  }
+
+  if (locPrev) {
+    locPrev.addEventListener('click', function() {
+      shiftDateBy(-1);
+      startAutoRefresh();
+    });
+  }
+
+  if (locNext) {
+    locNext.addEventListener('click', function() {
+      shiftDateBy(1);
+      startAutoRefresh();
+    });
+  }
+
+  if (locCalendar && locationDate) {
+    locCalendar.addEventListener('click', function() {
+      if (typeof locationDate.showPicker === 'function') {
+        locationDate.showPicker();
+      } else {
+        locationDate.click();
+      }
+    });
+  }
+
+  if (locationTabLink) {
+    locationTabLink.addEventListener('click', function() {
+      startAutoRefresh();
+    });
+  }
+});
+</script>
 
 <!-- Change Password Modal -->
 <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">

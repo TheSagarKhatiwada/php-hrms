@@ -51,6 +51,21 @@ if (session_status() == PHP_SESSION_NONE) {
     header("Cache-Control: post-check=0, pre-check=0", false);
     header("Pragma: no-cache");
     header("Expires: Mon, 26 Jul 1997 05:00:00 GMT"); // Past date
+
+    // Initialize or update lightweight session metadata for diagnostics and session management
+    // This is only set once per session and updated on subsequent requests to capture last activity and device info.
+    if (!isset($_SESSION['meta'])) {
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $_SESSION['meta'] = [
+            'created_at'   => time(),
+            'ip'           => $_SERVER['REMOTE_ADDR'] ?? '',
+            'user_agent'   => $ua,
+            'device'       => detect_device($ua),
+            'last_activity'=> time()
+        ];
+    } else {
+        $_SESSION['meta']['last_activity'] = time();
+    }
     
     // Regenerate session ID periodically to prevent session fixation
     if (!isset($_SESSION['last_regeneration']) || 
@@ -76,6 +91,54 @@ if (session_status() == PHP_SESSION_NONE) {
         header("Pragma: no-cache");
         header("Expires: Mon, 26 Jul 1997 05:00:00 GMT"); // Past date
     }
+}
+
+/**
+ * Simple device detection based on User-Agent string
+ */
+function detect_device($ua) {
+    $ua = strtolower((string)$ua);
+    $device = 'Unknown';
+
+    if (strpos($ua, 'iphone') !== false || strpos($ua, 'ipad') !== false || strpos($ua, 'ipod') !== false) {
+        $device = 'iOS Device';
+    } elseif (strpos($ua, 'android') !== false) {
+        $device = 'Android Device';
+    } elseif (strpos($ua, 'windows') !== false) {
+        $device = 'Windows PC';
+    } elseif (strpos($ua, 'macintosh') !== false || strpos($ua, 'mac os x') !== false) {
+        $device = 'Mac';
+    } elseif (strpos($ua, 'linux') !== false) {
+        $device = 'Linux';
+    }
+
+    return $device;
+}
+
+/**
+ * Simple browser detection helper returning short browser name and (where possible) version
+ */
+function detect_browser($ua) {
+    $ua = (string)$ua;
+    $b = 'Unknown';
+
+    if (preg_match('/\b(OPR|Opera)\/(\d+[\.\d]*)/i', $ua, $m)) {
+        $b = 'Opera ' . $m[2];
+    } elseif (preg_match('/Edge\/([0-9\.]+)/i', $ua, $m)) {
+        $b = 'Edge ' . $m[1];
+    } elseif (preg_match('/Edg\/([0-9\.]+)/i', $ua, $m)) {
+        $b = 'Edge ' . $m[1];
+    } elseif (preg_match('/Chrome\/([0-9\.]+)/i', $ua, $m)) {
+        $b = 'Chrome ' . $m[1];
+    } elseif (preg_match('/Firefox\/([0-9\.]+)/i', $ua, $m)) {
+        $b = 'Firefox ' . $m[1];
+    } elseif (preg_match('/Version\/([0-9\.]+).*Safari/i', $ua, $m)) {
+        $b = 'Safari ' . $m[1];
+    } elseif (preg_match('/Safari\/([0-9\.]+)/i', $ua, $m)) {
+        $b = 'Safari ' . $m[1];
+    }
+
+    return $b;
 }
 
 /**

@@ -170,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password'])) {
         }
     } else {
         // Normal password change - verify current password
-        $stmt = $pdo->prepare("SELECT password FROM employees WHERE id = :id");
+        $stmt = $pdo->prepare("SELECT password FROM employees WHERE emp_id = :id");
         $stmt->execute(['id' => $user_id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -254,6 +254,63 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
     header('Location: profile.php');
     exit;
 }
+
+// Handle session termination requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['terminate_session']) && !empty($_POST['sessid'])) {
+    if (!validate_csrf_token($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid security token.';
+        header('Location: profile.php#session_location');
+        exit;
+    }
+
+    $sessid = preg_replace('/[^a-zA-Z0-9]/', '', $_POST['sessid']);
+    // Prevent terminating current session
+    if ($sessid === session_id()) {
+        $_SESSION['warning'] = 'You cannot terminate your current session from here.';
+        header('Location: profile.php#session_location');
+        exit;
+    }
+
+    $sessionFile = __DIR__ . '/sessions/sess_' . $sessid;
+    if (file_exists($sessionFile) && is_writable($sessionFile)) {
+        @unlink($sessionFile);
+        $_SESSION['success'] = 'Selected session terminated successfully.';
+    } else {
+        $_SESSION['error'] = 'Failed to terminate session or session not found.';
+    }
+    header('Location: profile.php#session_location');
+    exit;
+}
+
+// Handle AJAX/POST request to store/generate a location access code
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_location_code'])) {
+    header('Content-Type: application/json');
+    if (!validate_csrf_token($_POST['csrf_token'] ?? '')) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Invalid token']);
+        exit;
+    }
+
+    $lat = isset($_POST['lat']) ? trim($_POST['lat']) : null;
+    $lon = isset($_POST['lon']) ? trim($_POST['lon']) : null;
+    if (!$lat || !$lon) {
+        echo json_encode(['success' => false, 'message' => 'Coordinates missing']);
+        exit;
+    }
+
+    // Generate a short access code (non-guessable substring of a hash)
+    $code = substr(hash('sha256', $user_id . '|' . $lat . '|' . $lon . '|' . time()), 0, 12);
+    $_SESSION['location_access'] = [
+        'code' => $code,
+        'lat' => $lat,
+        'lon' => $lon,
+        'generated_at' => time()
+    ];
+
+    echo json_encode(['success' => true, 'code' => $code]);
+    exit;
+}
+
 ?>
 
 <!-- Cropper.js CSS -->
@@ -316,6 +373,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
         padding: 15px;
         border-bottom: 1px solid var(--border-color);
     }
+
     
     .modern-info-box {
         border-radius: 10px;
@@ -540,6 +598,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                         <li class="nav-item">
                             <a class="nav-link" href="#notifications" data-bs-toggle="tab">
                                 <i class="fas fa-bell me-1"></i> Notification Preferences
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#session_location" data-bs-toggle="tab">
+                                <i class="fas fa-shield-alt me-1"></i> Session &amp; Location
                             </a>
                         </li>
                     </ul>
@@ -780,6 +843,210 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
                             </div>
                         </div>
                         <!-- /.tab-pane -->
+
+                        <div class="tab-pane" id="session_location">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="card mb-3">
+                                        <div class="card-header">
+                                            <h5 class="card-title m-0">Active Sessions</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="text-muted">Below are your active sessions. You can terminate other sessions you don't recognize.</p>
+                                            <?php
+                                            $session_dir = __DIR__ . '/sessions';
+                                            $session_files = glob($session_dir . '/sess_*');
+                                            $user_sessions = [];
+                                            foreach ($session_files as $file) {
+                                                $contents = @file_get_contents($file);
+                                                if ($contents === false) continue;
+
+                                                // Quick check: does this session file belong to current user?
+                                                if (strpos($contents, 'user_id') !== false && strpos($contents, (string)$user_id) !== false) {
+                                                    $filename = basename($file);
+                                                    $sid = substr($filename, 5);
+
+                                                    // Try to extract stored meta values, fallback to file timestamps
+                                                    $created = '';
+                                                    $last_activity = '';
+                                                    if (preg_match('/created_at.*?i:([0-9]{10,13})/s', $contents, $m)) {
+                                                        $created = date('Y-m-d H:i:s', intval($m[1]));
+                                                    }
+                                                    if (preg_match('/last_activity.*?i:([0-9]{10,13})/s', $contents, $m2)) {
+                                                        $last_activity = date('Y-m-d H:i:s', intval($m2[1]));
+                                                    }
+
+                                                    $ip = '';
+                                                    if (preg_match('/ip.*?s:\d+:"([^\"]+)"/s', $contents, $ipm)) {
+                                                        $ip = $ipm[1];
+                                                    }
+
+                                                    $ua = '';
+                                                    if (preg_match('/user_agent.*?s:\d+:"([^\"]+)"/s', $contents, $uam)) {
+                                                        $ua = $uam[1];
+                                                    }
+
+                                                    // Extract last_location lat/lon if available in session file
+                                                    $lat = '';
+                                                    $lon = '';
+                                                    if (preg_match('/last_location.*?s:\d+:"lat";s:\d+:"([^\"]+)"/s', $contents, $lm)) {
+                                                        $lat = $lm[1];
+                                                    }
+                                                    if (preg_match('/last_location.*?s:\d+:"lon";s:\d+:"([^\"]+)"/s', $contents, $lm2)) {
+                                                        $lon = $lm2[1];
+                                                    }
+
+                                                    $device = '';
+                                                    // If session meta included a device field, try to extract it
+                                                    if (preg_match('/device.*?s:\d+:"([^\"]+)"/s', $contents, $dm)) {
+                                                        $device = $dm[1];
+                                                    } elseif (!empty($ua)) {
+                                                        // Fallback to detection based on UA string
+                                                        $device = detect_device($ua);
+                                                    }
+
+                                                    // Remove any trailing browser suffix like "(Chrome)" from older sessions
+                                                    if (!empty($device)) {
+                                                        $device = preg_replace('/\s*\([^)]*\)\s*$/', '', $device);
+                                                    }
+
+                                                    // Derive short browser name/version
+                                                    $browser = detect_browser($ua);
+
+                                                    $user_sessions[] = [
+                                                        'sid' => $sid,
+                                                        'created' => $created ?: date('Y-m-d H:i:s', filemtime($file)),
+                                                        'last_activity' => $last_activity ?: date('Y-m-d H:i:s', filemtime($file)),
+                                                        'ip' => $ip,
+                                                        'device' => $device,
+                                                        'browser' => $browser,
+                                                        'lat' => $lat,
+                                                        'lon' => $lon,
+                                                        'ua' => $ua
+                                                    ];
+                                                }
+                                            }
+                                            ?>
+
+                                            <div class="table-responsive">
+                                                <table class="table table-striped">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Device</th>
+                                                            <th>Log on at</th>
+                                                            <th>Last Active</th>
+                                                            <th>Browser</th>
+                                                            <th>IP</th>
+                                                            <th>Location</th>
+                                                            <th>Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php if (!empty($user_sessions)): ?>
+                                                            <?php foreach ($user_sessions as $s): ?>
+                                                                <tr>
+                                                                    <td><?php echo htmlspecialchars(preg_replace('/\s*\([^)]*\)\s*$/', '', $s['device'])); ?></td>
+                                                                    <td><?php echo htmlspecialchars($s['created']); ?></td>
+                                                                    <td><?php echo htmlspecialchars($s['last_activity']); ?></td>
+                                                                    <td><?php echo htmlspecialchars($s['browser']); ?></td>
+                                                                    <td><?php echo htmlspecialchars($s['ip']); ?></td>
+                                                                    <td>
+                                                                        <?php if (!empty($s['lat']) && !empty($s['lon'])): ?>
+                                                                            <a href="https://www.google.com/maps/search/?api=1&query=<?php echo urlencode($s['lat'] . ',' . $s['lon']); ?>" target="_blank" rel="noopener">Map</a>
+                                                                        <?php else: ?>
+                                                                            N/A
+                                                                        <?php endif; ?>
+                                                                    </td>
+                                                                    <td>
+                                                                        <?php if (session_id() !== $s['sid']): ?>
+                                                                            <form method="POST" class="d-inline">
+                                                                                <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
+                                                                                <input type="hidden" name="sessid" value="<?php echo htmlspecialchars($s['sid']); ?>">
+                                                                                <button type="submit" name="terminate_session" class="btn btn-sm btn-danger" onclick="return confirm('Terminate this session?');">Terminate</button>
+                                                                            </form>
+                                                                        <?php else: ?>
+                                                                            <span class="badge bg-success">Current</span>
+                                                                        <?php endif; ?>
+                                                                    </td>
+                                                                </tr>
+                                                            <?php endforeach; ?>
+                                                        <?php else:
+                                                            // No session files detected for this user - fall back to showing the current session if available
+                                                            $meta = $_SESSION['meta'] ?? null;
+                                                            if ($meta): ?>
+                                                                <tr>
+                                                                    <td><?php echo htmlspecialchars(preg_replace('/\s*\([^)]*\)\s*$/', '', $meta['device'] ?? 'Unknown')); ?></td>
+                                                                    <td><?php echo htmlspecialchars(isset($meta['created_at']) ? date('Y-m-d H:i:s', intval($meta['created_at'])) : 'Unknown'); ?></td>
+                                                                    <td><?php echo htmlspecialchars(isset($meta['last_activity']) ? date('Y-m-d H:i:s', intval($meta['last_activity'])) : 'Unknown'); ?></td>
+                                                                    <td><?php echo htmlspecialchars(detect_browser($meta['user_agent'] ?? '')); ?></td>
+                                                                    <td><?php echo htmlspecialchars($meta['ip'] ?? 'Unknown'); ?></td>
+                                                                    <td>
+                                                                        <?php if (!empty($meta['last_location']['lat']) && !empty($meta['last_location']['lon'])): ?>
+                                                                            <a href="https://www.google.com/maps/search/?api=1&query=<?php echo urlencode($meta['last_location']['lat'] . ',' . $meta['last_location']['lon']); ?>" target="_blank" rel="noopener">Map</a>
+                                                                        <?php else: ?>
+                                                                            N/A
+                                                                        <?php endif; ?>
+                                                                    </td>
+                                                                    <td>
+                                                                        <span class="badge bg-success">Current</span>
+                                                                    </td>
+                                                                </tr>
+                                                            <?php else: ?>
+                                                                <tr><td colspan="7" class="text-center">No active sessions found for this account.</td></tr>
+                                                            <?php endif; ?>
+                                                        <?php endif; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card mb-3">
+                                        <div class="card-header">
+                                            <h5 class="card-title m-0">Location Access</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="text-muted">Use your browser's location API to share your current coordinates and generate a short access code you can use for location-based features.</p>
+
+                                            <div class="mb-3">
+                                                <button id="requestLocationBtn" class="btn btn-outline-primary">
+                                                    <i class="fas fa-location-arrow me-1"></i> Request Location
+                                                </button>
+                                                <small id="locationStatus" class="form-text text-muted ms-2"></small>
+                                            </div>
+
+                                            <div class="mb-2">
+                                                <strong>Coordinates:</strong>
+                                                <span id="locationCoords">
+                                                    <?php
+                                                    // Prefer an explicitly generated access location (recent), otherwise show last login location from session meta
+                                                    if (isset($_SESSION['location_access'])) {
+                                                        echo htmlspecialchars($_SESSION['location_access']['lat'] . ', ' . $_SESSION['location_access']['lon']);
+                                                    } elseif (!empty($_SESSION['meta']['last_location'])) {
+                                                        $ll = $_SESSION['meta']['last_location'];
+                                                        echo htmlspecialchars($ll['lat'] . ', ' . $ll['lon']) . ' <small class="text-muted">(from last login)</small>';
+                                                    } else {
+                                                        echo 'Not available';
+                                                    }
+                                                    ?>
+                                                </span>
+                                            </div>
+
+                                            <div class="mb-2">
+                                                <strong>Access Code:</strong>
+                                                <span id="locationCode"><?php echo isset($_SESSION['location_access']) ? htmlspecialchars($_SESSION['location_access']['code']) : 'Not generated'; ?></span>
+                                                <button id="copyLocationCodeBtn" class="btn btn-sm btn-outline-secondary ms-2" style="display: <?= isset($_SESSION['location_access']) ? 'inline-block' : 'none' ?>;">Copy</button>
+                                            </div>
+
+
+                                            <div class="text-muted small">Privacy: This application will not store your coordinates beyond the session unless you explicitly save them in your profile.</div>
+                                            <div class="mt-2 small">Why required: We use your approximate location to protect accounts and verify attendance. <a href="#" data-bs-toggle="modal" data-bs-target="#locationHelpModal">Learn more</a>.</div> 
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- /.tab-pane -->
                     </div>
                     <!-- /.tab-content -->
                 </div><!-- /.card-body -->
@@ -792,6 +1059,95 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
 </div><!-- /.container-fluid -->
 
 <?php include 'includes/footer.php'; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const requestBtn = document.getElementById('requestLocationBtn');
+    const statusEl = document.getElementById('locationStatus');
+    const coordsEl = document.getElementById('locationCoords');
+    const codeEl = document.getElementById('locationCode');
+    const copyBtn = document.getElementById('copyLocationCodeBtn');
+    const csrfToken = encodeURIComponent('<?= generate_csrf_token() ?>');
+
+    function handlePermissionStatus(state) {
+        if (state === 'granted') {
+            if (requestBtn) requestBtn.style.display = 'none';
+            if (statusEl) statusEl.textContent = 'Location permission: granted';
+        } else if (state === 'denied') {
+            if (requestBtn) requestBtn.style.display = 'none';
+            if (statusEl) statusEl.textContent = 'Location permission: denied';
+            // If permission denied while on this page, sign out the user
+            // to enforce mandatory location permission
+            setTimeout(function () { window.location = 'signout.php'; }, 1500);
+        } else {
+            if (requestBtn) requestBtn.style.display = 'inline-block';
+            if (statusEl && (!coordsEl.textContent || coordsEl.textContent === 'Not available')) statusEl.textContent = '';
+        }
+    }
+
+    // Try to query the permissions API to determine current geolocation permission
+    if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'geolocation' }).then(function (permissionStatus) {
+            handlePermissionStatus(permissionStatus.state);
+            permissionStatus.onchange = function () { handlePermissionStatus(this.state); };
+        }).catch(function () {
+            // Permissions API available but query failed - leave button visible
+            if (requestBtn) requestBtn.style.display = 'inline-block';
+        });
+    } else {
+        // Permissions API not supported - keep the button visible (can't reliably detect state)
+        if (requestBtn) requestBtn.style.display = 'inline-block';
+    }
+
+    if (requestBtn) {
+        requestBtn.addEventListener('click', function () {
+            statusEl.textContent = 'Requesting permission...';
+            if (!navigator.geolocation) {
+                statusEl.textContent = 'Geolocation not supported by your browser.';
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(function (pos) {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                coordsEl.textContent = lat + ', ' + lon;
+                statusEl.textContent = 'Location obtained.';
+
+                // Send coords to server to generate short access code
+                fetch('profile.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'generate_location_code=1&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon) + '&csrf_token=' + csrfToken
+                }).then(r => r.json()).then(j => {
+                    if (j && j.success) {
+                        codeEl.textContent = j.code;
+                        copyBtn.style.display = 'inline-block';
+                    } else {
+                        statusEl.textContent = j.message || 'Failed to generate access code.';
+                    }
+                }).catch(() => {
+                    statusEl.textContent = 'Failed to communicate with server.';
+                });
+
+            }, function (err) {
+                statusEl.textContent = 'Error: ' + (err.message || 'Permission denied or unavailable.');
+            }, { enableHighAccuracy: true, timeout: 10000 });
+        });
+    }
+
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            const code = codeEl.textContent.trim();
+            if (!code || code === 'Not generated') return;
+            navigator.clipboard.writeText(code).then(function () {
+                copyBtn.textContent = 'Copied';
+                setTimeout(() => copyBtn.textContent = 'Copy', 1500);
+            });
+        });
+    }
+
+});
+</script>
 
 <!-- Crop Modal -->
 <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
@@ -961,80 +1317,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['forgot_password_reques
             $('#croppedImage').val(dataURL);
             $('#profileImage').attr('src', dataURL);
             
-            // Show loading overlay
-            $("#loadingOverlay").fadeIn();
-            
-            // Submit the form
-            $('#profilePictureForm').submit();
-            
-            // Close the modal using Bootstrap 5 method
-            cropModal.hide();
-            
-            if (cropper) {
-                cropper.destroy();
-                cropper = null;
-            }
-        });
-        
-        // Generate random password
-        $('#generatePassword').on('click', function() {
-            const length = 12;
-            const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
-            let password = "";
-            
-            for (let i = 0; i < length; i++) {
-                const randomIndex = Math.floor(Math.random() * charset.length);
-                password += charset.charAt(randomIndex);
-            }
-            
-            $('#new_password_modal').val(password);
-            $('#confirm_password_modal').val(password);
-            
-            // Show password after generation
-            $('#new_password_modal, #confirm_password_modal').attr('type', 'text');
-            $('#showPassword').prop('checked', true);
-        });
-        
-        // Show/hide password
-        $('#showPassword').on('change', function() {
-            const type = this.checked ? 'text' : 'password';
-            $('#new_password_modal, #confirm_password_modal').attr('type', type);
-        });
-        
-        // Password form submission
-        $('#passwordResetForm').on('submit', function(e) {
-            // Client-side validation
-            const currentPassword = $('#current_password_modal').val();
-            const newPassword = $('#new_password_modal').val();
-            const confirmPassword = $('#confirm_password_modal').val();
-            
-            if (!currentPassword) {
-                e.preventDefault();
-                Swal.fire({
-                    title: 'Error!',
-                    text: 'Please enter your current password',
-                    icon: 'error',
-                    confirmButtonText: 'Try Again'
-                });
-                return false;
-            }
-            
-            if (newPassword !== confirmPassword) {
-                e.preventDefault();
-                Swal.fire({
-                    title: 'Error!',
-                    text: 'Passwords do not match',
-                    icon: 'error',
-                    confirmButtonText: 'Try Again'
-                });
-                return false;
-            }
-            
-            if (newPassword.length < 8) {
-                e.preventDefault();
-                Swal.fire({
-                    title: 'Error!',
-                    text: 'Password must be at least 8 characters long',
                     icon: 'error',
                     confirmButtonText: 'Try Again'
                 });

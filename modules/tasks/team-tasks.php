@@ -19,7 +19,7 @@ $current_user_id = $_SESSION['user_id'];
 // Load user data for sidebar/header
 $stmt = $pdo->prepare("SELECT e.*, d.title AS designation_title, r.name AS role_name 
                        FROM employees e 
-                       LEFT JOIN designations d ON e.designation = d.id 
+                       LEFT JOIN designations d ON e.designation_id = d.id 
                        LEFT JOIN roles r ON e.role_id = r.id
                        WHERE e.emp_id = :id");
 $stmt->execute(['id' => $current_user_id]);

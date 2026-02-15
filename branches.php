@@ -33,13 +33,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Add new branch
     if ($action === 'add_branch') {
         $name = trim($_POST['name'] ?? '');
+        $default_ssid = trim($_POST['default_ssid'] ?? '');
+        $latitude = trim($_POST['latitude'] ?? '');
+        $longitude = trim($_POST['longitude'] ?? '');
+        $radius_m = trim($_POST['radius_m'] ?? '');
+        $geofence_enabled = isset($_POST['geofence_enabled']) ? 1 : 0;
         
         if (empty($name)) {
             $_SESSION['error'] = 'Branch name is required.';
         } else {
             try {
-                $stmt = $pdo->prepare("INSERT INTO branches (name) VALUES (:name)");
+                $stmt = $pdo->prepare("INSERT INTO branches (name, default_ssid, latitude, longitude, radius_m, geofence_enabled) 
+                                       VALUES (:name, :default_ssid, :latitude, :longitude, :radius_m, :geofence_enabled)");
                 $stmt->bindParam(':name', $name, PDO::PARAM_STR);
+                $stmt->bindValue(':default_ssid', $default_ssid !== '' ? $default_ssid : null);
+                $stmt->bindValue(':latitude', $latitude !== '' ? $latitude : null);
+                $stmt->bindValue(':longitude', $longitude !== '' ? $longitude : null);
+                $stmt->bindValue(':radius_m', $radius_m !== '' ? (int)$radius_m : null, PDO::PARAM_INT);
+                $stmt->bindValue(':geofence_enabled', $geofence_enabled, PDO::PARAM_INT);
                 $stmt->execute();
                 
                 log_activity($pdo, 'branch_created', "Created new branch: $name");
@@ -57,13 +68,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif ($action === 'edit_branch') {
         $branch_id = (int)($_POST['branch_id'] ?? 0);
         $name = trim($_POST['name'] ?? '');
+        $default_ssid = trim($_POST['default_ssid'] ?? '');
+        $latitude = trim($_POST['latitude'] ?? '');
+        $longitude = trim($_POST['longitude'] ?? '');
+        $radius_m = trim($_POST['radius_m'] ?? '');
+        $geofence_enabled = isset($_POST['geofence_enabled']) ? 1 : 0;
         
         if (empty($name) || $branch_id <= 0) {
             $_SESSION['error'] = 'Invalid branch data.';
         } else {
             try {
-                $stmt = $pdo->prepare("UPDATE branches SET name = :name, updated_at = NOW() WHERE id = :id");
+                $stmt = $pdo->prepare("UPDATE branches 
+                                       SET name = :name,
+                                           default_ssid = :default_ssid,
+                                           latitude = :latitude,
+                                           longitude = :longitude,
+                                           radius_m = :radius_m,
+                                           geofence_enabled = :geofence_enabled,
+                                           updated_at = NOW()
+                                       WHERE id = :id");
                 $stmt->bindParam(':name', $name, PDO::PARAM_STR);
+                $stmt->bindValue(':default_ssid', $default_ssid !== '' ? $default_ssid : null);
+                $stmt->bindValue(':latitude', $latitude !== '' ? $latitude : null);
+                $stmt->bindValue(':longitude', $longitude !== '' ? $longitude : null);
+                $stmt->bindValue(':radius_m', $radius_m !== '' ? (int)$radius_m : null, PDO::PARAM_INT);
+                $stmt->bindValue(':geofence_enabled', $geofence_enabled, PDO::PARAM_INT);
                 $stmt->bindParam(':id', $branch_id, PDO::PARAM_INT);
                 $stmt->execute();
                 
@@ -167,6 +196,11 @@ require_once __DIR__ . '/includes/header.php';
                                             <a class="dropdown-item edit-branch-btn" href="#" 
                                                 data-id="<?php echo $branch['id']; ?>"
                                                 data-name="<?php echo htmlspecialchars($branch['name']); ?>"
+                                                data-latitude="<?php echo htmlspecialchars($branch['latitude'] ?? ''); ?>"
+                                                data-longitude="<?php echo htmlspecialchars($branch['longitude'] ?? ''); ?>"
+                                                data-radius="<?php echo htmlspecialchars($branch['radius_m'] ?? ''); ?>"
+                                                data-default-ssid="<?php echo htmlspecialchars($branch['default_ssid'] ?? ''); ?>"
+                                                data-geofence="<?php echo htmlspecialchars($branch['geofence_enabled'] ?? 0); ?>"
                                                 data-bs-toggle="modal" data-bs-target="#editBranchModal">
                                                 <i class="fas fa-edit me-2"></i> Edit
                                             </a>
@@ -210,6 +244,35 @@ require_once __DIR__ . '/includes/header.php';
                         <label for="add-branch-name" class="form-label">Branch Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="add-branch-name" name="name" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="add-default-ssid" class="form-label">Default Wi-Fi SSID</label>
+                        <input type="text" class="form-control" id="add-default-ssid" name="default_ssid" placeholder="e.g., Branch-Office-WiFi">
+                        <small class="text-muted">If set, mobile clock requires this SSID along with geofence.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="add-branch-lat" class="form-label">Latitude</label>
+                        <input type="number" step="0.0000001" class="form-control" id="add-branch-lat" name="latitude" placeholder="e.g., 27.7172">
+                    </div>
+                    <div class="mb-3">
+                        <label for="add-branch-lon" class="form-label">Longitude</label>
+                        <input type="number" step="0.0000001" class="form-control" id="add-branch-lon" name="longitude" placeholder="e.g., 85.3240">
+                    </div>
+                    <div class="mb-3">
+                        <label for="add-branch-radius" class="form-label">Radius (meters)</label>
+                        <input type="number" step="1" class="form-control" id="add-branch-radius" name="radius_m" placeholder="e.g., 200">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Set Branch Location</label>
+                        <div id="addBranchMap" class="branch-map"></div>
+                        <small class="text-muted d-block mt-1">Click on the map to set the branch location.</small>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="addBranchUseLocation">
+                            <i class="fas fa-location-crosshairs me-1"></i> Use My Location
+                        </button>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="add-branch-geofence" name="geofence_enabled" value="1">
+                        <label class="form-check-label" for="add-branch-geofence">Enable Geofence</label>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -237,6 +300,35 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="mb-3">
                         <label for="edit-branch-name" class="form-label">Branch Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="edit-branch-name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-default-ssid" class="form-label">Default Wi-Fi SSID</label>
+                        <input type="text" class="form-control" id="edit-default-ssid" name="default_ssid" placeholder="e.g., Branch-Office-WiFi">
+                        <small class="text-muted">If set, mobile clock requires this SSID along with geofence.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-branch-lat" class="form-label">Latitude</label>
+                        <input type="number" step="0.0000001" class="form-control" id="edit-branch-lat" name="latitude" placeholder="e.g., 27.7172">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-branch-lon" class="form-label">Longitude</label>
+                        <input type="number" step="0.0000001" class="form-control" id="edit-branch-lon" name="longitude" placeholder="e.g., 85.3240">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-branch-radius" class="form-label">Radius (meters)</label>
+                        <input type="number" step="1" class="form-control" id="edit-branch-radius" name="radius_m" placeholder="e.g., 200">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Set Branch Location</label>
+                        <div id="editBranchMap" class="branch-map"></div>
+                        <small class="text-muted d-block mt-1">Click on the map to update the branch location.</small>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="editBranchUseLocation">
+                            <i class="fas fa-location-crosshairs me-1"></i> Use My Location
+                        </button>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="edit-branch-geofence" name="geofence_enabled" value="1">
+                        <label class="form-check-label" for="edit-branch-geofence">Enable Geofence</label>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -277,6 +369,18 @@ require_once __DIR__ . '/includes/header.php';
 <!-- Include the main footer (which closes content-wrapper, main-wrapper, etc.) -->
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
 
+<!-- Leaflet (map picker) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+    .branch-map {
+        height: 260px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+</style>
+
 <!-- Page specific script -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -302,9 +406,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const button = event.relatedTarget;
             const id = button.getAttribute('data-id');
             const name = button.getAttribute('data-name');
+            const lat = button.getAttribute('data-latitude');
+            const lon = button.getAttribute('data-longitude');
+            const radius = button.getAttribute('data-radius');
+            const defaultSsid = button.getAttribute('data-default-ssid');
+            const geofence = button.getAttribute('data-geofence');
             
             document.getElementById('edit-branch-id').value = id;
             document.getElementById('edit-branch-name').value = name;
+            document.getElementById('edit-branch-lat').value = lat || '';
+            document.getElementById('edit-branch-lon').value = lon || '';
+            document.getElementById('edit-branch-radius').value = radius || '';
+            document.getElementById('edit-default-ssid').value = defaultSsid || '';
+            document.getElementById('edit-branch-geofence').checked = geofence === '1';
         });
     }
     
@@ -318,6 +432,101 @@ document.addEventListener('DOMContentLoaded', function() {
             
             document.getElementById('delete-branch-id').value = id;
             document.getElementById('delete-branch-name').textContent = name;
+        });
+    }
+
+    // Map picker for branch geofence
+    let addMap, editMap, addMarker, editMarker, addCircle, editCircle;
+
+    const initMap = (mapId, latInputId, lonInputId, radiusInputId, useLocationBtnId, isEdit) => {
+        const mapEl = document.getElementById(mapId);
+        if (!mapEl || typeof L === 'undefined') return;
+
+        const latInput = document.getElementById(latInputId);
+        const lonInput = document.getElementById(lonInputId);
+        const radiusInput = document.getElementById(radiusInputId);
+        const useLocationBtn = document.getElementById(useLocationBtnId);
+
+        const latVal = parseFloat(latInput.value) || 27.7172;
+        const lonVal = parseFloat(lonInput.value) || 85.3240;
+        const radiusVal = parseInt(radiusInput.value || '200', 10);
+
+        const map = L.map(mapId).setView([latVal, lonVal], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        let marker = L.marker([latVal, lonVal], { draggable: true }).addTo(map);
+        let circle = L.circle([latVal, lonVal], { radius: radiusVal, color: '#0d6efd', fillOpacity: 0.1 }).addTo(map);
+
+        const updateInputs = (lat, lon) => {
+            latInput.value = lat.toFixed(7);
+            lonInput.value = lon.toFixed(7);
+        };
+
+        marker.on('dragend', function() {
+            const pos = marker.getLatLng();
+            updateInputs(pos.lat, pos.lng);
+            circle.setLatLng(pos);
+        });
+
+        map.on('click', function(e) {
+            marker.setLatLng(e.latlng);
+            circle.setLatLng(e.latlng);
+            updateInputs(e.latlng.lat, e.latlng.lng);
+        });
+
+        radiusInput.addEventListener('input', function() {
+            const r = parseInt(radiusInput.value || '0', 10);
+            if (!Number.isNaN(r)) circle.setRadius(r);
+        });
+
+        if (useLocationBtn && navigator.geolocation) {
+            useLocationBtn.addEventListener('click', function() {
+                useLocationBtn.disabled = true;
+                navigator.geolocation.getCurrentPosition(function(pos) {
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    marker.setLatLng([lat, lon]);
+                    circle.setLatLng([lat, lon]);
+                    map.setView([lat, lon], 17);
+                    updateInputs(lat, lon);
+                    useLocationBtn.disabled = false;
+                }, function() {
+                    useLocationBtn.disabled = false;
+                }, { enableHighAccuracy: true, timeout: 10000 });
+            });
+        }
+
+        // Store references for later resize
+        if (isEdit) {
+            editMap = map; editMarker = marker; editCircle = circle;
+        } else {
+            addMap = map; addMarker = marker; addCircle = circle;
+        }
+
+        setTimeout(() => map.invalidateSize(), 250);
+    };
+
+    const addBranchModalEl = document.getElementById('addBranchModal');
+    if (addBranchModalEl) {
+        addBranchModalEl.addEventListener('shown.bs.modal', function() {
+            if (!addMap) {
+                initMap('addBranchMap', 'add-branch-lat', 'add-branch-lon', 'add-branch-radius', 'addBranchUseLocation', false);
+            } else {
+                setTimeout(() => addMap.invalidateSize(), 250);
+            }
+        });
+    }
+
+    if (editBranchModal) {
+        editBranchModal.addEventListener('shown.bs.modal', function() {
+            if (!editMap) {
+                initMap('editBranchMap', 'edit-branch-lat', 'edit-branch-lon', 'edit-branch-radius', 'editBranchUseLocation', true);
+            } else {
+                setTimeout(() => editMap.invalidateSize(), 250);
+            }
         });
     }
 });
